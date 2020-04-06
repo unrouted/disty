@@ -3,7 +3,10 @@ import enum
 import logging
 import random
 import math
+import json
+import os
 
+from aiofile import AIOFile, LineReader, Writer
 import aiohttp
 from aiohttp import web
 
@@ -40,14 +43,15 @@ class NodeState(enum.IntEnum):
 
 class Node:
 
-    def __init__(self):
+    def __init__(self, identifier):
         self.state = NodeState.FOLLOWER
-        self.identifier = "self"
+        self.identifier = identifier
 
         # persistent state
-        self.current_term = 0
-        self.voted_for = None
         self.log = []
+        self.load_log()
+        self.voted_for = None
+        self.current_term = self.last_term
 
         # volatile state
         self.commit_index = 0
@@ -58,12 +62,43 @@ class Node:
 
         self._heartbeat = None
 
-    def add_entry(self, entry):
+        self.log_fp = AIOFile(self.log_path, "a+")
+        self.log_writer = Writer(self.log_fp)
+        self.log_lock = asyncio.Lock()
+
+    @property
+    def log_path(self):
+        identifier = self.identifier.replace(":", "-")
+        return f"{identifier}.log"
+
+    def load_log(self):
+        if not os.path.exists(self.log_path):
+            return
+
+        with open(self.log_path, "r") as fp:
+            for line in fp:
+                payload = json.loads(line)
+                self.log.append(tuple(payload))
+
+        if self.log:
+            self.current_term = self.log[-1][0]
+
+        logger.info("Restored log to term: %d, index: %d", self.last_term, self.last_index)
+
+    async def append(self, entry):
+        async with self.log_lock:
+            if self.log_fp.fileno() == -1:
+                await self.log_fp.open()
+
+            await self.log_writer(json.dumps(entry) + "\n")
+            await self.log_fp.fsync()
+
+            self.log.append(entry)
+
+    async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
             raise NotALeader("Only leader can append to log")
-
-        self.log.append((self.current_term, entry))
-
+        await self.append((self.current_term, entry))
         return self.last_term, self.last_index
 
     @property
@@ -225,7 +260,7 @@ class Node:
         prev_index = request["prev_index"]
         prev_term = request["prev_term"]
 
-        if prev_index < self.last_index:
+        if prev_index > self.last_index:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
@@ -236,7 +271,8 @@ class Node:
         # FIXME: If an existing entry conflicts with a new one (same index but different terms) delete the existing entry and all that follow it
         # Does that just mean trim before the previous return false???
 
-        self.log.extend(request["entries"])
+        for entry in request["entries"]:
+            await self.append(entry)
 
         if request["leader_commit"] > self.commit_index:
             commit_index = min(request["leader_commit"], len(self.log) - 1)
@@ -326,17 +362,17 @@ async def request_vote(request):
 
 
 @routes.post('/add-entry')
-async def request_vote(request):
+async def add_entry(request):
     payload = await request.json()
 
     if node.state != NodeState.LEADER:
         return web.json_response(
             status=400,
             reason="Not a leader",
-            body={"reason": "NOT_A_LEADER"},
+            json={"reason": "NOT_A_LEADER"},
         )
 
-    last_term, last_index = node.add_entry(payload)
+    last_term, last_index = await node.add_entry(payload)
 
     return web.json_response({
         "last_term": last_term,
@@ -344,7 +380,7 @@ async def request_vote(request):
     })
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 import argparse
 
@@ -352,8 +388,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("port")
 args = parser.parse_args()
 
-node = Node()
-node.identifier = f"127.0.0.1:{args.port}"
+node = Node(f"127.0.0.1:{args.port}")
 for remote in (8080, 8081, 8082):
     if int(args.port) != remote:
         node.add_member(f"127.0.0.1:{remote}")
