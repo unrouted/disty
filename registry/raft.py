@@ -10,6 +10,8 @@ from aiofile import AIOFile, LineReader, Writer
 import aiohttp
 from aiohttp import web
 
+from .utils.web import run_server
+
 logger = logging.getLogger(__name__)
 
 ELECTION_TIMEOUT_HIGH = 600
@@ -244,19 +246,19 @@ class Node:
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
     def maybe_become_follower(self, term):
-        if node.state == NodeState.LEADER:
-            if term > node.current_term:
-                logger.debug("Follower has higher term (%d vs %d)", term, node.current_term)
-                node.become_follower()
+        if self.state == NodeState.LEADER:
+            if term > self.current_term:
+                logger.debug("Follower has higher term (%d vs %d)", term, self.current_term)
+                self.become_follower()
 
     async def recv_append_entries(self, request):
         logger.debug(request)
 
         term = request["term"]
 
-        node.maybe_become_follower(request["term"])
+        self.maybe_become_follower(request["term"])
 
-        node.reset_election_timeout()
+        self.reset_election_timeout()
 
         if term < self.current_term:
             logger.debug("Message received for old term %d, current term is %d", term, self.current_term)
@@ -292,7 +294,7 @@ class Node:
         term = request["term"]
         logger.debug("Received a vote request for term %d", term)
 
-        node.maybe_become_follower(request["term"])
+        self.maybe_become_follower(request["term"])
 
         if term < self.current_term:
             logger.debug("Vote request rejected as term already over")
@@ -348,6 +350,8 @@ routes = web.RouteTableDef()
 
 @routes.post('/append-entries')
 async def append_entries(request):
+    node = request.app['node']
+
     payload = await request.json()
 
     return web.json_response({
@@ -358,6 +362,8 @@ async def append_entries(request):
 
 @routes.post('/request-vote')
 async def request_vote(request):
+    node = request.app['node']
+
     payload = await request.json()
 
     return web.json_response({
@@ -368,6 +374,8 @@ async def request_vote(request):
 
 @routes.post('/add-entry')
 async def add_entry(request):
+    node = request.app['node']
+
     payload = await request.json()
 
     if node.state != NodeState.LEADER:
@@ -385,20 +393,13 @@ async def add_entry(request):
     })
 
 
-logging.basicConfig(level=logging.DEBUG)
+async def run_raft(port):
+    node = Node(f"127.0.0.1:{port}")
 
-import argparse
+    for remote in (8080, 8081, 8082):
+        if int(port) != remote:
+            node.add_member(f"127.0.0.1:{remote}")
 
-parser = argparse.ArgumentParser()
-parser.add_argument("port")
-args = parser.parse_args()
+    node.become_follower()
 
-node = Node(f"127.0.0.1:{args.port}")
-for remote in (8080, 8081, 8082):
-    if int(args.port) != remote:
-        node.add_member(f"127.0.0.1:{remote}")
-node.become_follower()
-
-app = web.Application()
-app.add_routes(routes)
-web.run_app(app, port=args.port)
+    return await run_server("127.0.0.1", port, routes, node=node)
