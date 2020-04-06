@@ -127,9 +127,95 @@ async def get_blob_by_hash(request):
     )
 
 
+@routes.post('/v2/{repository:[^{}]+}/blobs/uploads/')
+async def start_upload(request):
+    repository = request.match_info["repository"]
+
+    session_id = "session-id"
+
+    return web.json_response(
+        {},
+        status=202,
+        headers={
+            "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
+            "Range": "0-0",
+            "Blob-Upload-Session-ID": session_id,
+        }
+    )
+
+
+@routes.patch('/v2/{repository:[^{}]+}/blobs/uploads/{session_id}')
+async def upload_chunk_by_patch(request):
+    repository = request.match_info["repository"]
+    session_id = request.match_info["session_id"]
+
+    body = await request.read()
+    current_length = len(body)
+
+    return web.json_response(
+        {},
+        status=202,
+        headers={
+            "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
+            "Blob-Upload-Session-ID": session_id,
+            "Range": f"0-{current_length}",
+        }
+    )
+
+
+@routes.put('/v2/{repository:[^{}]+}/blobs/uploads/{session_id}')
+async def upload_finish(request):
+    repository = request.match_info["repository"]
+    session_id = request.match_info["session_id"]
+
+    digest = "sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b"
+
+    return web.json_response(
+        {},
+        status=201,
+        headers={
+            "Location": f"/v2/{repository}/blobs/{digest}",
+            "Docker-Content-Digest": digest,
+        }
+    )
+
+
+@routes.head('/v2/{repository:[^{}]+}/blobs/{hash}')
+async def head_blob(request):
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    return web.json_response(
+        {},
+        status=200,
+        headers={
+            "Content-Length": "0",
+            "Docker-Content-Digest": hash,
+        }
+    )
+
+
+@routes.put('/v2/{repository:[^{}]+}/manifests/{tag}')
+async def head_blob(request):
+    repository = request.match_info["repository"]
+    tag = request.match_info["tag"]
+
+    manifest = await request.read()
+    hash = "sha256:" + hashlib.sha256(manifest).hexdigest()
+
+    return web.json_response(
+        {},
+        status=200,
+        headers={
+            "Content-Length": "0",
+            "Docker-Content-Digest": hash,
+        }
+    )
+
+
 async def run_registry(port):
     return await run_server(
-        "127.0.0.1",
+        "0.0.0.0",
         port,
         routes,
     )
