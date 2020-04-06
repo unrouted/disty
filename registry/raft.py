@@ -27,6 +27,10 @@ def invoke(cbl):
     future.add_done_callback(done_callback)
 
 
+class NotALeader(Exception):
+    pass
+
+
 class NodeState(enum.IntEnum):
 
     FOLLOWER = 1
@@ -54,15 +58,23 @@ class Node:
 
         self._heartbeat = None
 
-    @property
-    def last_index(self):
-        return len(self.log)
+    def add_entry(self, entry):
+        if self.state != NodeState.LEADER:
+            raise NotALeader("Only leader can append to log")
+
+        self.log.append((self.current_term, entry))
+
+        return self.last_term, self.last_index
 
     @property
     def last_term(self):
         if not self.log:
             return 0
         return self.log[-1][0]
+
+    @property
+    def last_index(self):
+        return len(self.log)
 
     @property
     def cluster_size(self):
@@ -154,21 +166,40 @@ class Node:
             # This is useful in testing, not so much in the real world?
             await asyncio.sleep(random_timeout)
 
+    async def do_heartbeat(self, node):
+        print(node.match_index, node.next_index)
+
+        prev_index = node.match_index
+        prev_term = self.log[prev_index - 1][0] if prev_index else 0
+        entries = self.log[node.next_index - 1:]
+
+        logger.debug("WILL SEND %s", entries)
+        payload = {
+            "term": self.current_term,
+            "leader_id": self.identifier,
+            "prev_index": prev_index,
+            "prev_term": prev_term,
+            "entries": entries,
+            "leader_commit": self.commit_index,
+        }
+
+        result = await node.send_append_entries(payload)
+
+        if not result["success"]:
+            if node.next_index > 0:
+                node.next_index -= 1
+            return
+
+        node.match_index += len(entries)
+        node.next_index = node.match_index + 1
+
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
             logger.debug("Sending heartbeat")
-            payload = {}
+            logger.debug("Current log %s", self.log)
 
             for node in self.remotes:
-                payload = {
-                    "term": self.current_term,
-                    "leader_id": self.identifier,
-                    "prev_index": self.last_index,
-                    "prev_term": self.last_term,
-                    "entries": [],
-                    "leader_commit": self.commit_index,
-                }
-                invoke(node.send_append_entries(payload))
+                invoke(self.do_heartbeat(node))
 
             await asyncio.sleep(0.1)
 
@@ -179,6 +210,8 @@ class Node:
                 node.become_follower()
 
     async def recv_append_entries(self, request):
+        logger.debug(request)
+
         term = request["term"]
 
         node.maybe_become_follower(request["term"])
@@ -196,7 +229,7 @@ class Node:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
-        if prev_index and self.log[prev_index][0] != prev_term:
+        if prev_index and self.log[prev_index - 1][0] != prev_term:
             logger.debug("Log not valid - mismatched terms %d and %d at index %d", prev_term, self.log[prev_index][0], prev_index)
             return False
 
@@ -209,6 +242,8 @@ class Node:
             commit_index = min(request["leader_commit"], len(self.log) - 1)
             logger.debug("Commit index advanced from %d to %d", self.commit_index, commit_index)
             self.commit_index = commit_index
+
+        logger.debug("Current log %s", self.log)
 
         return True
 
@@ -248,11 +283,18 @@ class RemoteNode:
         self.match_index = 0
         self.session = aiohttp.ClientSession()
 
+    async def send_add_entry(self, payload):
+        resp = await self.session.post(f'http://{self.identifier}/add-entry', json=payload)
+        if resp.status != 200:
+            raise NotALeader("Unable to write to this node")
+        payload = await resp.json()
+        return resp["last_term"], resp["last_index"]
+
     async def send_append_entries(self, payload):
         resp = await self.session.post(f'http://{self.identifier}/append-entries', json=payload)
         if resp.status != 200:
             return {"term": 0, "success": False}
-        return resp.json()
+        return await resp.json()
 
     async def send_request_vote(self, payload):
         resp = await self.session.post(f'http://{self.identifier}/request-vote', json=payload)
@@ -282,7 +324,27 @@ async def request_vote(request):
         "vote_granted": await node.recv_request_vote(payload),
     })
 
-logging.basicConfig(level=logging.DEBUG)
+
+@routes.post('/add-entry')
+async def request_vote(request):
+    payload = await request.json()
+
+    if node.state != NodeState.LEADER:
+        return web.json_response(
+            status=400,
+            reason="Not a leader",
+            body={"reason": "NOT_A_LEADER"},
+        )
+
+    last_term, last_index = node.add_entry(payload)
+
+    return web.json_response({
+        "last_term": last_term,
+        "last_index": last_index,
+    })
+
+
+logging.basicConfig(level=logging.INFO)
 
 import argparse
 
