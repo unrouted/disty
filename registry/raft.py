@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 ELECTION_TIMEOUT_HIGH = 600
 ELECTION_TIMEOUT_LOW = ELECTION_TIMEOUT_HIGH / 2
 
-HEARTBEAT_TIMEOUT = 200
+HEARTBEAT_TIMEOUT = 100
+
+SCALE_FACTOR = 1000
+SCALE_FACTOR = 100
 
 
 def invoke(cbl):
@@ -120,7 +123,9 @@ class Node:
         return math.floor(self.cluster_size / 2) + 1
 
     def add_member(self, identifier):
-        self.remotes.append(RemoteNode(identifier))
+        node = RemoteNode(identifier)
+        node.next_index = self.last_index + 1
+        self.remotes.append(node)
 
     def cancel_election_timeout(self):
         logger.debug("Cancelling election timeout")
@@ -132,7 +137,7 @@ class Node:
         self.cancel_election_timeout()
 
         logger.debug("Setting election timeout")
-        timeout = random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / 1000
+        timeout = random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
         loop = asyncio.get_event_loop()
         self._heartbeat = loop.call_later(timeout, self.become_candidate)
 
@@ -175,7 +180,7 @@ class Node:
                 node.send_request_vote(payload) for node in self.remotes
             ]
 
-            random_timeout = random.randrange(300, 500) / 100
+            random_timeout = random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
  
             gathered = asyncio.gather(*requests, return_exceptions=True)
 
@@ -226,7 +231,7 @@ class Node:
             return
 
         node.match_index += len(entries)
-        node.next_index = node.match_index + 1
+        node.next_index += len(entries)
 
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
@@ -236,7 +241,7 @@ class Node:
             for node in self.remotes:
                 invoke(self.do_heartbeat(node))
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
     def maybe_become_follower(self, term):
         if node.state == NodeState.LEADER:
