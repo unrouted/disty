@@ -102,7 +102,6 @@ class Node:
         logger.debug("Became candidate")
         self.state = NodeState.CANDIDATE
 
-        loop = asyncio.get_event_loop()
         invoke(self.do_gather_votes())
 
     def become_leader(self):
@@ -247,20 +246,19 @@ class RemoteNode:
         self.identifier = identifier
         self.next_index = 0
         self.match_index = 0
+        self.session = aiohttp.ClientSession()
 
     async def send_append_entries(self, payload):
-        async with aiohttp.ClientSession() as client:
-            resp = await client.post(f'http://{self.identifier}/append-entries', json=payload)
-            if resp.status != 200:
-                return {"term": 0, "success": False}
-            return resp.json()
+        resp = await self.session.post(f'http://{self.identifier}/append-entries', json=payload)
+        if resp.status != 200:
+            return {"term": 0, "success": False}
+        return resp.json()
 
     async def send_request_vote(self, payload):
-        async with aiohttp.ClientSession() as client:
-            resp = await client.post(f'http://{self.identifier}/request-vote', json=payload)
-            if resp.status != 200:
-                return {"term": 0, "vote_granted": False}
-            return await resp.json()
+        resp = await self.session.post(f'http://{self.identifier}/request-vote', json=payload)
+        if resp.status != 200:
+            return {"term": 0, "vote_granted": False}
+        return await resp.json()
 
 
 routes = web.RouteTableDef()
