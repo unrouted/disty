@@ -85,7 +85,7 @@ class Log:
         """Indexes up to `index` can now be applied to the state machine."""
         logger.debug("Safe to apply log up to index %d", index)
 
-        entries = self._log[self.applied_index:index]
+        entries = self._log[self.applied_index : index]
 
         for callback in self._callbacks:
             callback(entries)
@@ -93,7 +93,15 @@ class Log:
         self.applied_index = index
 
     def __getitem__(self, key):
-        return self._log[key]
+        if isinstance(key, slice):
+            new_slice = slice(
+                key.start - 1 if key.start else None,
+                key.stop - 1 if key.stop else None,
+                key.step,
+            )
+            return self._log[new_slice]
+
+        return self._log[key - 1]
 
 
 class ReplicatedDictionary:

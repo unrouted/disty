@@ -119,6 +119,39 @@ class Node:
 
         invoke(self.do_heartbeats())
 
+        # FIXME: Send a no-op to log here
+        # It's considered "unsafe" to commit a transaction from a previous term
+        # But safe to indirectly commit it when commiting a no-op in the current term
+
+    async def advance_commit_index(self):
+        commit_index = i = self.commit_index
+        while i <= self.log.last_index:
+            if self.log[i][0] != self.current_term:
+                i += 1
+                continue
+
+            match_count = 0
+            for peer in self.remotes:
+                if peer.match_index >= i:
+                    match_count += 1
+
+            if match_count > self.quorum:
+                commit_index = i
+
+            i += 1
+
+        if commit_index <= self.commit_index:
+            return
+
+        logger.debug(
+            "Achieved a quorum - advancing commit index from %d to %d",
+            self.commit_index,
+            commit_index,
+        )
+        self.commit_index = commit_index
+
+        await self.log.apply(self.commit_index)
+
     async def do_gather_votes(self):
         """Try and gather votes from all peers for current term."""
         while self.state == NodeState.CANDIDATE:
@@ -172,8 +205,8 @@ class Node:
         print(node.match_index, node.next_index)
 
         prev_index = node.match_index
-        prev_term = self.log[prev_index - 1][0] if prev_index else 0
-        entries = self.log[node.next_index - 1 :]
+        prev_term = self.log[prev_index][0] if prev_index else 0
+        entries = self.log[node.next_index :]
 
         logger.debug("WILL SEND %s", entries)
         payload = {
@@ -195,6 +228,8 @@ class Node:
         node.match_index += len(entries)
         node.next_index += len(entries)
 
+        await self.advance_commit_index()
+
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
             logger.debug("Sending heartbeat")
@@ -210,7 +245,9 @@ class Node:
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
     def maybe_become_follower(self, term):
-        if self.state == NodeState.LEADER:
+        # FIXME: Consider the candidate -> follwoer case...
+
+        if self.state != NodeState.LEADER:
             if term > self.current_term:
                 logger.debug(
                     "Follower has higher term (%d vs %d)", term, self.current_term
@@ -241,7 +278,7 @@ class Node:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
-        if prev_index and self.log[prev_index - 1][0] != prev_term:
+        if prev_index and self.log[prev_index][0] != prev_term:
             logger.debug(
                 "Log not valid - mismatched terms %d and %d at index %d",
                 prev_term,
