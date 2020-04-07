@@ -67,6 +67,10 @@ class Log:
 
         self._writer = Writer(self._fp)
 
+    async def rollback(self, index):
+        """Drop all records after index and commit to disk."""
+        raise NotImplementedError(self.rollback)
+
     async def snapshot(self):
         raise NotImplementedError(self.snapshot)
 

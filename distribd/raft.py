@@ -65,7 +65,7 @@ class Node:
     async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
             raise NotALeader("Only leader can append to log")
-        await self.log.commit((self.current_term, entry))
+        await self.log.commit(self.current_term, entry)
         return self.log.last_term, self.log.last_index
 
     @property
@@ -119,28 +119,37 @@ class Node:
 
         invoke(self.do_heartbeats())
 
-        # FIXME: Send a no-op to log here
         # It's considered "unsafe" to commit a transaction from a previous term
         # But safe to indirectly commit it when commiting a no-op in the current term
+        invoke(self.add_entry({}))
 
     async def advance_commit_index(self):
-        commit_index = i = self.commit_index
+        logger.debug("Maybe advance commit index")
+
+        commit_index = 0
+        i = max(self.commit_index, 1)
         while i <= self.log.last_index:
             if self.log[i][0] != self.current_term:
                 i += 1
                 continue
 
-            match_count = 0
+            # Start counting at 1 because we count as a vote
+            match_count = 1
             for peer in self.remotes:
+                logger.debug("Peer match index is %d", peer.match_index)
                 if peer.match_index >= i:
                     match_count += 1
 
-            if match_count > self.quorum:
+            logger.debug("%d peers have index %d", match_count, i)
+
+            if match_count >= self.quorum:
+                logger.debug("quorum for index %d", i)
                 commit_index = i
 
             i += 1
 
         if commit_index <= self.commit_index:
+            logger.debug("Commit index unchanged")
             return
 
         logger.debug(
@@ -204,11 +213,18 @@ class Node:
     async def do_heartbeat(self, node):
         print(node.match_index, node.next_index)
 
-        prev_index = node.match_index
+        prev_index = node.next_index - 1
         prev_term = self.log[prev_index][0] if prev_index else 0
         entries = self.log[node.next_index :]
 
         logger.debug("WILL SEND %s", entries)
+        logger.debug(
+            "prev_index %d prev_term %d next_index %d entries %s",
+            prev_index,
+            prev_term,
+            node.next_index,
+            entries,
+        )
         payload = {
             "term": self.current_term,
             "leader_id": self.identifier,
@@ -225,8 +241,8 @@ class Node:
                 node.next_index -= 1
             return
 
-        node.match_index += len(entries)
         node.next_index += len(entries)
+        node.match_index = node.next_index - 1
 
         await self.advance_commit_index()
 
@@ -276,6 +292,7 @@ class Node:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
+        print(prev_index, self.log.last_index)
         if prev_index and self.log[prev_index][0] != prev_term:
             logger.debug(
                 "Log not valid - mismatched terms %d and %d at index %d",
