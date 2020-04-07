@@ -1,13 +1,15 @@
 import hashlib
+import logging
 import os
 import pathlib
 import uuid
 
+from aiofile import AIOFile, Writer
 from aiohttp import web
 
-from aiofile import AIOFile, Writer
-
 from .utils.web import run_server
+
+logger = logging.getLogger(__name__)
 
 images_directory = pathlib.Path("images")
 
@@ -65,6 +67,8 @@ async def get_manifest_by_tag(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
+    logger.debug(repository)
+
     manifest_path = images_directory / repository / tag / "manifest.json"
     if not manifest_path.is_file():
         raise web.HTTPNotFound(
@@ -83,6 +87,8 @@ async def get_manifest_by_tag(request):
 async def get_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
+
+    logger.debug(repository)
 
     if hash not in manifests_by_hash:
         raise web.HTTPNotFound(
@@ -209,6 +215,8 @@ async def head_blob(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
+    logger.debug(repository)
+
     blob_path = images_directory / "blobs" / hash
     if not blob_path.exists():
         return web.json_response(
@@ -224,6 +232,9 @@ async def head_blob(request):
 async def put_manifest(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
+
+    logger.debug(repository)
+    logger.debug(tag)
 
     manifest = await request.read()
     hash = hashlib.sha256(manifest).hexdigest()

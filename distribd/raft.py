@@ -6,10 +6,9 @@ import math
 import os
 import random
 
+from aiofile import AIOFile, Writer
 import aiohttp
 from aiohttp import web
-
-from aiofile import AIOFile, Writer
 
 from .utils.web import run_server
 
