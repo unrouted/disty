@@ -194,7 +194,7 @@ class Node:
                 votes,
                 self.quorum,
             )
-            if votes >= self.quorum:
+            if votes >= self.quorum and self.state == NodeState.CANDIDATE:
                 self.become_leader()
                 return
 
@@ -245,9 +245,7 @@ class Node:
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
     def maybe_become_follower(self, term):
-        # FIXME: Consider the candidate -> follwoer case...
-
-        if self.state != NodeState.LEADER:
+        if self.state != NodeState.FOLLOWER:
             if term > self.current_term:
                 logger.debug(
                     "Follower has higher term (%d vs %d)", term, self.current_term
