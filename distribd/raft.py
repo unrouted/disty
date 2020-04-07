@@ -257,11 +257,12 @@ class Node:
             await self.log.commit(entry[0], entry[1])
 
         if request["leader_commit"] > self.commit_index:
-            commit_index = min(request["leader_commit"], len(self.log) - 1)
+            commit_index = min(request["leader_commit"], self.log.last_index)
             logger.debug(
                 "Commit index advanced from %d to %d", self.commit_index, commit_index
             )
             self.commit_index = commit_index
+            await self.log.apply(self.commit_index)
 
         logger.debug(
             "Current log at term %d index %d", self.log.last_term, self.log.last_index

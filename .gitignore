@@ -1,2 +1,8 @@
 *.egg-info
+__pycache__
+.DS_Store
+.vscode
+.pytest_cache
+.mypy_cache
+*.log
 
