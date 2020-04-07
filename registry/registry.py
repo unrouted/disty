@@ -247,14 +247,26 @@ async def put_manifest(request):
     tag = request.match_info["tag"]
 
     manifest = await request.read()
-    hash = "sha256:" + hashlib.sha256(manifest).hexdigest()
+    hash = hashlib.sha256(manifest).hexdigest()
+    prefixed_hash = f"sha256:{hash}"
+
+    manifests_dir = images_directory / "manifests"
+    if not os.path.exists(manifests_dir):
+        os.makedirs(manifests_dir)
+
+    manifest_path = manifests_dir / hash
+
+    async with AIOFile(manifest_path, "wb") as fp:
+        writer = Writer(fp)
+        await writer(manifest)
+        await fp.fsync()
 
     return web.json_response(
         {},
         status=200,
         headers={
             "Content-Length": "0",
-            "Docker-Content-Digest": hash,
+            "Docker-Content-Digest": prefixed_hash,
         }
     )
 
