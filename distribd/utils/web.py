@@ -4,7 +4,7 @@ import aiohttp.web
 
 
 async def run_server(host, port, routes, **context):
-    app = aiohttp.web.Application(client_max_size=1024**3)
+    app = aiohttp.web.Application(client_max_size=1024 ** 3)
 
     for key, value in context.items():
         app[key] = value

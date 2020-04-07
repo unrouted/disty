@@ -1,14 +1,15 @@
 import asyncio
 import enum
-import logging
-import random
-import math
 import json
+import logging
+import math
 import os
+import random
 
-from aiofile import AIOFile, LineReader, Writer
 import aiohttp
 from aiohttp import web
+
+from aiofile import AIOFile, Writer
 
 from .utils.web import run_server
 
@@ -29,7 +30,7 @@ def invoke(cbl):
     def done_callback(future):
         try:
             future.result()
-        except:
+        except Exception:
             logger.exception("Unhandled exception in async task")
 
     future.add_done_callback(done_callback)
@@ -47,7 +48,6 @@ class NodeState(enum.IntEnum):
 
 
 class Node:
-
     def __init__(self, identifier):
         self.state = NodeState.FOLLOWER
         self.identifier = identifier
@@ -88,7 +88,9 @@ class Node:
         if self.log:
             self.current_term = self.log[-1][0]
 
-        logger.info("Restored log to term: %d, index: %d", self.last_term, self.last_index)
+        logger.info(
+            "Restored log to term: %d, index: %d", self.last_term, self.last_index
+        )
 
     async def append(self, entry):
         async with self.log_lock:
@@ -139,7 +141,9 @@ class Node:
         self.cancel_election_timeout()
 
         logger.debug("Setting election timeout")
-        timeout = random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
+        timeout = (
+            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
+        )
         loop = asyncio.get_event_loop()
         self._heartbeat = loop.call_later(timeout, self.become_candidate)
 
@@ -178,12 +182,13 @@ class Node:
                 "last_term": self.last_term,
             }
 
-            requests = [
-                node.send_request_vote(payload) for node in self.remotes
-            ]
+            requests = [node.send_request_vote(payload) for node in self.remotes]
 
-            random_timeout = random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
- 
+            random_timeout = (
+                random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH)
+                / SCALE_FACTOR
+            )
+
             gathered = asyncio.gather(*requests, return_exceptions=True)
 
             try:
@@ -197,10 +202,15 @@ class Node:
                 if isinstance(response, Exception):
                     logger.exception(response)
                     continue
-                if response["vote_granted"] == True:
+                if response["vote_granted"] is True:
                     votes += 1
 
-            logger.debug("In term %s, got %d votes, needed %d", self.current_term, votes, self.quorum)
+            logger.debug(
+                "In term %s, got %d votes, needed %d",
+                self.current_term,
+                votes,
+                self.quorum,
+            )
             if votes >= self.quorum:
                 self.become_leader()
                 return
@@ -213,7 +223,7 @@ class Node:
 
         prev_index = node.match_index
         prev_term = self.log[prev_index - 1][0] if prev_index else 0
-        entries = self.log[node.next_index - 1:]
+        entries = self.log[node.next_index - 1 :]
 
         logger.debug("WILL SEND %s", entries)
         payload = {
@@ -248,7 +258,9 @@ class Node:
     def maybe_become_follower(self, term):
         if self.state == NodeState.LEADER:
             if term > self.current_term:
-                logger.debug("Follower has higher term (%d vs %d)", term, self.current_term)
+                logger.debug(
+                    "Follower has higher term (%d vs %d)", term, self.current_term
+                )
                 self.become_follower()
 
     async def recv_append_entries(self, request):
@@ -261,7 +273,11 @@ class Node:
         self.reset_election_timeout()
 
         if term < self.current_term:
-            logger.debug("Message received for old term %d, current term is %d", term, self.current_term)
+            logger.debug(
+                "Message received for old term %d, current term is %d",
+                term,
+                self.current_term,
+            )
             return False
 
         prev_index = request["prev_index"]
@@ -272,7 +288,12 @@ class Node:
             return False
 
         if prev_index and self.log[prev_index - 1][0] != prev_term:
-            logger.debug("Log not valid - mismatched terms %d and %d at index %d", prev_term, self.log[prev_index][0], prev_index)
+            logger.debug(
+                "Log not valid - mismatched terms %d and %d at index %d",
+                prev_term,
+                self.log[prev_index][0],
+                prev_index,
+            )
             return False
 
         # FIXME: If an existing entry conflicts with a new one (same index but different terms) delete the existing entry and all that follow it
@@ -283,7 +304,9 @@ class Node:
 
         if request["leader_commit"] > self.commit_index:
             commit_index = min(request["leader_commit"], len(self.log) - 1)
-            logger.debug("Commit index advanced from %d to %d", self.commit_index, commit_index)
+            logger.debug(
+                "Commit index advanced from %d to %d", self.commit_index, commit_index
+            )
             self.commit_index = commit_index
 
         logger.debug("Current log %s", self.log)
@@ -319,7 +342,6 @@ class Node:
 
 
 class RemoteNode:
-
     def __init__(self, identifier):
         self.identifier = identifier
         self.next_index = 0
@@ -327,20 +349,26 @@ class RemoteNode:
         self.session = aiohttp.ClientSession()
 
     async def send_add_entry(self, payload):
-        resp = await self.session.post(f'http://{self.identifier}/add-entry', json=payload)
+        resp = await self.session.post(
+            f"http://{self.identifier}/add-entry", json=payload
+        )
         if resp.status != 200:
             raise NotALeader("Unable to write to this node")
         payload = await resp.json()
         return resp["last_term"], resp["last_index"]
 
     async def send_append_entries(self, payload):
-        resp = await self.session.post(f'http://{self.identifier}/append-entries', json=payload)
+        resp = await self.session.post(
+            f"http://{self.identifier}/append-entries", json=payload
+        )
         if resp.status != 200:
             return {"term": 0, "success": False}
         return await resp.json()
 
     async def send_request_vote(self, payload):
-        resp = await self.session.post(f'http://{self.identifier}/request-vote', json=payload)
+        resp = await self.session.post(
+            f"http://{self.identifier}/request-vote", json=payload
+        )
         if resp.status != 200:
             return {"term": 0, "vote_granted": False}
         return await resp.json()
@@ -348,49 +376,46 @@ class RemoteNode:
 
 routes = web.RouteTableDef()
 
-@routes.post('/append-entries')
+
+@routes.post("/append-entries")
 async def append_entries(request):
-    node = request.app['node']
+    node = request.app["node"]
 
     payload = await request.json()
 
-    return web.json_response({
-        "term": node.current_term,
-        "success": await node.recv_append_entries(payload),
-    })
+    return web.json_response(
+        {"term": node.current_term, "success": await node.recv_append_entries(payload)}
+    )
 
 
-@routes.post('/request-vote')
+@routes.post("/request-vote")
 async def request_vote(request):
-    node = request.app['node']
+    node = request.app["node"]
 
     payload = await request.json()
 
-    return web.json_response({
-        "term": node.current_term,
-        "vote_granted": await node.recv_request_vote(payload),
-    })
+    return web.json_response(
+        {
+            "term": node.current_term,
+            "vote_granted": await node.recv_request_vote(payload),
+        }
+    )
 
 
-@routes.post('/add-entry')
+@routes.post("/add-entry")
 async def add_entry(request):
-    node = request.app['node']
+    node = request.app["node"]
 
     payload = await request.json()
 
     if node.state != NodeState.LEADER:
         return web.json_response(
-            status=400,
-            reason="Not a leader",
-            json={"reason": "NOT_A_LEADER"},
+            status=400, reason="Not a leader", json={"reason": "NOT_A_LEADER"},
         )
 
     last_term, last_index = await node.add_entry(payload)
 
-    return web.json_response({
-        "last_term": last_term,
-        "last_index": last_index,
-    })
+    return web.json_response({"last_term": last_term, "last_index": last_index})
 
 
 async def run_raft(port):

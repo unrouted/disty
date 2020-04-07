@@ -17,8 +17,7 @@ async def main():
     registry_port = int(args.port) + 1000
 
     await asyncio.gather(
-        run_raft(raft_port),
-        run_registry(registry_port),
+        run_raft(raft_port), run_registry(registry_port),
     )
 
 

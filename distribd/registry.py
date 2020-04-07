@@ -1,11 +1,11 @@
-import pathlib
 import hashlib
-import logging
-import uuid
 import os
+import pathlib
+import uuid
+
+from aiohttp import web
 
 from aiofile import AIOFile, Writer
-from aiohttp import web
 
 from .utils.web import run_server
 
@@ -34,17 +34,18 @@ scan_images()
 
 routes = web.RouteTableDef()
 
-@routes.get('/v2')
+
+@routes.get("/v2")
 async def handle_bare_v2(request):
-    raise web.HTTPFound('/v2/')
+    raise web.HTTPFound("/v2/")
 
 
-@routes.get('/v2/')
+@routes.get("/v2/")
 async def handle_v2_root(request):
     return web.Response(text="")
 
 
-@routes.get('/v2/{repository:[^{}]+}/tags/list')
+@routes.get("/v2/{repository:[^{}]+}/tags/list")
 async def list_images_in_repository(request):
     repository = request.match_info["repository"]
 
@@ -54,13 +55,10 @@ async def list_images_in_repository(request):
             text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    return web.json_response({
-        "name": repository,
-        "tags": tags[repository],
-    })
+    return web.json_response({"name": repository, "tags": tags[repository]})
 
 
-@routes.get('/v2/{repository:[^{}]+}/manifests/{tag}')
+@routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def get_manifest_by_tag(request):
     print("!!!!")
     # Return images/repository/tag/manifest.json
@@ -77,14 +75,11 @@ async def get_manifest_by_tag(request):
     hash = manifests_by_path[str(manifest_path)]
 
     return web.FileResponse(
-        headers={
-            "Docker-Content-Digest": f"sha256:{hash}"
-        },
-        path=manifest_path,
+        headers={"Docker-Content-Digest": f"sha256:{hash}"}, path=manifest_path,
     )
 
 
-@routes.get('/v2/{repository:[^{}]+}/manifests/sha256:{hash}')
+@routes.get("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
 async def get_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
@@ -98,15 +93,11 @@ async def get_manifest_by_hash(request):
     manifest_path = manifests_by_hash[hash]
 
     return web.FileResponse(
-        headers={
-            "Docker-Content-Digest": f"sha256:{hash}"
-        },
-        path=manifest_path,
+        headers={"Docker-Content-Digest": f"sha256:{hash}"}, path=manifest_path,
     )
 
 
-
-@routes.get('/v2/{repository:[^{}]+}/blobs/sha255:{hash}')
+@routes.get("/v2/{repository:[^{}]+}/blobs/sha255:{hash}")
 async def get_blob_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
@@ -125,13 +116,10 @@ async def get_blob_by_hash(request):
             text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    return web.FileResponse(
-        headers={},
-        path=hash_path,
-    )
+    return web.FileResponse(headers={}, path=hash_path,)
 
 
-@routes.post('/v2/{repository:[^{}]+}/blobs/uploads/')
+@routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")
 async def start_upload(request):
     repository = request.match_info["repository"]
 
@@ -144,11 +132,11 @@ async def start_upload(request):
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
             "Range": "0-0",
             "Blob-Upload-Session-ID": session_id,
-        }
+        },
     )
 
 
-@routes.patch('/v2/{repository:[^{}]+}/blobs/uploads/{session_id}')
+@routes.patch("/v2/{repository:[^{}]+}/blobs/uploads/{session_id}")
 async def upload_chunk_by_patch(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
@@ -174,11 +162,11 @@ async def upload_chunk_by_patch(request):
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
             "Blob-Upload-Session-ID": session_id,
             "Range": f"0-{info.st_size}",
-        }
+        },
     )
 
 
-@routes.put('/v2/{repository:[^{}]+}/blobs/uploads/{session_id}')
+@routes.put("/v2/{repository:[^{}]+}/blobs/uploads/{session_id}")
 async def upload_finish(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
@@ -212,11 +200,11 @@ async def upload_finish(request):
         headers={
             "Location": f"/v2/{repository}/blobs/{digest}",
             "Docker-Content-Digest": digest,
-        }
+        },
     )
 
 
-@routes.head('/v2/{repository:[^{}]+}/blobs/sha256:{hash}')
+@routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def head_blob(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
@@ -224,24 +212,15 @@ async def head_blob(request):
     blob_path = images_directory / "blobs" / hash
     if not blob_path.exists():
         return web.json_response(
-            {},
-            status=404,
-            headers={
-                "Docker-Content-Digest": hash,
-            }
+            {}, status=404, headers={"Docker-Content-Digest": hash}
         )
 
     return web.json_response(
-        {},
-        status=200,
-        headers={
-            "Content-Length": "0",
-            "Docker-Content-Digest": hash,
-        }
+        {}, status=200, headers={"Content-Length": "0", "Docker-Content-Digest": hash}
     )
 
 
-@routes.put('/v2/{repository:[^{}]+}/manifests/{tag}')
+@routes.put("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def put_manifest(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
@@ -264,16 +243,9 @@ async def put_manifest(request):
     return web.json_response(
         {},
         status=200,
-        headers={
-            "Content-Length": "0",
-            "Docker-Content-Digest": prefixed_hash,
-        }
+        headers={"Content-Length": "0", "Docker-Content-Digest": prefixed_hash},
     )
 
 
 async def run_registry(port):
-    return await run_server(
-        "0.0.0.0",
-        port,
-        routes,
-    )
+    return await run_server("0.0.0.0", port, routes,)
