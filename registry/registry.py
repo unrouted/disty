@@ -1,6 +1,10 @@
 import pathlib
 import hashlib
 import logging
+import uuid
+import os
+
+from aiofile import AIOFile, Writer
 from aiohttp import web
 
 from .utils.web import run_server
@@ -131,7 +135,7 @@ async def get_blob_by_hash(request):
 async def start_upload(request):
     repository = request.match_info["repository"]
 
-    session_id = "session-id"
+    session_id = str(uuid.uuid4())
 
     return web.json_response(
         {},
@@ -149,8 +153,19 @@ async def upload_chunk_by_patch(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
-    body = await request.read()
-    current_length = len(body)
+    uploads = images_directory / "uploads"
+    if not uploads.exists():
+        os.makedirs(uploads)
+
+    upload_path = uploads / session_id
+
+    async with AIOFile(upload_path, "ab") as fp:
+        writer = Writer(fp)
+        body = await request.read()
+        await writer(body)
+        await fp.fsync()
+
+    info = os.stat(upload_path)
 
     return web.json_response(
         {},
@@ -158,7 +173,7 @@ async def upload_chunk_by_patch(request):
         headers={
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
             "Blob-Upload-Session-ID": session_id,
-            "Range": f"0-{current_length}",
+            "Range": f"0-{info.st_size}",
         }
     )
 
@@ -168,7 +183,28 @@ async def upload_finish(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
-    digest = "sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b"
+    uploads = images_directory / "uploads"
+    if not uploads.exists():
+        os.makedirs(uploads)
+
+    upload_path = uploads / session_id
+
+    # FIXME: This PUT might have some payload associated with it
+
+    # FIXME: Do on each upload incrementally
+    with open(upload_path, "rb") as fp:
+        hash = hashlib.sha256(fp.read()).hexdigest()
+        digest = f"sha256:{hash}"
+
+    # FIXME: Read digest out of URL and make sure it matches
+
+    blob_dir = images_directory / "blobs"
+    if not blob_dir.exists():
+        os.makedirs(blob_dir)
+
+    blob_path = blob_dir / hash
+
+    os.rename(upload_path, blob_path)
 
     return web.json_response(
         {},
@@ -180,10 +216,20 @@ async def upload_finish(request):
     )
 
 
-@routes.head('/v2/{repository:[^{}]+}/blobs/{hash}')
+@routes.head('/v2/{repository:[^{}]+}/blobs/sha256:{hash}')
 async def head_blob(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
+
+    blob_path = images_directory / "blobs" / hash
+    if not blob_path.exists():
+        return web.json_response(
+            {},
+            status=404,
+            headers={
+                "Docker-Content-Digest": hash,
+            }
+        )
 
     return web.json_response(
         {},
@@ -196,7 +242,7 @@ async def head_blob(request):
 
 
 @routes.put('/v2/{repository:[^{}]+}/manifests/{tag}')
-async def head_blob(request):
+async def put_manifest(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
