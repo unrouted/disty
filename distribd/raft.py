@@ -1,12 +1,9 @@
 import asyncio
 import enum
-import json
 import logging
 import math
-import os
 import random
 
-from aiofile import AIOFile, Writer
 import aiohttp
 from aiohttp import web
 
@@ -47,15 +44,14 @@ class NodeState(enum.IntEnum):
 
 
 class Node:
-    def __init__(self, identifier):
+    def __init__(self, identifier, log):
         self.state = NodeState.FOLLOWER
         self.identifier = identifier
 
         # persistent state
-        self.log = []
-        self.load_log()
+        self.log = log
+        self.current_term = log.last_term
         self.voted_for = None
-        self.current_term = self.last_term
 
         # volatile state
         self.commit_index = 0
@@ -66,56 +62,11 @@ class Node:
 
         self._heartbeat = None
 
-        self.log_fp = AIOFile(self.log_path, "a+")
-        self.log_writer = Writer(self.log_fp)
-        self.log_lock = asyncio.Lock()
-
-    @property
-    def log_path(self):
-        identifier = self.identifier.replace(":", "-")
-        return f"{identifier}.log"
-
-    def load_log(self):
-        if not os.path.exists(self.log_path):
-            return
-
-        with open(self.log_path, "r") as fp:
-            for line in fp:
-                payload = json.loads(line)
-                self.log.append(tuple(payload))
-
-        if self.log:
-            self.current_term = self.log[-1][0]
-
-        logger.info(
-            "Restored log to term: %d, index: %d", self.last_term, self.last_index
-        )
-
-    async def append(self, entry):
-        async with self.log_lock:
-            if self.log_fp.fileno() == -1:
-                await self.log_fp.open()
-
-            await self.log_writer(json.dumps(entry) + "\n")
-            await self.log_fp.fsync()
-
-            self.log.append(entry)
-
     async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
             raise NotALeader("Only leader can append to log")
-        await self.append((self.current_term, entry))
-        return self.last_term, self.last_index
-
-    @property
-    def last_term(self):
-        if not self.log:
-            return 0
-        return self.log[-1][0]
-
-    @property
-    def last_index(self):
-        return len(self.log)
+        await self.log.commit((self.current_term, entry))
+        return self.log.last_term, self.log.last_index
 
     @property
     def cluster_size(self):
@@ -127,7 +78,7 @@ class Node:
 
     def add_member(self, identifier):
         node = RemoteNode(identifier)
-        node.next_index = self.last_index + 1
+        node.next_index = self.log.last_index + 1
         self.remotes.append(node)
 
     def cancel_election_timeout(self):
@@ -177,8 +128,8 @@ class Node:
             payload = {
                 "term": self.current_term,
                 "candidate_id": self.identifier,
-                "last_index": self.last_index,
-                "last_term": self.last_term,
+                "last_index": self.log.last_index,
+                "last_term": self.log.last_term,
             }
 
             requests = [node.send_request_vote(payload) for node in self.remotes]
@@ -247,7 +198,11 @@ class Node:
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
             logger.debug("Sending heartbeat")
-            logger.debug("Current log %s", self.log)
+            logger.debug(
+                "Current log at term %d, index %d",
+                self.log.last_term,
+                self.log.last_index,
+            )
 
             for node in self.remotes:
                 invoke(self.do_heartbeat(node))
@@ -282,7 +237,7 @@ class Node:
         prev_index = request["prev_index"]
         prev_term = request["prev_term"]
 
-        if prev_index > self.last_index:
+        if prev_index > self.log.last_index:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
@@ -299,7 +254,7 @@ class Node:
         # Does that just mean trim before the previous return false???
 
         for entry in request["entries"]:
-            await self.append(entry)
+            await self.log.commit(entry[0], entry[1])
 
         if request["leader_commit"] > self.commit_index:
             commit_index = min(request["leader_commit"], len(self.log) - 1)
@@ -308,7 +263,9 @@ class Node:
             )
             self.commit_index = commit_index
 
-        logger.debug("Current log %s", self.log)
+        logger.debug(
+            "Current log at term %d index %d", self.log.last_term, self.log.last_index
+        )
 
         return True
 
@@ -327,12 +284,12 @@ class Node:
             return False
 
         last_term = request["last_term"]
-        if last_term < self.last_term:
+        if last_term < self.log.last_term:
             logger.debug("Vote request rejected as last term older than current term")
             return False
 
         last_index = request["last_index"]
-        if last_index < self.last_index:
+        if last_index < self.log.last_index:
             logger.debug("Vote request rejected as last index older than own log")
             return False
 
@@ -417,8 +374,8 @@ async def add_entry(request):
     return web.json_response({"last_term": last_term, "last_index": last_index})
 
 
-async def run_raft(port):
-    node = Node(f"127.0.0.1:{port}")
+async def run_raft(log, port):
+    node = Node(f"127.0.0.1:{port}", log)
 
     for remote in (8080, 8081, 8082):
         if int(port) != remote:

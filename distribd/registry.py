@@ -18,22 +18,6 @@ manifests_by_path = {}
 tags = {}
 blobs = {}
 
-
-def scan_images():
-    for path in images_directory.glob("**/manifest.json"):
-        with open(path, "rb") as fp:
-            hash = hashlib.sha256(fp.read()).hexdigest()
-
-        manifests_by_path[str(path)] = hash
-        manifests_by_hash[hash] = path
-
-        repository = str(path.parent.parent.relative_to(images_directory))
-        tag = path.parent.name
-        tags.setdefault(repository, []).append(tag)
-
-
-scan_images()
-
 routes = web.RouteTableDef()
 
 
@@ -259,4 +243,7 @@ async def put_manifest(request):
 
 
 async def run_registry(port):
-    return await run_server("0.0.0.0", port, routes,)
+    # blob_hashes = ReplicatedDictionary("blobs:hashes:identifiers")
+    # manifest_hashes = ReplicatedDictionary("manifests:hashes:identifiers")
+
+    return await run_server("0.0.0.0", port, routes)
