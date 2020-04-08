@@ -68,6 +68,11 @@ class Node:
         await self.log.commit(self.current_term, entry)
         return self.log.last_term, self.log.last_index
 
+    async def send_action(self, entry):
+        if self.state == NodeState.LEADER:
+            return await self.add_entry(entry)
+        return await self.leader.send_add_entry(entry)
+
     @property
     def cluster_size(self):
         return len(self.remotes) + 1
@@ -75,6 +80,15 @@ class Node:
     @property
     def quorum(self):
         return math.floor(self.cluster_size / 2) + 1
+
+    @property
+    def leader(self):
+        for peer in self.remotes:
+            if peer.is_leader:
+                return peer
+
+        # FIXME Can we wait for there to be a leader???
+        raise RuntimeError("Cluster leader not known")
 
     def add_member(self, identifier):
         node = RemoteNode(identifier)
@@ -285,6 +299,9 @@ class Node:
             )
             return False
 
+        for peer in self.remotes:
+            peer.is_leader = (peer.identifier == request["leader_id"])
+
         prev_index = request["prev_index"]
         prev_term = request["prev_term"]
 
@@ -357,6 +374,7 @@ class Node:
 class RemoteNode:
     def __init__(self, identifier):
         self.identifier = identifier
+        self.is_leader = False
         self.next_index = 0
         self.match_index = 0
         self.session = aiohttp.ClientSession()

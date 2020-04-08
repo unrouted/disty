@@ -242,5 +242,7 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(registry_state, port):
-    return await run_server("0.0.0.0", port, routes, registry_state=registry_state)
+async def run_registry(registry_state, send_action, port):
+    return await run_server(
+        "0.0.0.0", port, routes, registry_state=registry_state, send_action=send_action
+    )
