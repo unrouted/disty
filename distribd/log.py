@@ -32,6 +32,9 @@ class Log:
         # Functions to call with changes that are safe to apply to replicated data structures.
         self._callbacks = []
 
+    def add_reducer(self, callback):
+        self._callbacks.append(callback)
+
     @property
     def last_term(self):
         if self._log:
@@ -106,20 +109,3 @@ class Log:
             return self._log[new_slice]
 
         return self._log[key - 1]
-
-
-class ReplicatedDictionary:
-    def __init__(self, log, name):
-        self._last_index = 0
-        self._last_term = 0
-        self._values = {}
-        self.refresh()
-
-    def refresh(self):
-        pass
-
-    async def set(self, key, value):
-        self._values[key] = value
-
-    def __getitem__(self, key):
-        return self._values[key]

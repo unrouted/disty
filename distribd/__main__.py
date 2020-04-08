@@ -5,6 +5,7 @@ import logging
 from .log import Log
 from .raft import Node
 from .registry import run_registry
+from .state import RegistryState
 
 
 async def main():
@@ -26,8 +27,11 @@ async def main():
         if raft_port != remote:
             node.add_member(f"127.0.0.1:{remote}")
 
+    registry_state = RegistryState()
+    log.add_reducer(registry_state.dispatch_entries)
+
     await asyncio.gather(
-        node.run_forever(raft_port), run_registry(registry_port),
+        node.run_forever(raft_port), run_registry(registry_state, registry_port),
     )
 
 

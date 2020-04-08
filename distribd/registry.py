@@ -242,8 +242,5 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(port):
-    # blob_hashes = ReplicatedDictionary("blobs:hashes:identifiers")
-    # manifest_hashes = ReplicatedDictionary("manifests:hashes:identifiers")
-
-    return await run_server("0.0.0.0", port, routes)
+async def run_registry(registry_state, port):
+    return await run_server("0.0.0.0", port, routes, registry_state=registry_state)

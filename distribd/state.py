@@ -7,7 +7,8 @@ class Reducer:
 
     def dispatch_entries(self, entries):
         for entry in entries:
-            self.dispatch(entry)
+            if "type" in entry:
+                self.dispatch(entry)
 
 
 class RegistryState(Reducer):
