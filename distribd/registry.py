@@ -98,7 +98,13 @@ async def get_blob_by_hash(request):
     if not hash_path.is_file():
         raise exceptions.BlobUnknown(hash=hash)
 
-    return web.FileResponse(headers={}, path=hash_path)
+    return web.FileResponse(
+        headers={
+            "Docker-Content-Digest": f"sha256:{hash}",
+            "Content-Type": "application/octet-stream",
+        },
+        path=hash_path,
+    )
 
 
 @routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")
@@ -199,19 +205,28 @@ async def upload_finish(request):
 
 @routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def head_blob(request):
+    registry_state = request.app["registry_state"]
+
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    logger.debug(repository)
+    if not registry_state.is_blob_available(repository, hash):
+        raise exceptions.BlobUnknown(hash=hash)
 
-    blob_path = images_directory / "blobs" / hash
-    if not blob_path.exists():
-        return web.json_response(
-            {}, status=404, headers={"Docker-Content-Digest": hash}
-        )
+    hash_path = images_directory / "blobs" / hash
+    if not hash_path.is_file():
+        raise exceptions.BlobUnknown(hash=hash)
+
+    size = hash_path.stat().st_size
 
     return web.json_response(
-        {}, status=200, headers={"Content-Length": "0", "Docker-Content-Digest": hash}
+        {},
+        status=200,
+        headers={
+            "Content-Length": f"{size}",
+            "Docker-Content-Digest": f"sha256:{hash}",
+            "Content-Type": "application/octet-stream",
+        },
     )
 
 
