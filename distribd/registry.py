@@ -46,21 +46,7 @@ async def list_images_in_repository(request):
     return web.json_response({"name": repository, "tags": tags[repository]})
 
 
-@routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
-async def get_manifest_by_tag(request):
-    registry_state = request.app["registry_state"]
-
-    repository = request.match_info["repository"]
-    tag = request.match_info["tag"]
-
-    try:
-        hash = registry_state.get_tag(repository, tag)
-    except KeyError:
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI state not repl", "code": "TAG_INVALID", "detail": ""}]}',
-        )
-
+async def _manifest_by_hash(repository: str, hash: str):
     manifest_path = images_directory / "manifests" / hash
     if not manifest_path.is_file():
         raise web.HTTPNotFound(
@@ -80,46 +66,53 @@ async def get_manifest_by_tag(request):
     )
 
 
+@routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
+async def get_manifest_by_tag(request):
+    registry_state = request.app["registry_state"]
+
+    repository = request.match_info["repository"]
+    tag = request.match_info["tag"]
+
+    try:
+        hash = registry_state.get_tag(repository, tag)
+    except KeyError:
+        raise web.HTTPNotFound(
+            headers={"Content-Type": "application/json"},
+            text='{"errors": [{"message": "manifest tag did not match URI state not repl", "code": "TAG_INVALID", "detail": ""}]}',
+        )
+
+    return await _manifest_by_hash(repository, hash)
+
+
 @routes.get("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
 async def get_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    logger.debug(repository)
-
-    if hash not in manifests_by_hash:
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
-        )
-
-    manifest_path = manifests_by_hash[hash]
-
-    return web.FileResponse(
-        headers={"Docker-Content-Digest": f"sha256:{hash}"}, path=manifest_path,
-    )
+    return await _manifest_by_hash(repository, hash)
 
 
-@routes.get("/v2/{repository:[^{}]+}/blobs/sha255:{hash}")
+@routes.get("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def get_blob_by_hash(request):
+    registry_state = request.app["registry_state"]
+
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    repository_dir = images_directory / repository
-    if not repository_dir.is_dir():
+    if not registry_state.is_blob_available(repository, hash):
         raise web.HTTPNotFound(
             headers={"Content-Type": "application/json"},
             text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    hash_path = repository_dir / hash
+    hash_path = images_directory / "blobs" / hash
     if not hash_path.is_file():
         raise web.HTTPNotFound(
             headers={"Content-Type": "application/json"},
             text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    return web.FileResponse(headers={}, path=hash_path,)
+    return web.FileResponse(headers={}, path=hash_path)
 
 
 @routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")
