@@ -27,8 +27,7 @@ async def main():
             node.add_member(f"127.0.0.1:{remote}")
 
     await asyncio.gather(
-        node.run_forever(raft_port),
-        run_registry(registry_port),
+        node.run_forever(raft_port), run_registry(registry_port),
     )
 
 
