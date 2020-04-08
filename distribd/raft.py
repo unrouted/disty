@@ -349,6 +349,10 @@ class Node:
         self.voted_for = request["candidate_id"]
         return True
 
+    async def run_forever(self, port):
+        self.become_follower()
+        return await run_server("127.0.0.1", port, routes, node=self)
+
 
 class RemoteNode:
     def __init__(self, identifier):
@@ -425,15 +429,3 @@ async def add_entry(request):
     last_term, last_index = await node.add_entry(payload)
 
     return web.json_response({"last_term": last_term, "last_index": last_index})
-
-
-async def run_raft(log, port):
-    node = Node(f"127.0.0.1:{port}", log)
-
-    for remote in (8080, 8081, 8082):
-        if int(port) != remote:
-            node.add_member(f"127.0.0.1:{remote}")
-
-    node.become_follower()
-
-    return await run_server("127.0.0.1", port, routes, node=node)
