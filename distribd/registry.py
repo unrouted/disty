@@ -8,17 +8,13 @@ import uuid
 from aiofile import AIOFile, Writer
 from aiohttp import web
 
+from . import exceptions
 from .actions import RegistryActions
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
 
 images_directory = pathlib.Path("images")
-
-manifests_by_hash = {}
-manifests_by_path = {}
-tags = {}
-blobs = {}
 
 routes = web.RouteTableDef()
 
@@ -35,24 +31,23 @@ async def handle_v2_root(request):
 
 @routes.get("/v2/{repository:[^{}]+}/tags/list")
 async def list_images_in_repository(request):
+    registry_state = request.app["registry_state"]
     repository = request.match_info["repository"]
+    tags = registry_state.get_tags(repository)
 
-    if repository not in tags:
+    if not tags:
         raise web.HTTPNotFound(
             headers={"Content-Type": "application/json"},
             text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    return web.json_response({"name": repository, "tags": tags[repository]})
+    return web.json_response({"name": repository, "tags": tags})
 
 
 async def _manifest_by_hash(repository: str, hash: str):
     manifest_path = images_directory / "manifests" / hash
     if not manifest_path.is_file():
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI doesnt exist on disk", "code": "TAG_INVALID", "detail": ""}]}',
-        )
+        raise exceptions.ManifestUnknown(hash=hash)
 
     with open(manifest_path, "r") as fp:
         manifest = json.load(fp)
@@ -76,10 +71,7 @@ async def get_manifest_by_tag(request):
     try:
         hash = registry_state.get_tag(repository, tag)
     except KeyError:
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI state not repl", "code": "TAG_INVALID", "detail": ""}]}',
-        )
+        raise exceptions.ManifestUnknown(hash=hash)
 
     return await _manifest_by_hash(repository, hash)
 
@@ -100,17 +92,11 @@ async def get_blob_by_hash(request):
     hash = request.match_info["hash"]
 
     if not registry_state.is_blob_available(repository, hash):
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
-        )
+        raise exceptions.BlobUnknown(hash=hash)
 
     hash_path = images_directory / "blobs" / hash
     if not hash_path.is_file():
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
-        )
+        raise exceptions.BlobUnknown(hash=hash)
 
     return web.FileResponse(headers={}, path=hash_path)
 
@@ -189,6 +175,17 @@ async def upload_finish(request):
     blob_path = blob_dir / hash
 
     os.rename(upload_path, blob_path)
+
+    send_action = request.app["send_action"]
+    identifier = request.app["identifier"]
+
+    await send_action(
+        {"type": RegistryActions.BLOB_STORED, "hash": hash, "identifier": identifier}
+    )
+
+    await send_action(
+        {"type": RegistryActions.BLOB_MOUNTED, "hash": hash, "repository": repository}
+    )
 
     return web.json_response(
         {},

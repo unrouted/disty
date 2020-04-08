@@ -39,6 +39,9 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_tags(self, repository):
+        return list(self.state.get(repository, {}).keys())
+
     def get_tag(self, repository, tag):
         logger.debug("%s %s %s", self.state, repository, tag)
         return self.state.get(repository, {})[tag]
