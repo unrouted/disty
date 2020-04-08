@@ -7,6 +7,7 @@ import uuid
 from aiofile import AIOFile, Writer
 from aiohttp import web
 
+from .actions import RegistryActions
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -235,6 +236,36 @@ async def put_manifest(request):
         await writer(manifest)
         await fp.fsync()
 
+    send_action = request.app["send_action"]
+    identifier = request.app["identifier"]
+
+    await send_action(
+        {
+            "type": RegistryActions.MANIFEST_STORED,
+            "hash": hash,
+            "identifier": identifier,
+        }
+    )
+
+    # These 2 could be merged?
+
+    await send_action(
+        {
+            "type": RegistryActions.MANIFEST_MOUNTED,
+            "hash": hash,
+            "repository": repository,
+        }
+    )
+
+    await send_action(
+        {
+            "type": RegistryActions.HASH_TAGGED,
+            "repository": repository,
+            "tag": tag,
+            "hash": hash,
+        }
+    )
+
     return web.json_response(
         {},
         status=200,
@@ -242,7 +273,12 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(registry_state, send_action, port):
+async def run_registry(identifier, registry_state, send_action, port):
     return await run_server(
-        "0.0.0.0", port, routes, registry_state=registry_state, send_action=send_action
+        "0.0.0.0",
+        port,
+        routes,
+        identifier=identifier,
+        registry_state=registry_state,
+        send_action=send_action,
     )

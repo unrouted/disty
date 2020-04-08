@@ -32,7 +32,7 @@ async def main():
 
     await asyncio.gather(
         node.run_forever(raft_port),
-        run_registry(registry_state, node.send_action, registry_port),
+        run_registry(node.identifier, registry_state, node.send_action, registry_port),
     )
 
 

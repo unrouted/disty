@@ -73,7 +73,7 @@ class Node:
             wait_index, wait_term = await self.add_entry(entry)
         else:
             wait_index, wait_term = await self.leader.send_add_entry(entry)
-        return await self.log.wait_index(wait_index)
+        return await self.log.wait_for_commit(wait_index)
 
     @property
     def cluster_size(self):
@@ -388,7 +388,7 @@ class RemoteNode:
         if resp.status != 200:
             raise NotALeader("Unable to write to this node")
         payload = await resp.json()
-        return resp["last_term"], resp["last_index"]
+        return payload["last_term"], payload["last_index"]
 
     async def send_append_entries(self, payload):
         resp = await self.session.post(

@@ -1,7 +1,7 @@
 import enum
 
 
-class RegistryActions(enum.Enum):
+class RegistryActions(str, enum.Enum):
 
     # A given sha256 blob was committed to disk and should be replicated
     BLOB_STORED = "blob-stored"
