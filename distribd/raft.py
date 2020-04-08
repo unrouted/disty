@@ -70,8 +70,10 @@ class Node:
 
     async def send_action(self, entry):
         if self.state == NodeState.LEADER:
-            return await self.add_entry(entry)
-        return await self.leader.send_add_entry(entry)
+            wait_index, wait_term = await self.add_entry(entry)
+        else:
+            wait_index, wait_term = await self.leader.send_add_entry(entry)
+        return await self.log.wait_index(wait_index)
 
     @property
     def cluster_size(self):
@@ -300,7 +302,7 @@ class Node:
             return False
 
         for peer in self.remotes:
-            peer.is_leader = (peer.identifier == request["leader_id"])
+            peer.is_leader = peer.identifier == request["leader_id"]
 
         prev_index = request["prev_index"]
         prev_term = request["prev_term"]

@@ -32,6 +32,9 @@ class Log:
         # Functions to call with changes that are safe to apply to replicated data structures.
         self._callbacks = []
 
+        # List of (commit_index, event)
+        self._waiters = []
+
     def add_reducer(self, callback):
         self._callbacks.append(callback)
 
@@ -97,6 +100,14 @@ class Log:
         for callback in self._callbacks:
             callback(entries)
 
+        waiters = []
+        for waiter_index, ev in self._waiters:
+            if waiter_index < index:
+                ev.set()
+                continue
+            waiters.append((waiter_index, ev))
+        self._waiters = waiters
+
         self.applied_index = index
 
     def __getitem__(self, key):
@@ -109,3 +120,8 @@ class Log:
             return self._log[new_slice]
 
         return self._log[key - 1]
+
+    async def wait_for_commit(self, index):
+        ev = asyncio.Event()
+        self._waiters.append((index, ev))
+        return await ev.wait()
