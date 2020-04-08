@@ -12,11 +12,14 @@ def test_blob_available():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.BLOB_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -27,16 +30,22 @@ def test_blob_not_available_after_delete():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.BLOB_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.BLOB_DELETED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_DELETED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -47,21 +56,30 @@ def test_blob_available_after_delete_and_restore():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.BLOB_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.BLOB_DELETED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.BLOB_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_DELETED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -77,11 +95,14 @@ def test_manifest_available():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.MANIFEST_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -92,16 +113,22 @@ def test_manifest_not_available_after_delete():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.MANIFEST_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.MANIFEST_DELETED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_DELETED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -112,21 +139,30 @@ def test_manifest_available_after_delete_and_restore():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.MANIFEST_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.MANIFEST_DELETED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
-            {
-                "type": RegistryActions.MANIFEST_MOUNTED,
-                "repository": "alpine",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_DELETED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
 
@@ -143,12 +179,15 @@ def test_tag_available():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
         [
-            {
-                "type": RegistryActions.HASH_TAGGED,
-                "repository": "alpine",
-                "tag": "3.11",
-                "hash": "abcdefgh",
-            },
+            [
+                1,
+                {
+                    "type": RegistryActions.HASH_TAGGED,
+                    "repository": "alpine",
+                    "tag": "3.11",
+                    "hash": "abcdefgh",
+                },
+            ],
         ]
     )
     assert registry_state.get_tag("alpine", "3.11") == "abcdefgh"

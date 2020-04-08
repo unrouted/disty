@@ -89,11 +89,11 @@ class Log:
 
             self._log.append(record)
 
-        logger.debug("Committed term %d index %d", self.last_term, self.last_index)
+        logger.critical("Committed term %d index %d", self.last_term, self.last_index)
 
     async def apply(self, index):
         """Indexes up to `index` can now be applied to the state machine."""
-        logger.debug("Safe to apply log up to index %d", index)
+        logger.critical("Safe to apply log up to index %d", index)
 
         entries = self._log[self.applied_index : index]
 

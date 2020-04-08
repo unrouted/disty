@@ -1,6 +1,8 @@
 import argparse
 import asyncio
-import logging
+
+import coloredlogs
+import verboselogs
 
 from .log import Log
 from .raft import Node
@@ -9,7 +11,10 @@ from .state import RegistryState
 
 
 async def main():
-    logging.basicConfig(level=logging.DEBUG)
+    verboselogs.install()
+    coloredlogs.install(
+        level="DEBUG", fmt="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
 
     parser = argparse.ArgumentParser()
     parser.add_argument("port")

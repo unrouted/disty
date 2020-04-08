@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import os
 import pathlib
@@ -47,24 +48,35 @@ async def list_images_in_repository(request):
 
 @routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def get_manifest_by_tag(request):
-    print("!!!!")
-    # Return images/repository/tag/manifest.json
+    registry_state = request.app["registry_state"]
+
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
-    logger.debug(repository)
+    try:
+        hash = registry_state.get_tag(repository, tag)
+    except KeyError:
+        raise web.HTTPNotFound(
+            headers={"Content-Type": "application/json"},
+            text='{"errors": [{"message": "manifest tag did not match URI state not repl", "code": "TAG_INVALID", "detail": ""}]}',
+        )
 
-    manifest_path = images_directory / repository / tag / "manifest.json"
+    manifest_path = images_directory / "manifests" / hash
     if not manifest_path.is_file():
         raise web.HTTPNotFound(
             headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
+            text='{"errors": [{"message": "manifest tag did not match URI doesnt exist on disk", "code": "TAG_INVALID", "detail": ""}]}',
         )
 
-    hash = manifests_by_path[str(manifest_path)]
+    with open(manifest_path, "r") as fp:
+        manifest = json.load(fp)
 
     return web.FileResponse(
-        headers={"Docker-Content-Digest": f"sha256:{hash}"}, path=manifest_path,
+        headers={
+            "Docker-Content-Digest": f"sha256:{hash}",
+            "Content-Type": manifest["mediaType"],
+        },
+        path=manifest_path,
     )
 
 

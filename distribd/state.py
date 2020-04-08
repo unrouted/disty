@@ -1,4 +1,8 @@
+import logging
+
 from .actions import RegistryActions
+
+logger = logging.getLogger(__name__)
 
 
 class Reducer:
@@ -6,7 +10,7 @@ class Reducer:
         self.log = log
 
     def dispatch_entries(self, entries):
-        for entry in entries:
+        for term, entry in entries:
             if "type" in entry:
                 self.dispatch(entry)
 
@@ -36,9 +40,12 @@ class RegistryState(Reducer):
         return True
 
     def get_tag(self, repository, tag):
+        logger.debug("%s %s %s", self.state, repository, tag)
         return self.state.get(repository, {})[tag]
 
     def dispatch(self, entry):
+        logger.critical("Applying %s", entry)
+
         if entry["type"] == RegistryActions.HASH_TAGGED:
             repository = self.state.setdefault(entry["repository"], {})
             repository[entry["tag"]] = entry["hash"]
@@ -58,3 +65,5 @@ class RegistryState(Reducer):
         elif entry["type"] == RegistryActions.MANIFEST_DELETED:
             manifest = self.manifests.setdefault(entry["hash"], set())
             manifest.discard(entry["repository"])
+
+        logger.critical("%r", self.state)
