@@ -33,10 +33,7 @@ async def list_images_in_repository(request):
     tags = registry_state.get_tags(repository)
 
     if not tags:
-        raise web.HTTPNotFound(
-            headers={"Content-Type": "application/json"},
-            text='{"errors": [{"message": "manifest tag did not match URI", "code": "TAG_INVALID", "detail": ""}]}',
-        )
+        raise exceptions.NameUnknown(repository=repository)
 
     return web.json_response({"name": repository, "tags": tags})
 
