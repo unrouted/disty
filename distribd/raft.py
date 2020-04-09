@@ -8,6 +8,7 @@ import aiohttp
 from aiohttp import web
 
 from .config import config
+from .exceptions import LeaderUnavailable
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ class Node:
                 return peer
 
         # FIXME Can we wait for there to be a leader???
-        raise RuntimeError("Cluster leader not known")
+        raise LeaderUnavailable()
 
     def add_member(self, identifier):
         node = RemoteNode(identifier)
