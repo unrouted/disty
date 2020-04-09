@@ -7,7 +7,7 @@ import random
 import aiohttp
 from aiohttp import web
 
-from .config import config
+from . import config
 from .exceptions import LeaderUnavailable
 from .utils.web import run_server
 
@@ -378,7 +378,7 @@ class Node:
 class RemoteNode:
     def __init__(self, identifier):
         self.identifier = identifier
-        self.url = config[identifier]["raft_url"]
+        self.url = config.config[identifier]["raft_url"]
         self.is_leader = False
         self.next_index = 0
         self.match_index = 0

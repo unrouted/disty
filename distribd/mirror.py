@@ -5,7 +5,7 @@ import random
 import aiohttp
 
 from .actions import RegistryActions
-from .config import config
+from . import config
 from .raft import invoke
 from .state import Reducer
 
@@ -69,7 +69,7 @@ class Mirrorer(Reducer):
 
     def urls_for_blob(self, hash):
         repo = next(iter(self.blob_repos[hash]))
-        locations = [config[l]["registry_url"] for l in self.blob_locations[hash]]
+        locations = [config.config[l]["registry_url"] for l in self.blob_locations[hash]]
 
         return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
 
@@ -107,7 +107,7 @@ class Mirrorer(Reducer):
 
     def urls_for_manifest(self, hash):
         repo = next(iter(self.manifest_repos[hash]))
-        locations = [config[l]["registry_url"] for l in self.manifest_locations[hash]]
+        locations = [config.config[l]["registry_url"] for l in self.manifest_locations[hash]]
         return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
 
     async def do_download_manifest(self, hash):
