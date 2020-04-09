@@ -7,6 +7,7 @@ import random
 import aiohttp
 from aiohttp import web
 
+from .config import config
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -376,32 +377,27 @@ class Node:
 class RemoteNode:
     def __init__(self, identifier):
         self.identifier = identifier
+        self.url = config[identifier]["raft_url"]
         self.is_leader = False
         self.next_index = 0
         self.match_index = 0
         self.session = aiohttp.ClientSession()
 
     async def send_add_entry(self, payload):
-        resp = await self.session.post(
-            f"http://{self.identifier}/add-entry", json=payload
-        )
+        resp = await self.session.post(f"{self.url}/add-entry", json=payload)
         if resp.status != 200:
             raise NotALeader("Unable to write to this node")
         payload = await resp.json()
         return payload["last_term"], payload["last_index"]
 
     async def send_append_entries(self, payload):
-        resp = await self.session.post(
-            f"http://{self.identifier}/append-entries", json=payload
-        )
+        resp = await self.session.post(f"{self.url}/append-entries", json=payload)
         if resp.status != 200:
             return {"term": 0, "success": False}
         return await resp.json()
 
     async def send_request_vote(self, payload):
-        resp = await self.session.post(
-            f"http://{self.identifier}/request-vote", json=payload
-        )
+        resp = await self.session.post(f"{self.url}/request-vote", json=payload)
         if resp.status != 200:
             return {"term": 0, "vote_granted": False}
         return await resp.json()

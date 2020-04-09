@@ -68,6 +68,9 @@ class Log:
     async def open(self):
         self.read_log()
 
+        if not self._path.parent.exists():
+            os.makedirs(self._path.parent)
+
         self._fp = AIOFile(self._path, "a+")
         await self._fp.open()
 

@@ -1,15 +1,19 @@
 import argparse
 import asyncio
+import logging
 import pathlib
 
 import coloredlogs
 import verboselogs
 
+from .config import config
 from .log import Log
 from .mirror import Mirrorer
 from .raft import Node
 from .registry import run_registry
 from .state import RegistryState
+
+logger = logging.getLogger(__name__)
 
 
 async def main():
@@ -22,18 +26,21 @@ async def main():
     parser.add_argument("port")
     args = parser.parse_args()
 
-    raft_port = int(args.port)
-    registry_port = raft_port + 1000
-    images_directory = pathlib.Path("images") / str(raft_port)
+    identifier = f"distrib-{args.port}"
+    logger.debug("Starting node %s", identifier)
 
-    log = Log(f"127.0.0.1-{raft_port}.log")
+    raft_port = config[identifier]["raft_port"]
+    registry_port = config[identifier]["registry_port"]
+    images_directory = pathlib.Path(config[identifier]["images_directory"])
+
+    log = Log(images_directory / "journal")
     await log.open()
 
-    node = Node(f"127.0.0.1:{raft_port}", log)
+    node = Node(identifier, log)
 
-    for remote in (8080, 8081, 8082):
-        if raft_port != remote:
-            node.add_member(f"127.0.0.1:{remote}")
+    for other_identifier, detail in config.items():
+        if identifier != other_identifier:
+            node.add_member(other_identifier)
 
     registry_state = RegistryState()
     log.add_reducer(registry_state.dispatch_entries)

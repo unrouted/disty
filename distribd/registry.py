@@ -185,7 +185,7 @@ async def upload_finish(request):
     identifier = request.app["identifier"]
 
     await send_action(
-        {"type": RegistryActions.BLOB_STORED, "hash": hash, "identifier": identifier}
+        {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier}
     )
 
     await send_action(
@@ -255,11 +255,7 @@ async def put_manifest(request):
     identifier = request.app["identifier"]
 
     await send_action(
-        {
-            "type": RegistryActions.MANIFEST_STORED,
-            "hash": hash,
-            "identifier": identifier,
-        }
+        {"type": RegistryActions.MANIFEST_STORED, "hash": hash, "location": identifier}
     )
 
     # These 2 could be merged?

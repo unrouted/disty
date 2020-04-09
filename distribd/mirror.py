@@ -5,6 +5,7 @@ import random
 import aiohttp
 
 from .actions import RegistryActions
+from .config import config
 from .raft import invoke
 from .state import Reducer
 
@@ -23,16 +24,23 @@ class Mirrorer(Reducer):
         self.manifest_repos = {}
 
     async def _do_transfer(self, urls, destination):
-        if os.path.exists(destination):
+        if destination.exists():
+            logger.debug("%s already exists, not requesting", destination)
             return
 
-        url = random.choice(self.urls_for_manifest(hash))
+        url = random.choice(urls)
         logger.critical("Starting download from %s to %s", url, destination)
+
+        if not destination.parent.exists():
+            os.makedirs(destination.parent)
 
         # FIXME - use a temp file rather than writing directly to uploads
         # FIXME - confirm hash of download
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
+                if resp.status != 200:
+                    logger.error("Failed to retrieve: %s, status %s", url, resp.status)
+                    return False
                 # FIXME: Use aiofile
                 with open(destination, "wb") as fp:
                     chunk = await resp.content.read(1024 * 1024)
@@ -60,11 +68,10 @@ class Mirrorer(Reducer):
         return True
 
     def urls_for_blob(self, hash):
-        repo = self.blob_repos[hash][0]
-        locations = self.blob_locations[hash]
-        return [
-            f"http://{location}/{repo}/blobs/sha256:{hash}" for location in locations
-        ]
+        repo = next(iter(self.blob_repos[hash]))
+        locations = [config[l]["registry_url"] for l in self.blob_locations[hash]]
+
+        return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
 
     async def do_download_blob(self, hash):
         if not self.should_download_blob(hash):
@@ -99,14 +106,12 @@ class Mirrorer(Reducer):
         return True
 
     def urls_for_manifest(self, hash):
-        repo = self.manifest_repos[hash][0]
-        locations = self.manifest_locations[hash]
-        return [
-            f"http://{location}/{repo}/blobs/sha256:{hash}" for location in locations
-        ]
+        repo = next(iter(self.manifest_repos[hash]))
+        locations = [config[l]["registry_url"] for l in self.manifest_locations[hash]]
+        return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
 
     async def do_download_manifest(self, hash):
-        if not self.should_download_blob(hash):
+        if not self.should_download_manifest(hash):
             return
 
         destination = self.image_directory / "manifests" / hash
@@ -129,7 +134,7 @@ class Mirrorer(Reducer):
                 invoke(self.do_download_blob(entry["hash"]))
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
-            blob = self.blobs_repos.setdefault(entry["hash"], set())
+            blob = self.blob_repos.setdefault(entry["hash"], set())
             blob.add(entry["repository"])
 
             if self.should_download_blob(entry["hash"]):
