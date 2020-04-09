@@ -38,7 +38,7 @@ async def main():
     registry_state = RegistryState()
     log.add_reducer(registry_state.dispatch_entries)
 
-    mirrorer = Mirrorer(node.identifier, node.send_action)
+    mirrorer = Mirrorer(images_directory, node.identifier, node.send_action)
     log.add_reducer(mirrorer.dispatch_entries)
 
     await asyncio.gather(

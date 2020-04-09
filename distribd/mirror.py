@@ -6,14 +6,14 @@ import aiohttp
 
 from .actions import RegistryActions
 from .raft import invoke
-from .registry import images_directory
 from .state import Reducer
 
 logger = logging.getLogger(__name__)
 
 
 class Mirrorer(Reducer):
-    def __init__(self, identifier, send_action):
+    def __init__(self, image_directory, identifier, send_action):
+        self.image_directory = image_directory
         self.identifier = identifier
         self.send_action = send_action
 
@@ -70,7 +70,7 @@ class Mirrorer(Reducer):
         if not self.should_download_blob(hash):
             return
 
-        destination = images_directory / "blobs" / hash
+        destination = self.image_directory / "blobs" / hash
         await self._do_transfer(self.urls_for_blob(hash), destination)
 
         await self.send_action(
@@ -109,7 +109,7 @@ class Mirrorer(Reducer):
         if not self.should_download_blob(hash):
             return
 
-        destination = images_directory / "manifests" / hash
+        destination = self.image_directory / "manifests" / hash
         await self._do_transfer(self.urls_for_manifest(hash), destination)
 
         await self.send_action(
