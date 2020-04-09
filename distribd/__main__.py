@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import pathlib
 
 import coloredlogs
 import verboselogs
@@ -22,6 +23,7 @@ async def main():
 
     raft_port = int(args.port)
     registry_port = raft_port + 1000
+    images_directory = pathlib.Path("images") / str(raft_port)
 
     log = Log(f"127.0.0.1-{raft_port}.log")
     await log.open()
@@ -37,7 +39,13 @@ async def main():
 
     await asyncio.gather(
         node.run_forever(raft_port),
-        run_registry(node.identifier, registry_state, node.send_action, registry_port),
+        run_registry(
+            node.identifier,
+            registry_state,
+            node.send_action,
+            images_directory,
+            registry_port,
+        ),
     )
 
 

@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import pathlib
 import uuid
 
 from aiofile import AIOFile, Writer
@@ -13,8 +12,6 @@ from .actions import RegistryActions
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
-
-images_directory = pathlib.Path("images")
 
 routes = web.RouteTableDef()
 
@@ -44,7 +41,7 @@ async def list_images_in_repository(request):
     return web.json_response({"name": repository, "tags": tags})
 
 
-async def _manifest_by_hash(repository: str, hash: str):
+async def _manifest_by_hash(images_directory, repository: str, hash: str):
     manifest_path = images_directory / "manifests" / hash
     if not manifest_path.is_file():
         raise exceptions.ManifestUnknown(hash=hash)
@@ -64,6 +61,7 @@ async def _manifest_by_hash(repository: str, hash: str):
 @routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def get_manifest_by_tag(request):
     registry_state = request.app["registry_state"]
+    images_directory = request.app["images_directory"]
 
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
@@ -73,19 +71,21 @@ async def get_manifest_by_tag(request):
     except KeyError:
         raise exceptions.ManifestUnknown(hash=hash)
 
-    return await _manifest_by_hash(repository, hash)
+    return await _manifest_by_hash(images_directory, repository, hash)
 
 
 @routes.get("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
 async def get_manifest_by_hash(request):
+    images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    return await _manifest_by_hash(repository, hash)
+    return await _manifest_by_hash(images_directory, repository, hash)
 
 
 @routes.get("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def get_blob_by_hash(request):
+    images_directory = request.app["images_directory"]
     registry_state = request.app["registry_state"]
 
     repository = request.match_info["repository"]
@@ -126,6 +126,7 @@ async def start_upload(request):
 
 @routes.patch("/v2/{repository:[^{}]+}/blobs/uploads/{session_id}")
 async def upload_chunk_by_patch(request):
+    images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
@@ -156,6 +157,7 @@ async def upload_chunk_by_patch(request):
 
 @routes.put("/v2/{repository:[^{}]+}/blobs/uploads/{session_id}")
 async def upload_finish(request):
+    images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
@@ -205,6 +207,7 @@ async def upload_finish(request):
 
 @routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def head_blob(request):
+    images_directory = request.app["images_directory"]
     registry_state = request.app["registry_state"]
 
     repository = request.match_info["repository"]
@@ -232,11 +235,9 @@ async def head_blob(request):
 
 @routes.put("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def put_manifest(request):
+    images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
-
-    logger.debug(repository)
-    logger.debug(tag)
 
     manifest = await request.read()
     hash = hashlib.sha256(manifest).hexdigest()
@@ -290,7 +291,7 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(identifier, registry_state, send_action, port):
+async def run_registry(identifier, registry_state, send_action, images_directory, port):
     return await run_server(
         "0.0.0.0",
         port,
@@ -298,4 +299,5 @@ async def run_registry(identifier, registry_state, send_action, port):
         identifier=identifier,
         registry_state=registry_state,
         send_action=send_action,
+        images_directory=images_directory,
     )
