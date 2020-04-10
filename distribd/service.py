@@ -60,4 +60,3 @@ async def main(argv=None):
             registry_port,
         ),
     )
-

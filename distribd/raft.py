@@ -57,7 +57,6 @@ class Node:
 
         # volatile state
         self.commit_index = 0
-        self.last_applied = 0
 
         # leader state
         self.remotes = []
@@ -399,6 +398,7 @@ class RemoteNode:
 
     async def send_request_vote(self, payload):
         resp = await self.session.post(f"{self.url}/request-vote", json=payload)
+        logger.debug(f"{self.url}/request-vote - %s", resp.status)
         if resp.status != 200:
             return {"term": 0, "vote_granted": False}
         return await resp.json()
@@ -446,3 +446,21 @@ async def add_entry(request):
     last_term, last_index = await node.add_entry(payload)
 
     return web.json_response({"last_term": last_term, "last_index": last_index})
+
+
+@routes.get("/status")
+async def status(request):
+    node = request.app["node"]
+
+    consensus = node.state == NodeState.LEADER or (any(peer.is_leader for peer in node.remotes))
+
+    payload = {
+        "status": node.state,
+        "log_last_index": node.log.last_index,
+        "log_last_term": node.log.last_term,
+        "applied_index": node.log.applied_index,
+        "committed_index": node.commit_index,
+        "consensus": consensus,
+    }
+
+    return web.json_response(payload)

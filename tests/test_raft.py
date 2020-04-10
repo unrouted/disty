@@ -1,11 +1,9 @@
 import asyncio
 import copy
-from unittest import mock
 
 import aiohttp
-
-from distribd.service import main
 from distribd import config
+from distribd.service import main
 
 
 async def test_cluster_starts(tmp_path, monkeypatch):
@@ -14,11 +12,9 @@ async def test_cluster_starts(tmp_path, monkeypatch):
         test_config[f"distrib-{port}"]["images_directory"] = tmp_path / port
     monkeypatch.setattr(config, "config", test_config)
 
-    servers = asyncio.ensure_future(asyncio.gather(
-        main(["8080"]),
-        main(["8081"]),
-        main(["8082"]),
-    ))
+    servers = asyncio.ensure_future(
+        asyncio.gather(main(["8080"]), main(["8081"]), main(["8082"]),)
+    )
     await asyncio.sleep(0)
 
     async with aiohttp.ClientSession() as session:
