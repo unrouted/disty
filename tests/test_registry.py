@@ -85,6 +85,29 @@ async def test_list_tags_404(fake_cluster):
             }
 
 
+async def get_blob(port, hash):
+    for i in range(100):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:{port}/v2/alpine/blobs/sha256:{hash}"
+            ) as resp:
+                if resp.status == 404:
+                    # Eventual consistency...
+                    await asyncio.sleep(0.1)
+                    continue
+                assert resp.headers["Docker-Content-Digest"] == f"sha256:{hash}"
+                return resp.headers["Content-Length"], await resp.read()
+
+    raise RuntimeError("Didn't achieve consistency in time")
+
+
+async def assert_blob(hash):
+    for port in (9080, 9081, 9082):
+        content_length, body = await get_blob(port, hash)
+        assert content_length == "4"
+        assert body == b"9080"
+
+
 async def test_put_blob(fake_cluster):
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -109,3 +132,7 @@ async def test_put_blob(fake_cluster):
                 resp.headers["Docker-Content-Digest"]
                 == "sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
             )
+
+        await assert_blob(
+            "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+        )

@@ -80,7 +80,8 @@ class Mirrorer(Reducer):
             return
 
         destination = self.image_directory / "blobs" / hash
-        await self._do_transfer(self.urls_for_blob(hash), destination)
+        if not await self._do_transfer(self.urls_for_blob(hash), destination):
+            return
 
         await self.send_action(
             {
@@ -119,7 +120,8 @@ class Mirrorer(Reducer):
             return
 
         destination = self.image_directory / "manifests" / hash
-        await self._do_transfer(self.urls_for_manifest(hash), destination)
+        if not await self._do_transfer(self.urls_for_manifest(hash), destination):
+            pass
 
         await self.send_action(
             {
