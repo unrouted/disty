@@ -432,7 +432,9 @@ async def add_entry(request):
 async def status(request):
     node = request.app["node"]
 
-    consensus = node.state == NodeState.LEADER or (any(peer.is_leader for peer in node.remotes))
+    consensus = node.state == NodeState.LEADER or (
+        any(peer.is_leader for peer in node.remotes)
+    )
 
     payload = {
         "status": node.state,

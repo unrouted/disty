@@ -24,7 +24,7 @@ async def fake_cluster(loop, tmp_path, monkeypatch):
             async with session.get("http://localhost:8080/status") as resp:
                 assert resp.status == 200
                 payload = await resp.json()
-                if payload["consensus"] == True:
+                if payload["consensus"]:
                     break
             await asyncio.sleep(1)
         else:
@@ -101,5 +101,11 @@ async def test_put_blob(fake_cluster):
 
         async with session.put(f"http://localhost:9080{location}") as resp:
             assert resp.status == 201
-            assert resp.headers["Location"] == "/v2/alpine/blobs/sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
-            assert resp.headers["Docker-Content-Digest"] == "sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+            assert (
+                resp.headers["Location"]
+                == "/v2/alpine/blobs/sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+            )
+            assert (
+                resp.headers["Docker-Content-Digest"]
+                == "sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+            )
