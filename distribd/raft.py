@@ -6,6 +6,7 @@ import random
 
 import aiohttp
 from aiohttp import web
+from aiohttp.abc import AbstractAccessLogger
 
 from . import config
 from .exceptions import LeaderUnavailable
@@ -45,6 +46,11 @@ class NodeState(enum.IntEnum):
     FOLLOWER = 1
     CANDIDATE = 2
     LEADER = 3
+
+
+class RaftAccessLog(AbstractAccessLogger):
+    def log(self, request, response, time):
+        pass
 
 
 class Node:
@@ -340,7 +346,9 @@ class Node:
 
     async def run_forever(self, port):
         self.become_follower()
-        return await run_server("127.0.0.1", port, routes, node=self)
+        return await run_server(
+            "127.0.0.1", port, routes, access_log_class=RaftAccessLog, node=self
+        )
 
 
 class RemoteNode:
