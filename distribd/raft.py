@@ -69,11 +69,12 @@ class Node:
         await self.log.commit(self.current_term, entry)
         return self.log.last_term, self.log.last_index
 
-    async def send_action(self, entry):
+    async def send_action(self, entries):
         if self.state == NodeState.LEADER:
-            wait_index, wait_term = await self.add_entry(entry)
+            for entry in entries:
+                wait_index, wait_term = await self.add_entry(entry)
         else:
-            wait_index, wait_term = await self.leader.send_add_entry(entry)
+            wait_index, wait_term = await self.leader.send_add_entries(entries)
         return await self.log.wait_for_commit(wait_index)
 
     @property
@@ -363,8 +364,8 @@ class RemoteNode:
         self.match_index = 0
         self.session = aiohttp.ClientSession()
 
-    async def send_add_entry(self, payload):
-        resp = await self.session.post(f"{self.url}/add-entry", json=payload)
+    async def send_add_entries(self, payload):
+        resp = await self.session.post(f"{self.url}/add-entries", json=payload)
         if resp.status != 200:
             raise NotALeader("Unable to write to this node")
         payload = await resp.json()
@@ -412,7 +413,7 @@ async def request_vote(request):
     )
 
 
-@routes.post("/add-entry")
+@routes.post("/add-entries")
 async def add_entry(request):
     node = request.app["node"]
 
@@ -423,7 +424,8 @@ async def add_entry(request):
             status=400, reason="Not a leader", json={"reason": "NOT_A_LEADER"},
         )
 
-    last_term, last_index = await node.add_entry(payload)
+    for entry in payload:
+        last_term, last_index = await node.add_entry(entry)
 
     return web.json_response({"last_term": last_term, "last_index": last_index})
 

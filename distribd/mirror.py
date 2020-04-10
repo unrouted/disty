@@ -83,13 +83,13 @@ class Mirrorer(Reducer):
         if not await self._do_transfer(self.urls_for_blob(hash), destination):
             return
 
-        await self.send_action(
+        await self.send_action([
             {
                 "type": RegistryActions.BLOB_STORED,
                 "hash": hash,
                 "location": self.identifier,
             }
-        )
+        ])
 
     def should_download_manifest(self, hash):
         if hash not in self.manifest_repos:
@@ -123,13 +123,13 @@ class Mirrorer(Reducer):
         if not await self._do_transfer(self.urls_for_manifest(hash), destination):
             pass
 
-        await self.send_action(
+        await self.send_action([
             {
                 "type": RegistryActions.MANIFEST_STORED,
                 "hash": hash,
                 "location": self.identifier,
             }
-        )
+        ])
 
     def dispatch(self, entry):
         if entry["type"] == RegistryActions.BLOB_STORED:
