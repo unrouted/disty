@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import random
+import uuid
 
 import aiohttp
 
@@ -40,7 +41,7 @@ class Mirrorer(Reducer):
         if not destination.parent.exists():
             os.makedirs(destination.parent)
 
-        temporary_path = self.image_directory / "uploads" / f"mirror-{hash}"
+        temporary_path = self.image_directory / "uploads" / str(uuid.uuid4())
         if not temporary_path.parent.exists():
             os.makedirs(temporary_path.parent)
 
