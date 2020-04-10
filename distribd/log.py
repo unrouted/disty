@@ -97,7 +97,7 @@ class Log:
 
             self._log.append(record)
 
-        logger.critical("Committed term %d index %d", self.last_term, self.last_index)
+        logger.debug("Committed term %d index %d", self.last_term, self.last_index)
 
     async def apply(self, index):
         """Indexes up to `index` can now be applied to the state machine."""
@@ -116,6 +116,7 @@ class Log:
             waiters.append((waiter_index, ev))
         self._waiters = waiters
 
+        logger.debug("Applied index %d", index)
         self.applied_index = index
 
     def __getitem__(self, key):

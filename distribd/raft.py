@@ -28,6 +28,8 @@ def invoke(cbl):
     def done_callback(future):
         try:
             future.result()
+        except asyncio.CancelledError:
+            pass
         except Exception:
             logger.exception("Unhandled exception in async task")
 
@@ -103,15 +105,12 @@ class Node:
         self.remotes.append(node)
 
     def cancel_election_timeout(self):
-        logger.debug("Cancelling election timeout")
         if self._heartbeat:
             self._heartbeat.cancel()
             self._heartbeat = None
 
     def reset_election_timeout(self):
         self.cancel_election_timeout()
-
-        logger.debug("Setting election timeout")
         timeout = (
             random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
         )
@@ -252,13 +251,6 @@ class Node:
 
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
-            logger.debug("Sending heartbeat")
-            logger.debug(
-                "Current log at term %d, index %d",
-                self.log.last_term,
-                self.log.last_index,
-            )
-
             for node in self.remotes:
                 invoke(self.do_heartbeat(node))
 
@@ -314,15 +306,8 @@ class Node:
 
         if request["leader_commit"] > self.commit_index:
             commit_index = min(request["leader_commit"], self.log.last_index)
-            logger.debug(
-                "Commit index advanced from %d to %d", self.commit_index, commit_index
-            )
             self.commit_index = commit_index
             await self.log.apply(self.commit_index)
-
-        logger.debug(
-            "Current log at term %d index %d", self.log.last_term, self.log.last_index
-        )
 
         return True
 
@@ -368,21 +353,32 @@ class RemoteNode:
         self.session = aiohttp.ClientSession()
 
     async def send_add_entries(self, payload):
-        resp = await self.session.post(f"{self.url}/add-entries", json=payload)
+        try:
+            resp = await self.session.post(f"{self.url}/add-entries", json=payload)
+        except aiohttp.ClientConnectionError:
+            raise NotALeader()
+
         if resp.status != 200:
             raise NotALeader("Unable to write to this node")
         payload = await resp.json()
         return payload["last_term"], payload["last_index"]
 
     async def send_append_entries(self, payload):
-        resp = await self.session.post(f"{self.url}/append-entries", json=payload)
+        try:
+            resp = await self.session.post(f"{self.url}/append-entries", json=payload)
+        except aiohttp.ClientConnectionError:
+            return {"term": 0, "success": False}
+
         if resp.status != 200:
             return {"term": 0, "success": False}
         return await resp.json()
 
     async def send_request_vote(self, payload):
-        resp = await self.session.post(f"{self.url}/request-vote", json=payload)
-        logger.debug(f"{self.url}/request-vote - %s", resp.status)
+        try:
+            resp = await self.session.post(f"{self.url}/request-vote", json=payload)
+        except aiohttp.ClientConnectionError:
+            return {"term": 0, "vote_granted": False}
+
         if resp.status != 200:
             return {"term": 0, "vote_granted": False}
         return await resp.json()

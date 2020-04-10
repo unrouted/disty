@@ -61,6 +61,10 @@ async def main(argv=None):
                 registry_port,
             ),
         )
+
+    except asyncio.CancelledError:
+        pass
+
     finally:
         await asyncio.gather(
             node.close(), log.close(),
