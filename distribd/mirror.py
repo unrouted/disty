@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import random
@@ -28,7 +29,7 @@ class Mirrorer(Reducer):
     async def close(self):
         await self.pool.close()
 
-    async def _do_transfer(self, urls, destination):
+    async def _do_transfer(self, hash, urls, destination):
         if destination.exists():
             logger.debug("%s already exists, not requesting", destination)
             return
@@ -41,6 +42,9 @@ class Mirrorer(Reducer):
 
         # FIXME - use a temp file rather than writing directly to uploads
         # FIXME - confirm hash of download
+
+        digest = hashlib.sha256()
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -51,7 +55,12 @@ class Mirrorer(Reducer):
                     chunk = await resp.content.read(1024 * 1024)
                     while chunk:
                         fp.write(chunk)
+                        digest.update(chunk)
                         chunk = await resp.content.read(1024 * 1024)
+
+        if digest.hexdigest() != hash:
+            os.unlink(destination)
+            return False
 
         return True
 
@@ -85,7 +94,7 @@ class Mirrorer(Reducer):
             return
 
         destination = self.image_directory / "blobs" / hash
-        if not await self._do_transfer(self.urls_for_blob(hash), destination):
+        if not await self._do_transfer(hash, self.urls_for_blob(hash), destination):
             return
 
         await self.send_action(
@@ -127,7 +136,7 @@ class Mirrorer(Reducer):
             return
 
         destination = self.image_directory / "manifests" / hash
-        if not await self._do_transfer(self.urls_for_manifest(hash), destination):
+        if not await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
             pass
 
         await self.send_action(
