@@ -184,10 +184,16 @@ async def upload_finish(request):
     send_action = request.app["send_action"]
     identifier = request.app["identifier"]
 
-    await send_action([
-        {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
-        {"type": RegistryActions.BLOB_MOUNTED, "hash": hash, "repository": repository}
-    ])
+    await send_action(
+        [
+            {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
+            {
+                "type": RegistryActions.BLOB_MOUNTED,
+                "hash": hash,
+                "repository": repository,
+            },
+        ]
+    )
 
     return web.json_response(
         {},
@@ -251,19 +257,25 @@ async def put_manifest(request):
     send_action = request.app["send_action"]
     identifier = request.app["identifier"]
 
-    await send_action([
-        {"type": RegistryActions.MANIFEST_STORED, "hash": hash, "location": identifier},
-        {
-            "type": RegistryActions.MANIFEST_MOUNTED,
-            "hash": hash,
-            "repository": repository,
-        },
-        {
-            "type": RegistryActions.HASH_TAGGED,
-            "repository": repository,
-            "tag": tag,
-            "hash": hash,
-        }]
+    await send_action(
+        [
+            {
+                "type": RegistryActions.MANIFEST_STORED,
+                "hash": hash,
+                "location": identifier,
+            },
+            {
+                "type": RegistryActions.MANIFEST_MOUNTED,
+                "hash": hash,
+                "repository": repository,
+            },
+            {
+                "type": RegistryActions.HASH_TAGGED,
+                "repository": repository,
+                "tag": tag,
+                "hash": hash,
+            },
+        ]
     )
 
     return web.json_response(

@@ -63,6 +63,9 @@ class Node:
 
         self._heartbeat = None
 
+    async def close(self):
+        await asyncio.gather(*[peer.close() for peer in self.remotes])
+
     async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
             raise NotALeader("Only leader can append to log")
@@ -383,6 +386,9 @@ class RemoteNode:
         if resp.status != 200:
             return {"term": 0, "vote_granted": False}
         return await resp.json()
+
+    async def close(self):
+        await self.session.close()
 
 
 routes = web.RouteTableDef()

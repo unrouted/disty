@@ -50,13 +50,18 @@ async def main(argv=None):
     mirrorer = Mirrorer(images_directory, node.identifier, node.send_action)
     log.add_reducer(mirrorer.dispatch_entries)
 
-    await asyncio.gather(
-        node.run_forever(raft_port),
-        run_registry(
-            node.identifier,
-            registry_state,
-            node.send_action,
-            images_directory,
-            registry_port,
-        ),
-    )
+    try:
+        await asyncio.gather(
+            node.run_forever(raft_port),
+            run_registry(
+                node.identifier,
+                registry_state,
+                node.send_action,
+                images_directory,
+                registry_port,
+            ),
+        )
+    finally:
+        await asyncio.gather(
+            node.close(), log.close(),
+        )
