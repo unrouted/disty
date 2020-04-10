@@ -157,6 +157,7 @@ async def upload_finish(request):
     images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
+    expected_digest = request.query.get("digest", "")
 
     uploads = images_directory / "uploads"
     if not uploads.exists():
@@ -171,7 +172,8 @@ async def upload_finish(request):
         hash = hashlib.sha256(fp.read()).hexdigest()
         digest = f"sha256:{hash}"
 
-    # FIXME: Read digest out of URL and make sure it matches
+    if expected_digest != digest:
+        raise exceptions.BlobUploadInvalid()
 
     blob_dir = images_directory / "blobs"
     if not blob_dir.exists():

@@ -108,7 +108,7 @@ async def assert_blob(hash):
         assert body == b"9080"
 
 
-async def test_put_blob(fake_cluster):
+async def test_put_blob_fail_invalid_hash(fake_cluster):
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "http://localhost:9080/v2/alpine/blobs/uploads/"
@@ -122,17 +122,33 @@ async def test_put_blob(fake_cluster):
         ) as resp:
             assert resp.status == 202
 
-        async with session.put(f"http://localhost:9080{location}") as resp:
-            assert resp.status == 201
-            assert (
-                resp.headers["Location"]
-                == "/v2/alpine/blobs/sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
-            )
-            assert (
-                resp.headers["Docker-Content-Digest"]
-                == "sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
-            )
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:invalid_hash_here"
+        ) as resp:
+            assert resp.status == 400
 
-        await assert_blob(
-            "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
-        )
+
+async def test_put_blob(fake_cluster):
+    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
+            location = resp.headers["Location"]
+
+        async with session.patch(
+            f"http://localhost:9080{location}", data=b"9080"
+        ) as resp:
+            assert resp.status == 202
+
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:{digest}"
+        ) as resp:
+            assert resp.status == 201
+            assert resp.headers["Location"] == f"/v2/alpine/blobs/sha256:{digest}"
+            assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
+
+        await assert_blob(digest)
