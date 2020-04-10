@@ -141,8 +141,6 @@ class Node:
         invoke(self.add_entry({}))
 
     async def advance_commit_index(self):
-        logger.debug("Maybe advance commit index")
-
         commit_index = 0
         i = max(self.commit_index, 1)
         while i <= self.log.last_index:
@@ -153,20 +151,15 @@ class Node:
             # Start counting at 1 because we count as a vote
             match_count = 1
             for peer in self.remotes:
-                logger.debug("Peer match index is %d", peer.match_index)
                 if peer.match_index >= i:
                     match_count += 1
 
-            logger.debug("%d peers have index %d", match_count, i)
-
             if match_count >= self.quorum:
-                logger.debug("quorum for index %d", i)
                 commit_index = i
 
             i += 1
 
         if commit_index <= self.commit_index:
-            logger.debug("Commit index unchanged")
             return
 
         logger.debug(
@@ -228,20 +221,10 @@ class Node:
             await asyncio.sleep(random_timeout)
 
     async def do_heartbeat(self, node):
-        print(node.match_index, node.next_index)
-
         prev_index = node.next_index - 1
         prev_term = self.log[prev_index][0] if prev_index else 0
         entries = self.log[node.next_index :]
 
-        logger.debug("WILL SEND %s", entries)
-        logger.debug(
-            "prev_index %d prev_term %d next_index %d entries %s",
-            prev_index,
-            prev_term,
-            node.next_index,
-            entries,
-        )
         payload = {
             "term": self.current_term,
             "leader_id": self.identifier,
@@ -286,8 +269,6 @@ class Node:
                 self.become_follower()
 
     async def recv_append_entries(self, request):
-        logger.debug(request)
-
         term = request["term"]
 
         self.maybe_become_follower(request["term"])
@@ -312,9 +293,8 @@ class Node:
             logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
             return False
 
-        print(prev_index, self.log.last_index)
         if prev_index and self.log[prev_index][0] != prev_term:
-            logger.debug(
+            logger.warning(
                 "Log not valid - mismatched terms %d and %d at index %d",
                 prev_term,
                 self.log[prev_index][0],

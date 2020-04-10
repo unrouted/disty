@@ -25,7 +25,7 @@ async def main(argv=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("port")
-    args = parser.parse_args(argv or sys.argv)
+    args = parser.parse_args(argv or sys.argv[1:])
 
     identifier = f"distrib-{args.port}"
     logger.debug("Starting node %s", identifier)
