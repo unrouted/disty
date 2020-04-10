@@ -72,10 +72,10 @@ class Node:
     async def send_action(self, entries):
         if self.state == NodeState.LEADER:
             for entry in entries:
-                wait_index, wait_term = await self.add_entry(entry)
+                wait_term, wait_index = await self.add_entry(entry)
         else:
-            wait_index, wait_term = await self.leader.send_add_entries(entries)
-        return await self.log.wait_for_commit(wait_index)
+            wait_term, wait_index = await self.leader.send_add_entries(entries)
+        return await self.log.wait_for_commit(wait_term, wait_index)
 
     @property
     def cluster_size(self):

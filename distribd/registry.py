@@ -194,7 +194,7 @@ async def upload_finish(request):
     send_action = request.app["send_action"]
     identifier = request.app["identifier"]
 
-    await send_action(
+    success = await send_action(
         [
             {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
             {
@@ -204,6 +204,9 @@ async def upload_finish(request):
             },
         ]
     )
+
+    if not success:
+        raise exceptions.BlobUploadInvalid()
 
     return web.json_response(
         {},
@@ -267,7 +270,7 @@ async def put_manifest(request):
     send_action = request.app["send_action"]
     identifier = request.app["identifier"]
 
-    await send_action(
+    success = await send_action(
         [
             {
                 "type": RegistryActions.MANIFEST_STORED,
@@ -287,6 +290,9 @@ async def put_manifest(request):
             },
         ]
     )
+
+    if not success:
+        raise exceptions.ManifestInvalid()
 
     return web.json_response(
         {},

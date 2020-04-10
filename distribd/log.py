@@ -130,7 +130,8 @@ class Log:
 
         return self._log[key - 1]
 
-    async def wait_for_commit(self, index):
+    async def wait_for_commit(self, term, index):
         ev = asyncio.Event()
         self._waiters.append((index, ev))
-        return await ev.wait()
+        await ev.wait()
+        return self[index][0] == term
