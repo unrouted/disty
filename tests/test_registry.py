@@ -152,3 +152,24 @@ async def test_put_blob(fake_cluster):
             assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
 
         await assert_blob(digest)
+
+
+async def test_put_blob_without_patches(fake_cluster):
+    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
+            location = resp.headers["Location"]
+
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:{digest}", data=b"9080"
+        ) as resp:
+            assert resp.status == 201
+            assert resp.headers["Location"] == f"/v2/alpine/blobs/sha256:{digest}"
+            assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
+
+        await assert_blob(digest)

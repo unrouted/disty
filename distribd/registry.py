@@ -135,8 +135,10 @@ async def upload_chunk_by_patch(request):
 
     async with AIOFile(upload_path, "ab") as fp:
         writer = Writer(fp)
-        body = await request.read()
-        await writer(body)
+        chunk = await request.content.read(1024 * 1024)
+        while chunk:
+            await writer(chunk)
+            chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
     info = os.stat(upload_path)
@@ -165,7 +167,13 @@ async def upload_finish(request):
 
     upload_path = uploads / session_id
 
-    # FIXME: This PUT might have some payload associated with it
+    async with AIOFile(upload_path, "ab") as fp:
+        writer = Writer(fp)
+        chunk = await request.content.read(1024 * 1024)
+        while chunk:
+            await writer(chunk)
+            chunk = await request.content.read(1024 * 1024)
+        await fp.fsync()
 
     # FIXME: Do on each upload incrementally
     with open(upload_path, "rb") as fp:
