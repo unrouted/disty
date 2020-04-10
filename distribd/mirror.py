@@ -6,7 +6,7 @@ import aiohttp
 
 from . import config
 from .actions import RegistryActions
-from .raft import invoke
+from .jobs import WorkerPool
 from .state import Reducer
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,11 @@ class Mirrorer(Reducer):
         self.blob_repos = {}
         self.manifest_locations = {}
         self.manifest_repos = {}
+
+        self.pool = WorkerPool()
+
+    async def close(self):
+        await self.pool.close()
 
     async def _do_transfer(self, urls, destination):
         if destination.exists():
@@ -141,25 +146,25 @@ class Mirrorer(Reducer):
             blob.add(entry["location"])
 
             if self.should_download_blob(entry["hash"]):
-                invoke(self.do_download_blob(entry["hash"]))
+                self.pool.spawn(self.do_download_blob(entry["hash"]))
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
             blob = self.blob_repos.setdefault(entry["hash"], set())
             blob.add(entry["repository"])
 
             if self.should_download_blob(entry["hash"]):
-                invoke(self.do_download_blob(entry["hash"]))
+                self.pool.spawn(self.do_download_blob(entry["hash"]))
 
         elif entry["type"] == RegistryActions.MANIFEST_STORED:
             manifest = self.manifest_locations.setdefault(entry["hash"], set())
             manifest.add(entry["location"])
 
             if self.should_download_manifest(entry["hash"]):
-                invoke(self.do_download_manifest(entry["hash"]))
+                self.pool.spawn(self.do_download_manifest(entry["hash"]))
 
         elif entry["type"] == RegistryActions.MANIFEST_MOUNTED:
             manifest = self.manifest_repos.setdefault(entry["hash"], set())
             manifest.add(entry["repository"])
 
             if self.should_download_manifest(entry["hash"]):
-                invoke(self.do_download_manifest(entry["hash"]))
+                self.pool.spawn(self.do_download_manifest(entry["hash"]))

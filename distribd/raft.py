@@ -10,6 +10,7 @@ from aiohttp.abc import AbstractAccessLogger
 
 from . import config
 from .exceptions import LeaderUnavailable
+from .jobs import WorkerPool
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -21,20 +22,6 @@ HEARTBEAT_TIMEOUT = 100
 
 # SCALE_FACTOR = 1000
 SCALE_FACTOR = 500
-
-
-def invoke(cbl):
-    future = asyncio.ensure_future(cbl)
-
-    def done_callback(future):
-        try:
-            future.result()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.exception("Unhandled exception in async task")
-
-    future.add_done_callback(done_callback)
 
 
 class NotALeader(Exception):
@@ -69,10 +56,12 @@ class Node:
         # leader state
         self.remotes = []
 
+        self._pool = WorkerPool()
         self._heartbeat = None
 
     async def close(self):
         await asyncio.gather(*[peer.close() for peer in self.remotes])
+        await self._pool.close()
 
     async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
@@ -136,18 +125,18 @@ class Node:
         logger.debug("Became candidate")
         self.state = NodeState.CANDIDATE
 
-        invoke(self.do_gather_votes())
+        self._pool.spawn(self.do_gather_votes())
 
     def become_leader(self):
         logger.debug("Became leader")
         self.state = NodeState.LEADER
         self.cancel_election_timeout()
 
-        invoke(self.do_heartbeats())
+        self._pool.spawn(self.do_heartbeats())
 
         # It's considered "unsafe" to commit a transaction from a previous term
         # But safe to indirectly commit it when commiting a no-op in the current term
-        invoke(self.add_entry({}))
+        self._pool.spawn(self.add_entry({}))
 
     async def advance_commit_index(self):
         commit_index = 0
@@ -258,7 +247,7 @@ class Node:
     async def do_heartbeats(self):
         while self.state == NodeState.LEADER:
             for node in self.remotes:
-                invoke(self.do_heartbeat(node))
+                self._pool.spawn(self.do_heartbeat(node))
 
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
