@@ -40,8 +40,9 @@ class Mirrorer(Reducer):
         if not destination.parent.exists():
             os.makedirs(destination.parent)
 
-        # FIXME - use a temp file rather than writing directly to uploads
-        # FIXME - confirm hash of download
+        temporary_path = self.image_directory / "uploads" / f"mirror-{hash}"
+        if not temporary_path.parent.exists():
+            os.makedirs(temporary_path.parent)
 
         digest = hashlib.sha256()
 
@@ -51,7 +52,7 @@ class Mirrorer(Reducer):
                     logger.error("Failed to retrieve: %s, status %s", url, resp.status)
                     return False
                 # FIXME: Use aiofile
-                with open(destination, "wb") as fp:
+                with open(temporary_path, "wb") as fp:
                     chunk = await resp.content.read(1024 * 1024)
                     while chunk:
                         fp.write(chunk)
@@ -61,6 +62,8 @@ class Mirrorer(Reducer):
         if digest.hexdigest() != hash:
             os.unlink(destination)
             return False
+
+        os.rename(temporary_path, destination)
 
         return True
 
