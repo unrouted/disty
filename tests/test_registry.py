@@ -173,3 +173,26 @@ async def test_put_blob_without_patches(fake_cluster):
             assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
 
         await assert_blob(digest)
+
+
+async def test_full_manifest_round_trip(fake_cluster):
+    manifest = {
+        "manifests": [],
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "schemaVersion": 2,
+    }
+
+    url = f"http://localhost:9080/v2/alpine/manifests/3.11"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.put(url, json=manifest) as resp:
+            assert resp.status == 200
+
+        async with session.head(url) as resp:
+            assert resp.status == 200
+
+        async with session.get(url) as resp:
+            assert resp.status == 200
+            roundtrip = await resp.json()
+
+    assert roundtrip == manifest

@@ -133,7 +133,9 @@ class Mirrorer(Reducer):
         locations = [
             config.config[l]["registry_url"] for l in self.manifest_locations[hash]
         ]
-        return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
+        return [
+            f"{location}/v2/{repo}/manifests/sha256:{hash}" for location in locations
+        ]
 
     async def do_download_manifest(self, hash):
         if not self.should_download_manifest(hash):

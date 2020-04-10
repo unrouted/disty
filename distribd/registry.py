@@ -66,7 +66,7 @@ async def get_manifest_by_tag(request):
     try:
         hash = registry_state.get_tag(repository, tag)
     except KeyError:
-        raise exceptions.ManifestUnknown(hash=hash)
+        raise exceptions.ManifestUnknown(tag=tag)
 
     return await _manifest_by_hash(images_directory, repository, hash)
 
