@@ -110,7 +110,7 @@ class Log:
 
         waiters = []
         for waiter_index, ev in self._waiters:
-            if waiter_index < index:
+            if waiter_index <= index:
                 ev.set()
                 continue
             waiters.append((waiter_index, ev))

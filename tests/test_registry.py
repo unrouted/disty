@@ -1,10 +1,13 @@
 import asyncio
 import copy
+import logging
 
 import aiohttp
 from distribd import config
 from distribd.service import main
 import pytest
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -101,11 +104,50 @@ async def get_blob(port, hash):
     raise RuntimeError("Didn't achieve consistency in time")
 
 
+async def get_manifest(port, hash):
+    for i in range(100):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:{port}/v2/alpine/manifests/sha256:{hash}"
+            ) as resp:
+                if resp.status == 404:
+                    # Eventual consistency...
+                    await asyncio.sleep(0.1)
+                    continue
+                assert resp.headers["Docker-Content-Digest"] == f"sha256:{hash}"
+                return resp.headers["Content-Length"], await resp.json()
+
+    raise RuntimeError("Didn't achieve consistency in time")
+
+
+async def get_manifest_byt_tag(port, tag):
+    for i in range(100):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:{port}/v2/alpine/manifests/{tag}"
+            ) as resp:
+                if resp.status == 404:
+                    # Eventual consistency...
+                    await asyncio.sleep(0.1)
+                    continue
+                digest = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+                return digest, await resp.json()
+
+    raise RuntimeError("Didn't achieve consistency in time")
+
+
 async def assert_blob(hash):
     for port in (9080, 9081, 9082):
         content_length, body = await get_blob(port, hash)
         assert content_length == "4"
         assert body == b"9080"
+
+
+async def assert_manifest(hash, expected_body):
+    for port in (9080, 9081, 9082):
+        logger.critical("Getting manifest for port %s", port)
+        content_length, body = await get_manifest(port, hash)
+        assert body == expected_body
 
 
 async def test_put_blob_fail_invalid_hash(fake_cluster):
@@ -184,15 +226,15 @@ async def test_full_manifest_round_trip(fake_cluster):
 
     url = f"http://localhost:9080/v2/alpine/manifests/3.11"
 
+    logger.critical("Starting put")
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
             assert resp.status == 200
+            hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+    logger.critical("Finished put")
 
-        async with session.head(url) as resp:
-            assert resp.status == 200
+    await assert_manifest(hash, manifest)
 
-        async with session.get(url) as resp:
-            assert resp.status == 200
-            roundtrip = await resp.json()
-
-    assert roundtrip == manifest
+    digest, body = await get_manifest_byt_tag(9080, "3.11")
+    assert digest == hash
+    assert body == manifest

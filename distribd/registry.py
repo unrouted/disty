@@ -55,6 +55,15 @@ async def _manifest_by_hash(images_directory, repository: str, hash: str):
     )
 
 
+@routes.get("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
+async def get_manifest_by_hash(request):
+    images_directory = request.app["images_directory"]
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    return await _manifest_by_hash(images_directory, repository, hash)
+
+
 @routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def get_manifest_by_tag(request):
     registry_state = request.app["registry_state"]
@@ -67,15 +76,6 @@ async def get_manifest_by_tag(request):
         hash = registry_state.get_tag(repository, tag)
     except KeyError:
         raise exceptions.ManifestUnknown(tag=tag)
-
-    return await _manifest_by_hash(images_directory, repository, hash)
-
-
-@routes.get("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
-async def get_manifest_by_hash(request):
-    images_directory = request.app["images_directory"]
-    repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
 
     return await _manifest_by_hash(images_directory, repository, hash)
 
@@ -295,9 +295,7 @@ async def put_manifest(request):
         raise exceptions.ManifestInvalid()
 
     return web.json_response(
-        {},
-        status=200,
-        headers={"Content-Length": "0", "Docker-Content-Digest": prefixed_hash},
+        {}, status=200, headers={"Docker-Content-Digest": prefixed_hash},
     )
 
 

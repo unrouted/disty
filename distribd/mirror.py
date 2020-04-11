@@ -143,7 +143,7 @@ class Mirrorer(Reducer):
 
         destination = self.image_directory / "manifests" / hash
         if not await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
-            pass
+            return
 
         await self.send_action(
             [
