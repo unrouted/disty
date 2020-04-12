@@ -52,6 +52,8 @@ class Log:
         if not os.path.exists(self._path):
             return
 
+        self._log = []
+
         with open(self._path, "r") as fp:
             for i, line in enumerate(fp):
                 try:
@@ -81,9 +83,29 @@ class Log:
             await self._fp.close()
             self._fp = None
 
-    async def rollback(self, index):
+    async def rollback(self, last_index):
         """Drop all records after index and commit to disk."""
-        raise NotImplementedError(self.rollback)
+        if last_index < self.snapshot_index:
+            logger.warning(
+                "Cannot rollback as rollback position is inside most recent snapshot"
+            )
+            return False
+
+        async with self._commit_lock:
+            await self.close()
+
+            while self.last_index > last_index:
+                del self._log[-1]
+
+            async with AIOFile(self._path, "w") as fp:
+                writer = Writer(fp)
+                for row in self._log:
+                    await writer(json.dumps(row) + "\n")
+                await fp.fsync()
+
+            await self.open()
+
+        return True
 
     async def snapshot(self):
         raise NotImplementedError(self.snapshot)

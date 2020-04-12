@@ -293,6 +293,10 @@ class Node:
             )
             return False
 
+        if self.log.last_index > prev_index:
+            logger.error("Need to truncate log to recover quorum")
+            await self.log.rollback(prev_index)
+
         # FIXME: If an existing entry conflicts with a new one (same index but different terms) delete the existing entry and all that follow it
         # Does that just mean trim before the previous return false???
 
