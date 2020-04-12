@@ -235,7 +235,7 @@ class Node:
         result = await node.send_append_entries(payload)
 
         if not result["success"]:
-            if node.next_index > 0:
+            if node.next_index > 1:
                 node.next_index -= 1
             return
 
@@ -295,7 +295,8 @@ class Node:
 
         if self.log.last_index > prev_index:
             logger.error("Need to truncate log to recover quorum")
-            await self.log.rollback(prev_index)
+            if not await self.log.rollback(prev_index):
+                return False
 
         # FIXME: If an existing entry conflicts with a new one (same index but different terms) delete the existing entry and all that follow it
         # Does that just mean trim before the previous return false???
