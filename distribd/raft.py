@@ -190,8 +190,7 @@ class Node:
         requests = [node.send_request_vote(payload) for node in self.remotes]
 
         random_timeout = (
-            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH)
-            / SCALE_FACTOR
+            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
         )
 
         gathered = asyncio.gather(*requests, return_exceptions=True)
@@ -234,6 +233,9 @@ class Node:
             return
 
     async def do_heartbeat(self, node):
+        if self.state != NodeState.LEADER:
+            return
+
         prev_index = node.next_index - 1
         prev_term = self.log[prev_index][0] if prev_index else 0
         entries = self.log[node.next_index :]
@@ -248,6 +250,11 @@ class Node:
         }
 
         result = await node.send_append_entries(payload)
+
+        if result["term"] > self.log.current_term:
+            self.become_follower()
+            await self.log.set_term(result["term"])
+            return
 
         if not result["success"]:
             if node.next_index > 1:
@@ -280,7 +287,6 @@ class Node:
         if term > self.log.current_term:
             self.become_follower()
             await self.log.set_term(term)
-        self.maybe_become_follower(request["term"])
 
         if term < self.log.current_term:
             logger.debug(
@@ -331,14 +337,18 @@ class Node:
         term = request["term"]
         logger.debug("Received a vote request for term %d", term)
 
-        self.maybe_become_follower(request["term"])
+        if term > self.log.current_term:
+            self.become_follower()
+            await self.log.set_term(term)
 
         if term < self.log.current_term:
             logger.debug("Vote request rejected as term already over")
             return False
 
         if self.voted_for and request["candidate_id"] != self.voted_for:
-            logger.debug("Vote request rejected as already voted for self")
+            logger.debug(
+                "Vote request rejected as already voted for %s", self.voted_for
+            )
             return False
 
         last_term = request["last_term"]
@@ -351,9 +361,10 @@ class Node:
             logger.debug("Vote request rejected as last index older than own log")
             return False
 
-        await self.log.set_term(term)
         self.voted_for = request["candidate_id"]
-        self.become_follower()
+
+        # This is over cautious.
+        self.reset_election_timeout()
 
         return True
 

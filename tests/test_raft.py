@@ -50,7 +50,12 @@ examples = [
             # Somehow node 1 *didn't* commit a new entry after this.
             [(1, {"type": "consensus"})],
             # MAYBE BUG? #35
-            [(1, {'type': 'consensus'}), (2, {}), (2, {'type': 'something-happened'}), (4, {})],
+            [
+                (1, {"type": "consensus"}),
+                (2, {}),
+                (2, {"type": "something-happened"}),
+                (4, {}),
+            ],
         ],
     ),
 ]
