@@ -49,6 +49,8 @@ examples = [
             # Suspect node 1 becomes leader after truncating but before commiting term 2 index 2? . All logs reverted to (1,1).
             # Somehow node 1 *didn't* commit a new entry after this.
             [(1, {"type": "consensus"})],
+            # MAYBE BUG? #35
+            [(1, {'type': 'consensus'}), (2, {}), (2, {'type': 'something-happened'}), (4, {})],
         ],
     ),
 ]

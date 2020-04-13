@@ -114,6 +114,9 @@ class Node:
     def become_follower(self):
         logger.debug("Became follower")
         self.state = NodeState.FOLLOWER
+        # FIXME: Is this right?
+        self.voted_for = None
+
         self.reset_election_timeout()
 
     def become_candidate(self):
@@ -123,6 +126,7 @@ class Node:
 
         logger.debug("Became candidate")
         self.state = NodeState.CANDIDATE
+        self.voted_for = None
 
         self._pool.spawn(self.do_gather_votes())
 
@@ -170,52 +174,64 @@ class Node:
 
     async def do_gather_votes(self):
         """Try and gather votes from all peers for current term."""
-        while self.state == NodeState.CANDIDATE:
-            await self.log.set_term(self.log.current_term + 1)
-            self.voted_for = self.identifier
+        if self.state != NodeState.CANDIDATE:
+            return
 
-            payload = {
-                "term": self.log.current_term,
-                "candidate_id": self.identifier,
-                "last_index": self.log.last_index,
-                "last_term": self.log.last_term,
-            }
+        await self.log.set_term(self.log.current_term + 1)
+        self.voted_for = self.identifier
 
-            requests = [node.send_request_vote(payload) for node in self.remotes]
+        payload = {
+            "term": self.log.current_term,
+            "candidate_id": self.identifier,
+            "last_index": self.log.last_index,
+            "last_term": self.log.last_term,
+        }
 
-            random_timeout = (
-                random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH)
-                / SCALE_FACTOR
-            )
+        requests = [node.send_request_vote(payload) for node in self.remotes]
 
-            gathered = asyncio.gather(*requests, return_exceptions=True)
+        random_timeout = (
+            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH)
+            / SCALE_FACTOR
+        )
 
-            try:
-                responses = await asyncio.wait_for(gathered, random_timeout)
-            except asyncio.TimeoutError:
-                logger.debug("Election timed out. Starting again.")
+        gathered = asyncio.gather(*requests, return_exceptions=True)
+
+        try:
+            responses = await asyncio.wait_for(gathered, random_timeout)
+        except asyncio.TimeoutError:
+            logger.debug("Election timed out. Starting again.")
+            responses = []
+
+        votes = 1
+        for response in responses:
+            if isinstance(response, Exception):
+                logger.exception(response)
                 continue
 
-            votes = 1
-            for response in responses:
-                if isinstance(response, Exception):
-                    logger.exception(response)
-                    continue
-                if response["vote_granted"] is True:
-                    votes += 1
-
-            logger.debug(
-                "In term %s, got %d votes, needed %d",
-                self.log.current_term,
-                votes,
-                self.quorum,
-            )
-            if votes >= self.quorum and self.state == NodeState.CANDIDATE:
-                self.become_leader()
+            # If they are in a newer term than us stop trying to become a leader immediately
+            if response["term"] > self.log.current_term:
+                self.become_follower()
+                await self.log.set_term(response["term"])
                 return
 
-            # This is useful in testing, not so much in the real world?
-            await asyncio.sleep(random_timeout)
+            if response["vote_granted"] is True:
+                votes += 1
+
+        logger.debug(
+            "In term %s, got %d votes, needed %d",
+            self.log.current_term,
+            votes,
+            self.quorum,
+        )
+
+        if votes < self.quorum:
+            self.become_follower()
+            return
+
+        # Got quorum and didn't become a leader or follower in the meantime, so safe to become leader
+        if self.state == NodeState.CANDIDATE:
+            self.become_leader()
+            return
 
     async def do_heartbeat(self, node):
         prev_index = node.next_index - 1
@@ -261,9 +277,10 @@ class Node:
     async def recv_append_entries(self, request):
         term = request["term"]
 
+        if term > self.log.current_term:
+            self.become_follower()
+            await self.log.set_term(term)
         self.maybe_become_follower(request["term"])
-
-        self.reset_election_timeout()
 
         if term < self.log.current_term:
             logger.debug(
@@ -273,8 +290,8 @@ class Node:
             )
             return False
 
-        for peer in self.remotes:
-            peer.is_leader = peer.identifier == request["leader_id"]
+        # become_follower does this as well. would be nice not to dupe it.
+        self.reset_election_timeout()
 
         prev_index = request["prev_index"]
         prev_term = request["prev_term"]
@@ -291,6 +308,9 @@ class Node:
                 prev_index,
             )
             return False
+
+        for peer in self.remotes:
+            peer.is_leader = peer.identifier == request["leader_id"]
 
         if self.log.last_index > prev_index:
             logger.error("Need to truncate log to recover quorum")
@@ -317,7 +337,7 @@ class Node:
             logger.debug("Vote request rejected as term already over")
             return False
 
-        if term == self.log.current_term and self.voted_for:
+        if self.voted_for and request["candidate_id"] != self.voted_for:
             logger.debug("Vote request rejected as already voted for self")
             return False
 
@@ -331,7 +351,10 @@ class Node:
             logger.debug("Vote request rejected as last index older than own log")
             return False
 
+        await self.log.set_term(term)
         self.voted_for = request["candidate_id"]
+        self.become_follower()
+
         return True
 
     async def run_forever(self, port):
