@@ -24,10 +24,10 @@ async def main(argv=None):
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("port")
+    parser.add_argument("nodename")
     args = parser.parse_args(argv or sys.argv[1:])
 
-    identifier = f"distrib-{args.port}"
+    identifier = f"{args.nodename}"
     logger.debug("Starting node %s", identifier)
 
     cfg = config.config[identifier]

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def fake_cluster(loop, tmp_path, monkeypatch):
     test_config = copy.deepcopy(config.config)
     for port in ("8080", "8081", "8082"):
-        test_config[f"distrib-{port}"]["images_directory"] = tmp_path / port
+        test_config[f"{port}"]["images_directory"] = tmp_path / port
     monkeypatch.setattr(config, "config", test_config)
 
     servers = asyncio.ensure_future(

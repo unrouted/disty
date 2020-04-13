@@ -25,4 +25,5 @@ async def run_server(host, port, routes, access_log_class=None, **context):
         await asyncio.Event().wait()
     finally:
         # On any reason of exit, stop reporting the health.
+        await asyncio.shield(runner.shutdown())
         await asyncio.shield(runner.cleanup())
