@@ -11,10 +11,13 @@ logger = logging.getLogger(__name__)
 class Log:
     def __init__(self, path):
         self._path = path
+        self._term_path = path.parent / "term"
 
         self.snapshot = None
         self.snapshot_index = 0
         self.snapshot_term = 0
+
+        self.current_term = 0
 
         # Entries that are safely committed
         self.applied_index = 0
@@ -35,6 +38,18 @@ class Log:
         # List of (commit_index, event)
         self._waiters = []
 
+    async def set_term(self, term):
+        async with self._commit_lock:
+            if term <= self.current_term:
+                return
+
+            async with AIOFile(self._term_path, "w") as fp:
+                w = Writer(fp)
+                await w(json.dumps(term))
+                await fp.fsync()
+
+            self.current_term = term
+
     def add_reducer(self, callback):
         self._callbacks.append(callback)
 
@@ -48,7 +63,14 @@ class Log:
     def last_index(self):
         return self.snapshot_index + len(self._log)
 
-    def read_log(self):
+    def read_term(self):
+        if not os.path.exists(self._term_path):
+            return
+        with open(self._term_path, "r") as fp:
+            self.current_term = json.load(fp)
+            logger.debug(f"Restored persisted term: %s", self.current_term)
+
+    async def read_log(self):
         if not os.path.exists(self._path):
             return
 
@@ -67,8 +89,13 @@ class Log:
 
         logger.info("Restored to term: %d index: %d", self.last_term, self.last_index)
 
+        if self.last_term > self.current_term:
+            logger.warning("Journal is ahead of persisted term - fixing")
+            await self.set_term(self.last_term)
+
     async def open(self):
-        self.read_log()
+        self.read_term()
+        await self.read_log()
 
         if not self._path.parent.exists():
             os.makedirs(self._path.parent)

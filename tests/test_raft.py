@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import logging
 import os
@@ -57,43 +56,56 @@ examples = [
 
 @pytest.mark.parametrize("node1,node2,node3,agreements", examples)
 async def test_recovery(tmp_path, monkeypatch, node1, node2, node3, agreements):
-    test_config = copy.deepcopy(config.config)
-    for port in ("8080", "8081", "8082"):
-        dir = test_config[f"{port}"]["images_directory"] = tmp_path / port
+    test_config = {}
+
+    for node in ("node1", "node2", "node3"):
+        dir = tmp_path / node
         if not dir.exists():
             os.makedirs(dir)
+
+        raft_port = unused_port()
+        registry_port = unused_port()
+
+        test_config[node] = {
+            "raft_port": raft_port,
+            "raft_url": f"http://127.0.0.1:{raft_port}",
+            "registry_port": registry_port,
+            "registry_url": f"http://127.0.0.1:{registry_port}",
+            "images_directory": dir,
+        }
+
     monkeypatch.setattr(config, "config", test_config)
 
-    with open(tmp_path / "8080" / "journal", "w") as fp:
+    with open(tmp_path / "node1" / "journal", "w") as fp:
         for row in node1:
             fp.write(json.dumps(row) + "\n")
 
-    with open(tmp_path / "8081" / "journal", "w") as fp:
+    with open(tmp_path / "node2" / "journal", "w") as fp:
         for row in node2:
             fp.write(json.dumps(row) + "\n")
 
-    with open(tmp_path / "8082" / "journal", "w") as fp:
+    with open(tmp_path / "node3" / "journal", "w") as fp:
         for row in node3:
             fp.write(json.dumps(row) + "\n")
 
     servers = asyncio.ensure_future(
-        asyncio.gather(main(["8080"]), main(["8081"]), main(["8082"]),)
+        asyncio.gather(main(["node1"]), main(["node2"]), main(["node3"]),)
     )
     await asyncio.sleep(0)
 
     for i in range(100):
         result1 = []
-        with open(tmp_path / "8080" / "journal", "r") as fp:
+        with open(tmp_path / "node1" / "journal", "r") as fp:
             for row in fp:
                 result1.append(tuple(json.loads(row)))
 
         result2 = []
-        with open(tmp_path / "8081" / "journal", "r") as fp:
+        with open(tmp_path / "node2" / "journal", "r") as fp:
             for row in fp:
                 result2.append(tuple(json.loads(row)))
 
         result3 = []
-        with open(tmp_path / "8082" / "journal", "r") as fp:
+        with open(tmp_path / "node3" / "journal", "r") as fp:
             for row in fp:
                 result3.append(tuple(json.loads(row)))
 

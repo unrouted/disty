@@ -47,7 +47,6 @@ class Node:
 
         # persistent state
         self.log = log
-        self.current_term = log.last_term
         self.voted_for = None
 
         # volatile state
@@ -66,7 +65,7 @@ class Node:
     async def add_entry(self, entry):
         if self.state != NodeState.LEADER:
             raise NotALeader("Only leader can append to log")
-        await self.log.commit(self.current_term, entry)
+        await self.log.commit(self.log.current_term, entry)
         return self.log.last_term, self.log.last_index
 
     async def send_action(self, entries):
@@ -142,7 +141,7 @@ class Node:
         commit_index = 0
         i = max(self.commit_index, 1)
         while i <= self.log.last_index:
-            if self.log[i][0] != self.current_term:
+            if self.log[i][0] != self.log.current_term:
                 i += 1
                 continue
 
@@ -172,11 +171,11 @@ class Node:
     async def do_gather_votes(self):
         """Try and gather votes from all peers for current term."""
         while self.state == NodeState.CANDIDATE:
-            self.current_term += 1
+            await self.log.set_term(self.log.current_term + 1)
             self.voted_for = self.identifier
 
             payload = {
-                "term": self.current_term,
+                "term": self.log.current_term,
                 "candidate_id": self.identifier,
                 "last_index": self.log.last_index,
                 "last_term": self.log.last_term,
@@ -207,7 +206,7 @@ class Node:
 
             logger.debug(
                 "In term %s, got %d votes, needed %d",
-                self.current_term,
+                self.log.current_term,
                 votes,
                 self.quorum,
             )
@@ -224,7 +223,7 @@ class Node:
         entries = self.log[node.next_index :]
 
         payload = {
-            "term": self.current_term,
+            "term": self.log.current_term,
             "leader_id": self.identifier,
             "prev_index": prev_index,
             "prev_term": prev_term,
@@ -253,9 +252,9 @@ class Node:
 
     def maybe_become_follower(self, term):
         if self.state != NodeState.FOLLOWER:
-            if term > self.current_term:
+            if term > self.log.current_term:
                 logger.debug(
-                    "Follower has higher term (%d vs %d)", term, self.current_term
+                    "Follower has higher term (%d vs %d)", term, self.log.current_term
                 )
                 self.become_follower()
 
@@ -266,11 +265,11 @@ class Node:
 
         self.reset_election_timeout()
 
-        if term < self.current_term:
+        if term < self.log.current_term:
             logger.debug(
                 "Message received for old term %d, current term is %d",
                 term,
-                self.current_term,
+                self.log.current_term,
             )
             return False
 
@@ -298,9 +297,6 @@ class Node:
             if not await self.log.rollback(prev_index):
                 return False
 
-        # FIXME: If an existing entry conflicts with a new one (same index but different terms) delete the existing entry and all that follow it
-        # Does that just mean trim before the previous return false???
-
         for entry in request["entries"]:
             await self.log.commit(entry[0], entry[1])
 
@@ -317,11 +313,11 @@ class Node:
 
         self.maybe_become_follower(request["term"])
 
-        if term < self.current_term:
+        if term < self.log.current_term:
             logger.debug("Vote request rejected as term already over")
             return False
 
-        if term == self.current_term and self.voted_for:
+        if term == self.log.current_term and self.voted_for:
             logger.debug("Vote request rejected as already voted for self")
             return False
 
@@ -399,7 +395,10 @@ async def append_entries(request):
     payload = await request.json()
 
     return web.json_response(
-        {"term": node.current_term, "success": await node.recv_append_entries(payload)}
+        {
+            "term": node.log.current_term,
+            "success": await node.recv_append_entries(payload),
+        }
     )
 
 
@@ -411,7 +410,7 @@ async def request_vote(request):
 
     return web.json_response(
         {
-            "term": node.current_term,
+            "term": node.log.current_term,
             "vote_granted": await node.recv_request_vote(payload),
         }
     )
