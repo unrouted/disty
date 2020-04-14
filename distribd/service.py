@@ -63,7 +63,11 @@ async def main(argv=None):
                 registry_port,
             ),
             run_prometheus(
-                node.identifier, registry_state, images_directory, prometheus_port,
+                node.identifier,
+                registry_state,
+                images_directory,
+                node,
+                prometheus_port,
             ),
         )
 
