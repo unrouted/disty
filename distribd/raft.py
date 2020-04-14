@@ -206,18 +206,14 @@ class Node:
             random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
         )
 
-        gathered = asyncio.gather(*requests, return_exceptions=True)
-
-        try:
-            responses = await asyncio.wait_for(gathered, random_timeout)
-        except asyncio.TimeoutError:
-            logger.debug("Election timed out. Starting again.")
-            responses = []
-
         votes = 1
-        for response in responses:
-            if isinstance(response, Exception):
-                logger.exception(response)
+        for response in asyncio.as_completed(requests, timeout=random_timeout):
+            try:
+                response = await response
+            except asyncio.TimeoutError:
+                continue
+            except Exception:
+                logger.exception("Unhandled exception whilst trying to gather votes")
                 continue
 
             # If they are in a newer term than us stop trying to become a leader immediately
