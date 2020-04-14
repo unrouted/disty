@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-async def fake_cluster(loop, tmp_path, monkeypatch):
+async def fake_cluster(loop, tmp_path, monkeypatch, client_session):
     test_config = copy.deepcopy(config.config)
     for port in ("8080", "8081", "8082"):
         test_config[f"{port}"]["images_directory"] = tmp_path / port
@@ -22,22 +22,21 @@ async def fake_cluster(loop, tmp_path, monkeypatch):
     )
     await asyncio.sleep(0)
 
-    async with aiohttp.ClientSession() as session:
-        for i in range(100):
-            async with session.get("http://localhost:8080/status") as resp:
-                assert resp.status == 200
-                payload = await resp.json()
-                if payload["consensus"]:
-                    break
-            await asyncio.sleep(1)
-        else:
-            raise RuntimeError("No consensus")
-
-        async with session.get("http://localhost:9081/v2/") as resp:
+    for i in range(100):
+        async with client_session.get("http://localhost:8080/status") as resp:
             assert resp.status == 200
+            payload = await resp.json()
+            if payload["consensus"]:
+                break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("No consensus")
 
-        async with session.get("http://localhost:9082/v2/") as resp:
-            assert resp.status == 200
+    async with client_session.get("http://localhost:9081/v2/") as resp:
+        assert resp.status == 200
+
+    async with client_session.get("http://localhost:9082/v2/") as resp:
+        assert resp.status == 200
 
     yield
 
@@ -49,53 +48,51 @@ async def fake_cluster(loop, tmp_path, monkeypatch):
         pass
 
 
-async def test_v2_redir(fake_cluster):
-    async with aiohttp.ClientSession() as session:
-        for port in (9080, 9081, 9082):
-            async with session.get(
-                f"http://localhost:{port}/v2", allow_redirects=False
-            ) as resp:
-                assert resp.status == 302
-                assert resp.headers["Location"] == "/v2/"
+async def test_v2_redir(fake_cluster, client_session):
+    for port in (9080, 9081, 9082):
+        async with client_session.get(
+            f"http://localhost:{port}/v2", allow_redirects=False
+        ) as resp:
+            assert resp.status == 302
+            assert resp.headers["Location"] == "/v2/"
 
 
-async def test_list_tags_404(fake_cluster):
-    async with aiohttp.ClientSession() as session:
-        async with session.get("http://localhost:9080/v2/alpine/tags/list") as resp:
-            assert resp.status == 404
-            assert await resp.json() == {
-                "errors": [
-                    {
-                        "code": "NAME_UNKNOWN",
-                        "detail": {"repository": "alpine"},
-                        "message": "repository name not known to registry",
-                    }
-                ]
-            }
+async def test_list_tags_404(fake_cluster, client_session):
+    async with client_session.get("http://localhost:9080/v2/alpine/tags/list") as resp:
+        assert resp.status == 404
+        assert await resp.json() == {
+            "errors": [
+                {
+                    "code": "NAME_UNKNOWN",
+                    "detail": {"repository": "alpine"},
+                    "message": "repository name not known to registry",
+                }
+            ]
+        }
 
-        async with session.get("http://localhost:9081/v2/alpine/tags/list") as resp:
-            assert resp.status == 404
-            assert await resp.json() == {
-                "errors": [
-                    {
-                        "code": "NAME_UNKNOWN",
-                        "detail": {"repository": "alpine"},
-                        "message": "repository name not known to registry",
-                    }
-                ]
-            }
+    async with client_session.get("http://localhost:9081/v2/alpine/tags/list") as resp:
+        assert resp.status == 404
+        assert await resp.json() == {
+            "errors": [
+                {
+                    "code": "NAME_UNKNOWN",
+                    "detail": {"repository": "alpine"},
+                    "message": "repository name not known to registry",
+                }
+            ]
+        }
 
-        async with session.get("http://localhost:9082/v2/alpine/tags/list") as resp:
-            assert resp.status == 404
-            assert await resp.json() == {
-                "errors": [
-                    {
-                        "code": "NAME_UNKNOWN",
-                        "detail": {"repository": "alpine"},
-                        "message": "repository name not known to registry",
-                    }
-                ]
-            }
+    async with client_session.get("http://localhost:9082/v2/alpine/tags/list") as resp:
+        assert resp.status == 404
+        assert await resp.json() == {
+            "errors": [
+                {
+                    "code": "NAME_UNKNOWN",
+                    "detail": {"repository": "alpine"},
+                    "message": "repository name not known to registry",
+                }
+            ]
+        }
 
 
 async def get_blob(port, hash):
