@@ -225,21 +225,14 @@ class Node:
             if response["vote_granted"] is True:
                 votes += 1
 
-        logger.debug(
-            "In term %s, got %d votes, needed %d",
-            self.log.current_term,
-            votes,
-            self.quorum,
-        )
-
-        if votes < self.quorum:
-            self.become_follower()
+        if self.state != NodeState.CANDIDATE:
             return
 
-        # Got quorum and didn't become a leader or follower in the meantime, so safe to become leader
-        if self.state == NodeState.CANDIDATE:
+        if votes >= self.quorum:
             self.become_leader()
             return
+
+        self.become_follower()
 
     async def do_heartbeat(self, node):
         if self.state != NodeState.LEADER:
