@@ -83,12 +83,14 @@ async def test_recovery(tmp_path, monkeypatch, node1, node2, node3, agreements):
 
         raft_port = unused_port()
         registry_port = unused_port()
+        prometheus_port = unused_port()
 
         test_config[node] = {
             "raft_port": raft_port,
             "raft_url": f"http://127.0.0.1:{raft_port}",
             "registry_port": registry_port,
             "registry_url": f"http://127.0.0.1:{registry_port}",
+            "prometheus_port": prometheus_port,
             "images_directory": dir,
         }
 
@@ -170,12 +172,14 @@ async def test_third_node_recovery(
 
         raft_port = unused_port()
         registry_port = unused_port()
+        prometheus_port = unused_port()
 
         test_config[node] = {
             "raft_port": raft_port,
             "raft_url": f"http://127.0.0.1:{raft_port}",
             "registry_port": registry_port,
             "registry_url": f"http://127.0.0.1:{registry_port}",
+            "prometheus_port": prometheus_port,
             "images_directory": dir,
         }
 

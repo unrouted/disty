@@ -10,6 +10,7 @@ import verboselogs
 from . import config
 from .log import Log
 from .mirror import Mirrorer
+from .prometheus import run_prometheus
 from .raft import Node
 from .registry import run_registry
 from .state import RegistryState
@@ -33,6 +34,7 @@ async def main(argv=None):
     cfg = config.config[identifier]
     raft_port = cfg["raft_port"]
     registry_port = cfg["registry_port"]
+    prometheus_port = cfg["prometheus_port"]
     images_directory = pathlib.Path(cfg["images_directory"])
 
     log = Log(images_directory / "journal")
@@ -59,6 +61,9 @@ async def main(argv=None):
                 node.send_action,
                 images_directory,
                 registry_port,
+            ),
+            run_prometheus(
+                node.identifier, registry_state, images_directory, prometheus_port,
             ),
         )
 

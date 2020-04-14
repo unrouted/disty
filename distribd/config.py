@@ -4,6 +4,7 @@ config = {
         "raft_url": "http://127.0.0.1:8080",
         "registry_port": 9080,
         "registry_url": "http://127.0.0.1:9080",
+        "prometheus_port": 7080,
         "images_directory": "images/8080",
     },
     "8081": {
@@ -11,6 +12,7 @@ config = {
         "raft_url": "http://127.0.0.1:8081",
         "registry_port": 9081,
         "registry_url": "http://127.0.0.1:9081",
+        "prometheus_port": 7081,
         "images_directory": "images/8081",
     },
     "8082": {
@@ -18,6 +20,7 @@ config = {
         "raft_url": "http://127.0.0.1:8082",
         "registry_port": 9082,
         "registry_url": "http://127.0.0.1:9082",
+        "prometheus_port": 7082,
         "images_directory": "images/8082",
     },
 }
