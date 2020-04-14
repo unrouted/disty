@@ -32,4 +32,11 @@ class WorkerPool:
 
     async def close(self):
         [task.cancel() for task in self._jobs]
-        await asyncio.gather(*[task for task in self._jobs])
+
+        for future in asyncio.as_completed(self._jobs):
+            try:
+                await future
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logging.exception("Unhandled error whilst closing worker pool")
