@@ -20,6 +20,8 @@ examples = [
             [(1, {"type": "consensus"}), (2, {})],
             # First vote fails
             [(1, {"type": "consensus"}), (3, {})],
+            # Consisentency but not immediately
+            [(1, {"type": "consensus"}), (4, {})],
             # #31
             [(1, {"type": "consensus"}), (2, {}), (3, {})],
         ],
@@ -41,6 +43,8 @@ examples = [
             [(1, {"type": "consensus"}), (2, {})],
             # First vote fails and consensus reached between node 2 and 3
             [(1, {"type": "consensus"}), (3, {})],
+            # Consisentency between node 2 and 3, but not immediately
+            [(1, {"type": "consensus"}), (4, {})],
             # #32
             [(1, {"type": "consensus"}), (2, {}), (3, {})],
             # BUG #33
@@ -49,12 +53,19 @@ examples = [
             # Suspect node 1 becomes leader after truncating but before commiting term 2 index 2? . All logs reverted to (1,1).
             # Somehow node 1 *didn't* commit a new entry after this.
             [(1, {"type": "consensus"})],
-            # MAYBE BUG? #35
+            # Node 1 leader, consensu achieved eventually
             [
                 (1, {"type": "consensus"}),
                 (2, {}),
                 (2, {"type": "something-happened"}),
                 (4, {}),
+            ],
+            # Node 1 leader, consenus achieved eventually
+            [
+                (1, {"type": "consensus"}),
+                (2, {}),
+                (2, {"type": "something-happened"}),
+                (5, {}),
             ],
         ],
     ),

@@ -95,7 +95,6 @@ class Node:
 
     def add_member(self, identifier):
         node = RemoteNode(identifier)
-        node.next_index = self.log.last_index + 1
         self.remotes.append(node)
 
     def cancel_election_timeout(self):
@@ -112,16 +111,21 @@ class Node:
         self._heartbeat = loop.call_later(timeout, self.become_candidate)
 
     def become_follower(self):
-        logger.debug("Became follower")
-        self.state = NodeState.FOLLOWER
-        # FIXME: Is this right?
         self.voted_for = None
-
         self.reset_election_timeout()
+
+        if self.state == NodeState.CANDIDATE:
+            return
+
+        self.state = NodeState.FOLLOWER
+        logger.debug("Became follower")
 
     def become_candidate(self):
         if self.state == NodeState.LEADER:
             logger.debug("Can't become candidate when already leader")
+            return
+
+        if self.state == NodeState.CANDIDATE:
             return
 
         logger.debug("Became candidate")
@@ -131,9 +135,18 @@ class Node:
         self._pool.spawn(self.do_gather_votes())
 
     def become_leader(self):
-        logger.debug("Became leader")
-        self.state = NodeState.LEADER
         self.cancel_election_timeout()
+
+        if self.state == NodeState.LEADER:
+            return
+
+        self.state = NodeState.LEADER
+
+        logger.debug("Became leader")
+
+        for peer in self.remotes:
+            peer.next_index = self.log.last_index + 1
+            peer.match_index = 0
 
         self._pool.spawn(self.do_heartbeats())
 
@@ -236,8 +249,8 @@ class Node:
         if self.state != NodeState.LEADER:
             return
 
-        prev_index = node.next_index - 1
-        prev_term = self.log[prev_index][0] if prev_index else 0
+        prev_index = max(node.next_index - 1, 0)
+        prev_term = self.log[prev_index][0] if prev_index >= 1 else 0
         entries = self.log[node.next_index :]
 
         payload = {
