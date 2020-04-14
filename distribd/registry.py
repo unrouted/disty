@@ -80,6 +80,33 @@ async def get_manifest_by_tag(request):
     return await _manifest_by_hash(images_directory, repository, hash)
 
 
+@routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
+async def head_blob(request):
+    images_directory = request.app["images_directory"]
+    registry_state = request.app["registry_state"]
+
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    if not registry_state.is_blob_available(repository, hash):
+        raise exceptions.BlobUnknown(hash=hash)
+
+    hash_path = images_directory / "blobs" / hash
+    if not hash_path.is_file():
+        raise exceptions.BlobUnknown(hash=hash)
+
+    size = hash_path.stat().st_size
+
+    return web.Response(
+        status=200,
+        headers={
+            "Content-Length": f"{size}",
+            "Docker-Content-Digest": f"sha256:{hash}",
+            "Content-Type": "application/octet-stream",
+        },
+    )
+
+
 @routes.get("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def get_blob_by_hash(request):
     images_directory = request.app["images_directory"]
@@ -214,34 +241,6 @@ async def upload_finish(request):
         headers={
             "Location": f"/v2/{repository}/blobs/{digest}",
             "Docker-Content-Digest": digest,
-        },
-    )
-
-
-@routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
-async def head_blob(request):
-    images_directory = request.app["images_directory"]
-    registry_state = request.app["registry_state"]
-
-    repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
-
-    if not registry_state.is_blob_available(repository, hash):
-        raise exceptions.BlobUnknown(hash=hash)
-
-    hash_path = images_directory / "blobs" / hash
-    if not hash_path.is_file():
-        raise exceptions.BlobUnknown(hash=hash)
-
-    size = hash_path.stat().st_size
-
-    return web.json_response(
-        {},
-        status=200,
-        headers={
-            "Content-Length": f"{size}",
-            "Docker-Content-Digest": f"sha256:{hash}",
-            "Content-Type": "application/octet-stream",
         },
     )
 

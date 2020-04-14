@@ -98,6 +98,15 @@ async def test_list_tags_404(fake_cluster, client_session):
 async def get_blob(port, hash):
     for i in range(100):
         async with aiohttp.ClientSession() as session:
+            async with session.head(
+                f"http://localhost:{port}/v2/alpine/blobs/sha256:{hash}"
+            ) as resp:
+                if resp.status == 404:
+                    # Eventual consistency...
+                    await asyncio.sleep(0.1)
+                    continue
+                assert resp.headers["Docker-Content-Digest"] == f"sha256:{hash}"
+
             async with session.get(
                 f"http://localhost:{port}/v2/alpine/blobs/sha256:{hash}"
             ) as resp:
@@ -236,6 +245,9 @@ async def test_list_tags(fake_cluster):
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
             assert resp.status == 200
+            hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+
+        await assert_manifest(hash, manifest)
 
         for port in (9080, 9081, 9082):
             async with session.get(
