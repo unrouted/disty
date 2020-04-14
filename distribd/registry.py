@@ -9,6 +9,7 @@ from aiohttp import web
 
 from . import exceptions
 from .actions import RegistryActions
+from .utils.registry import get_blob_path, get_manifest_path
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ async def list_images_in_repository(request):
 
 
 async def _manifest_by_hash(images_directory, repository: str, hash: str):
-    manifest_path = images_directory / "manifests" / hash
+    manifest_path = get_manifest_path(images_directory, hash)
     if not manifest_path.is_file():
         raise exceptions.ManifestUnknown(hash=hash)
 
@@ -91,7 +92,7 @@ async def head_blob(request):
     if not registry_state.is_blob_available(repository, hash):
         raise exceptions.BlobUnknown(hash=hash)
 
-    hash_path = images_directory / "blobs" / hash
+    hash_path = get_blob_path(images_directory, hash)
     if not hash_path.is_file():
         raise exceptions.BlobUnknown(hash=hash)
 
@@ -118,7 +119,7 @@ async def get_blob_by_hash(request):
     if not registry_state.is_blob_available(repository, hash):
         raise exceptions.BlobUnknown(hash=hash)
 
-    hash_path = images_directory / "blobs" / hash
+    hash_path = get_blob_path(images_directory, hash)
     if not hash_path.is_file():
         raise exceptions.BlobUnknown(hash=hash)
 
@@ -210,11 +211,10 @@ async def upload_finish(request):
     if expected_digest != digest:
         raise exceptions.BlobUploadInvalid()
 
-    blob_dir = images_directory / "blobs"
+    blob_path = get_blob_path(images_directory, hash)
+    blob_dir = blob_path.parent
     if not blob_dir.exists():
         os.makedirs(blob_dir)
-
-    blob_path = blob_dir / hash
 
     os.rename(upload_path, blob_path)
 
@@ -255,11 +255,11 @@ async def put_manifest(request):
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
 
-    manifests_dir = images_directory / "manifests"
+    manifest_path = get_manifest_path(images_directory, hash)
+    manifests_dir = manifest_path.parent
+
     if not os.path.exists(manifests_dir):
         os.makedirs(manifests_dir)
-
-    manifest_path = manifests_dir / hash
 
     async with AIOFile(manifest_path, "wb") as fp:
         writer = Writer(fp)

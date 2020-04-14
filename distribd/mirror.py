@@ -10,6 +10,7 @@ from . import config
 from .actions import RegistryActions
 from .jobs import WorkerPool
 from .state import Reducer
+from .utils.registry import get_blob_path, get_manifest_path
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class Mirrorer(Reducer):
         if not self.should_download_blob(hash):
             return
 
-        destination = self.image_directory / "blobs" / hash
+        destination = get_blob_path(self.image_directory, hash)
         if not await self._do_transfer(hash, self.urls_for_blob(hash), destination):
             return
 
@@ -141,7 +142,7 @@ class Mirrorer(Reducer):
         if not self.should_download_manifest(hash):
             return
 
-        destination = self.image_directory / "manifests" / hash
+        destination = get_manifest_path(self.image_directory, hash)
         if not await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
             return
 
