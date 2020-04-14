@@ -277,6 +277,12 @@ class Node:
 
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
 
+    def find_first_inconsistency(self, ours, theirs):
+        for i, (our_entry, their_entry) in enumerate(zip(ours, theirs)):
+            if our_entry[0] != their_entry[0]:
+                return i
+        return min(len(ours), len(theirs))
+
     async def recv_append_entries(self, request):
         term = request["term"]
 
@@ -314,12 +320,20 @@ class Node:
         for peer in self.remotes:
             peer.is_leader = peer.identifier == request["leader_id"]
 
+        # If leader sends us a batch of entries we already have we can avoid truncating
+        # if they are actually consistent
+        inconsistency_offset = self.find_first_inconsistency(
+            self.log[prev_index + 1 :], request["entries"]
+        )
+        prev_index += inconsistency_offset
+        entries = request["entries"][inconsistency_offset:]
+
         if self.log.last_index > prev_index:
             logger.error("Need to truncate log to recover quorum")
             if not await self.log.rollback(prev_index):
                 return False
 
-        for entry in request["entries"]:
+        for entry in entries:
             await self.log.commit(entry[0], entry[1])
 
         if request["leader_commit"] > self.commit_index:

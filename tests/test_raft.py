@@ -5,6 +5,7 @@ import os
 import socket
 
 from distribd import config
+from distribd.raft import Node
 from distribd.service import main
 import pytest
 
@@ -233,3 +234,50 @@ async def test_third_node_recovery(
         await servers
     except asyncio.CancelledError:
         pass
+
+
+def test_find_inconsistencies():
+    n = Node(None, None)
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None)], [(2, None), (2, None), (3, None)]
+        )
+        == 0
+    )
+
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None)], [(1, None), (2, None), (3, None)]
+        )
+        == 1
+    )
+
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None)], [(1, None), (1, None), (3, None)]
+        )
+        == 2
+    )
+
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None)], [(1, None), (1, None), (1, None)]
+        )
+        == 3
+    )
+
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None), (1, None)],
+            [(1, None), (1, None), (1, None)],
+        )
+        == 3
+    )
+
+    assert (
+        n.find_first_inconsistency(
+            [(1, None), (1, None), (1, None)],
+            [(1, None), (1, None), (1, None), (1, None)],
+        )
+        == 3
+    )
