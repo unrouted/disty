@@ -11,6 +11,7 @@ aiohttp = "^3.6.2"
 aiofile = "^1.5.2"
 coloredlogs = "^14.0"
 verboselogs = "^1.7"
+prometheus_client = "^0.7.1"
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.770"
