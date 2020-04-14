@@ -49,6 +49,16 @@ async def fake_cluster(loop, tmp_path, monkeypatch):
         pass
 
 
+async def test_v2_redir(fake_cluster):
+    async with aiohttp.ClientSession() as session:
+        for port in (9080, 9081, 9082):
+            async with session.get(
+                f"http://localhost:{port}/v2", allow_redirects=False
+            ) as resp:
+                assert resp.status == 302
+                assert resp.headers["Location"] == "/v2/"
+
+
 async def test_list_tags_404(fake_cluster):
     async with aiohttp.ClientSession() as session:
         async with session.get("http://localhost:9080/v2/alpine/tags/list") as resp:
@@ -215,6 +225,27 @@ async def test_put_blob_without_patches(fake_cluster):
             assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
 
         await assert_blob(digest)
+
+
+async def test_list_tags(fake_cluster):
+    manifest = {
+        "manifests": [],
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "schemaVersion": 2,
+    }
+
+    url = f"http://localhost:9080/v2/alpine/manifests/3.11"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.put(url, json=manifest) as resp:
+            assert resp.status == 200
+
+        for port in (9080, 9081, 9082):
+            async with session.get(
+                f"http://localhost:{port}/v2/alpine/tags/list"
+            ) as resp:
+                body = await resp.json()
+                assert body == {"name": "alpine", "tags": ["3.11"]}
 
 
 async def test_full_manifest_round_trip(fake_cluster):
