@@ -114,7 +114,7 @@ class Node:
         self.voted_for = None
         self.reset_election_timeout()
 
-        if self.state == NodeState.CANDIDATE:
+        if self.state == NodeState.FOLLOWER:
             return
 
         self.state = NodeState.FOLLOWER
@@ -249,7 +249,9 @@ class Node:
         if self.state != NodeState.LEADER:
             return
 
-        prev_index = max(node.next_index - 1, 0)
+        # The biggest prev_index can be is log.last_index, so cap its size to that.
+        # Though the question is, how does it end up bigger than last_index in the first place.
+        prev_index = min(node.next_index - 1, self.log.last_index)
         prev_term = self.log[prev_index][0] if prev_index >= 1 else 0
         entries = self.log[node.next_index :]
 
@@ -285,14 +287,6 @@ class Node:
                 self._pool.spawn(self.do_heartbeat(node))
 
             await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
-
-    def maybe_become_follower(self, term):
-        if self.state != NodeState.FOLLOWER:
-            if term > self.log.current_term:
-                logger.debug(
-                    "Follower has higher term (%d vs %d)", term, self.log.current_term
-                )
-                self.become_follower()
 
     async def recv_append_entries(self, request):
         term = request["term"]
