@@ -185,6 +185,51 @@ class Node:
 
         await self.log.apply(self.commit_index)
 
+    async def do_pre_vote(self):
+        """Try and gather pre-votes from all peers for current term."""
+        if self.state != NodeState.CANDIDATE:
+            return
+
+        payload = {
+            "term": self.log.current_term,
+            "candidate_id": self.identifier,
+            "last_index": self.log.last_index,
+            "last_term": self.log.last_term,
+        }
+
+        requests = [node.send_pre_vote(payload) for node in self.remotes]
+
+        random_timeout = (
+            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
+        )
+
+        votes = 1
+        for response in asyncio.as_completed(requests, timeout=random_timeout):
+            try:
+                response = await response
+            except asyncio.TimeoutError:
+                continue
+            except Exception:
+                logger.exception(
+                    "Unhandled exception whilst trying to gather pre votes"
+                )
+                continue
+
+            # If they are in a newer term than us stop trying to become a leader immediately
+            if response["term"] > self.log.current_term:
+                return False
+
+            if response["vote_granted"] is True:
+                votes += 1
+
+        if self.state != NodeState.CANDIDATE:
+            return False
+
+        if votes >= self.quorum:
+            return True
+
+        return False
+
     async def do_gather_votes(self):
         """Try and gather votes from all peers for current term."""
         if self.state != NodeState.CANDIDATE:
@@ -192,6 +237,9 @@ class Node:
 
         await self.log.set_term(self.log.current_term + 1)
         self.voted_for = self.identifier
+
+        if not await self.do_pre_vote():
+            return
 
         payload = {
             "term": self.log.current_term,
@@ -343,6 +391,28 @@ class Node:
 
         return True
 
+    async def recv_pre_vote(self, request):
+        term = request["term"]
+        logger.debug("Received a pre-vote request for term %d", term)
+
+        if term < self.log.current_term:
+            logger.debug("Pre-vote rejected as term already over")
+            return False
+
+        last_term = request["last_term"]
+        if last_term < self.log.last_term:
+            logger.debug(
+                "Pre-vote request rejected as last term older than current term"
+            )
+            return False
+
+        last_index = request["last_index"]
+        if last_index < self.log.last_index:
+            logger.debug("Pre-vote request rejected as last index older than own log")
+            return False
+
+        return True
+
     async def recv_request_vote(self, request):
         term = request["term"]
         logger.debug("Received a vote request for term %d", term)
@@ -425,6 +495,16 @@ class RemoteNode:
             return {"term": 0, "vote_granted": False}
         return await resp.json()
 
+    async def send_pre_vote(self, payload):
+        try:
+            resp = await self.session.post(f"{self.url}/pre-vote", json=payload)
+        except aiohttp.ClientConnectionError:
+            return {"term": 0, "vote_granted": False}
+
+        if resp.status != 200:
+            return {"term": 0, "vote_granted": False}
+        return await resp.json()
+
     async def close(self):
         await self.session.close()
 
@@ -442,6 +522,20 @@ async def append_entries(request):
         {
             "term": node.log.current_term,
             "success": await node.recv_append_entries(payload),
+        }
+    )
+
+
+@routes.post("/pre-vote")
+async def pre_vote(request):
+    node = request.app["node"]
+
+    payload = await request.json()
+
+    return web.json_response(
+        {
+            "term": node.log.current_term,
+            "vote_granted": await node.recv_pre_vote(payload),
         }
     )
 
