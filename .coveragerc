@@ -1,4 +1,3 @@
 [run]
 source = distribd
-omit = tests
-
+omit = tests/*
