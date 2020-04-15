@@ -60,6 +60,7 @@ class Node:
 
         self._pool = WorkerPool()
         self._heartbeat = None
+        self._append_heartbeat = None
 
     async def close(self):
         await asyncio.gather(*[peer.close() for peer in self.remotes])
@@ -77,6 +78,9 @@ class Node:
                 wait_term, wait_index = await self.add_entry(entry)
         else:
             wait_term, wait_index = await self.leader.send_add_entries(entries)
+
+        self.do_heartbeats()
+
         return await self.log.wait_for_commit(wait_term, wait_index)
 
     @property
@@ -112,6 +116,17 @@ class Node:
         )
         loop = asyncio.get_event_loop()
         self._heartbeat = loop.call_later(timeout, self.become_candidate)
+
+    def cancel_heartbeat_timeout(self):
+        if self._append_heartbeat:
+            self._append_heartbeat.cancel()
+            self._append_heartbeat = None
+
+    def reset_heartbeat_timeout(self):
+        self.cancel_heartbeat_timeout()
+        timeout = HEARTBEAT_TIMEOUT / SCALE_FACTOR
+        loop = asyncio.get_event_loop()
+        self._append_heartbeat = loop.call_later(timeout, self.do_heartbeats)
 
     def become_follower(self):
         self.voted_for = None
@@ -152,7 +167,7 @@ class Node:
             peer.next_index = self.log.last_index + 1
             peer.match_index = 0
 
-        self._pool.spawn(self.do_heartbeats())
+        self.do_heartbeats()
 
         # It's considered "unsafe" to commit a transaction from a previous term
         # But safe to indirectly commit it when commiting a no-op in the current term
@@ -188,6 +203,8 @@ class Node:
         self.commit_index = commit_index
 
         await self.log.apply(self.commit_index)
+
+        self.do_heartbeats()
 
     async def do_pre_vote(self):
         """Try and gather pre-votes from all peers for current term."""
@@ -322,12 +339,14 @@ class Node:
 
         await self.advance_commit_index()
 
-    async def do_heartbeats(self):
-        while self.state == NodeState.LEADER:
-            for node in self.remotes:
-                self._pool.spawn(self.do_heartbeat(node))
+    def do_heartbeats(self):
+        if self.state != NodeState.LEADER:
+            return
 
-            await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
+        self.reset_heartbeat_timeout()
+
+        for node in self.remotes:
+            self._pool.spawn(self.do_heartbeat(node))
 
     def find_first_inconsistency(self, ours, theirs):
         for i, (our_entry, their_entry) in enumerate(zip(ours, theirs)):
