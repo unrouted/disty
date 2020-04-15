@@ -138,6 +138,10 @@ async def start_upload(request):
 
     session_id = str(uuid.uuid4())
 
+    request.app["sessions"][session_id] = {
+        "hasher": hashlib.sha256(),
+    }
+
     return web.json_response(
         {},
         status=202,
@@ -155,6 +159,10 @@ async def upload_chunk_by_patch(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
+    session = request.app["sessions"].get(session_id, None)
+    if not session:
+        raise exceptions.BlobUploadInvalid(session=session_id)
+
     uploads = images_directory / "uploads"
     if not uploads.exists():
         os.makedirs(uploads)
@@ -166,6 +174,7 @@ async def upload_chunk_by_patch(request):
         chunk = await request.content.read(1024 * 1024)
         while chunk:
             await writer(chunk)
+            session["hasher"].update(chunk)
             chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
@@ -189,6 +198,10 @@ async def upload_finish(request):
     session_id = request.match_info["session_id"]
     expected_digest = request.query.get("digest", "")
 
+    session = request.app["sessions"].get(session_id, None)
+    if not session:
+        raise exceptions.BlobUploadInvalid(session=session_id)
+
     uploads = images_directory / "uploads"
     if not uploads.exists():
         os.makedirs(uploads)
@@ -200,13 +213,12 @@ async def upload_finish(request):
         chunk = await request.content.read(1024 * 1024)
         while chunk:
             await writer(chunk)
+            session["hasher"].update(chunk)
             chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
-    # FIXME: Do on each upload incrementally
-    with open(upload_path, "rb") as fp:
-        hash = hashlib.sha256(fp.read()).hexdigest()
-        digest = f"sha256:{hash}"
+    hash = session["hasher"].hexdigest()
+    digest = f"sha256:{hash}"
 
     if expected_digest != digest:
         raise exceptions.BlobUploadInvalid()
@@ -307,4 +319,5 @@ async def run_registry(identifier, registry_state, send_action, images_directory
         registry_state=registry_state,
         send_action=send_action,
         images_directory=images_directory,
+        sessions={},
     )
