@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import os
@@ -94,22 +95,34 @@ class Mirrorer(Reducer):
 
         return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
 
-    async def do_download_blob(self, hash):
+    async def do_download_blob(self, hash, retry_count=0):
         if not self.should_download_blob(hash):
             return
 
-        destination = get_blob_path(self.image_directory, hash)
-        if not await self._do_transfer(hash, self.urls_for_blob(hash), destination):
-            return
+        try:
+            destination = get_blob_path(self.image_directory, hash)
+            if await self._do_transfer(hash, self.urls_for_blob(hash), destination):
+                await self.send_action(
+                    [
+                        {
+                            "type": RegistryActions.BLOB_STORED,
+                            "hash": hash,
+                            "location": self.identifier,
+                        }
+                    ]
+                )
+                return
 
-        await self.send_action(
-            [
-                {
-                    "type": RegistryActions.BLOB_STORED,
-                    "hash": hash,
-                    "location": self.identifier,
-                }
-            ]
+        except Exception:
+            logger.exception("Unhandled error whilst processing blob download %r", hash)
+
+        logger.info("Scheduling retry for blob download %s", hash)
+        loop = asyncio.get_event_loop()
+        loop.call_later(
+            retry_count,
+            lambda: self.pool.spawn(
+                self.do_download_blob(hash, retry_count=retry_count + 1)
+            ),
         )
 
     def should_download_manifest(self, hash):
@@ -138,22 +151,34 @@ class Mirrorer(Reducer):
             f"{location}/v2/{repo}/manifests/sha256:{hash}" for location in locations
         ]
 
-    async def do_download_manifest(self, hash):
+    async def do_download_manifest(self, hash, retry_count=0):
         if not self.should_download_manifest(hash):
             return
 
-        destination = get_manifest_path(self.image_directory, hash)
-        if not await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
-            return
+        try:
+            destination = get_manifest_path(self.image_directory, hash)
+            if await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
+                await self.send_action(
+                    [
+                        {
+                            "type": RegistryActions.MANIFEST_STORED,
+                            "hash": hash,
+                            "location": self.identifier,
+                        }
+                    ]
+                )
+                return
 
-        await self.send_action(
-            [
-                {
-                    "type": RegistryActions.MANIFEST_STORED,
-                    "hash": hash,
-                    "location": self.identifier,
-                }
-            ]
+        except Exception:
+            logger.exception("Unhandled error whilst processing blob download %r", hash)
+
+        logger.info("Scheduling retry for manifest download %s", hash)
+        loop = asyncio.get_event_loop()
+        loop.call_later(
+            retry_count,
+            lambda: self.pool.spawn(
+                self.do_download_manifest(hash, retry_count=retry_count + 1)
+            ),
         )
 
     def dispatch(self, entry):
