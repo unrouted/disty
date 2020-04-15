@@ -3,11 +3,6 @@ import asyncio
 from distribd.jobs import WorkerPool
 
 
-async def test_active():
-    pool = WorkerPool()
-    assert pool.active == 0
-
-
 async def test_invocation():
     ev = asyncio.Event()
 

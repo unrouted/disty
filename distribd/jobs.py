@@ -1,42 +1,31 @@
 import asyncio
 import logging
 
+from aiojobs import Scheduler
+from aiojobs._job import Job
+
 logger = logging.getLogger(__name__)
 
 
-class WorkerPool:
-    def __init__(self):
-        self._jobs = set()
-
-    @property
-    def active(self):
-        return len(self._jobs)
+class WorkerPool(Scheduler):
+    def __init__(self, limit=10):
+        super().__init__(
+            loop=asyncio.get_event_loop(),
+            close_timeout=0.1,
+            limit=limit,
+            pending_limit=10000,
+            exception_handler=None,
+        )
 
     def spawn(self, coro):
-        task = asyncio.ensure_future(coro)
-
-        def done_callback(future):
-            self._jobs.discard(task)
-
-            try:
-                future.result()
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Unhandled exception in async task")
-
-        task.add_done_callback(done_callback)
-
-        self._jobs.add(task)
-        return task
-
-    async def close(self):
-        [task.cancel() for task in self._jobs]
-
-        for future in asyncio.as_completed(self._jobs):
-            try:
-                await future
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logging.exception("Unhandled error whilst closing worker pool")
+        if self._closed:
+            raise RuntimeError("Scheduling a new job after closing")
+        job = Job(coro, self, self._loop)
+        should_start = self._limit is None or self.active_count < self._limit
+        self._jobs.add(job)
+        if should_start:
+            job._start()
+        else:
+            # wait for free slot in queue
+            self._pending.put_nowait(job)
+        return job

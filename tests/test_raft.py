@@ -236,7 +236,7 @@ async def test_third_node_recovery(
         pass
 
 
-def test_find_inconsistencies():
+def test_find_inconsistencies(loop):
     n = Node(None, None)
     assert (
         n.find_first_inconsistency(
