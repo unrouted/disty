@@ -5,6 +5,7 @@ import os
 import random
 import uuid
 
+from aiofile import AIOFile, Writer
 import aiohttp
 
 from . import config
@@ -54,13 +55,14 @@ class Mirrorer(Reducer):
                 if resp.status != 200:
                     logger.error("Failed to retrieve: %s, status %s", url, resp.status)
                     return False
-                # FIXME: Use aiofile
-                with open(temporary_path, "wb") as fp:
+                async with AIOFile(temporary_path, "wb") as fp:
+                    writer = Writer(fp)
                     chunk = await resp.content.read(1024 * 1024)
                     while chunk:
-                        fp.write(chunk)
+                        await writer(chunk)
                         digest.update(chunk)
                         chunk = await resp.content.read(1024 * 1024)
+                    await fp.fsync()
 
         if digest.hexdigest() != hash:
             os.unlink(destination)

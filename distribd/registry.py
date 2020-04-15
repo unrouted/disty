@@ -44,8 +44,8 @@ async def _manifest_by_hash(images_directory, repository: str, hash: str):
     if not manifest_path.is_file():
         raise exceptions.ManifestUnknown(hash=hash)
 
-    with open(manifest_path, "r") as fp:
-        manifest = json.load(fp)
+    async with AIOFile(manifest_path, "r") as fp:
+        manifest = json.loads(await fp.read())
 
     return web.FileResponse(
         headers={
