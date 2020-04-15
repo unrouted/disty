@@ -55,6 +55,9 @@ class Node:
         # leader state
         self.remotes = []
 
+        # volatile follower state
+        self.receiving_heartbeats = False
+
         self._pool = WorkerPool()
         self._heartbeat = None
 
@@ -130,6 +133,7 @@ class Node:
 
         logger.debug("Became candidate")
         self.state = NodeState.CANDIDATE
+        self.receiving_heartbeats = False
         self.voted_for = None
 
         self._pool.spawn(self.do_gather_votes())
@@ -365,6 +369,8 @@ class Node:
             )
             return False
 
+        self.receiving_heartbeats = True
+
         for peer in self.remotes:
             peer.is_leader = peer.identifier == request["leader_id"]
 
@@ -395,6 +401,12 @@ class Node:
         term = request["term"]
         logger.debug("Received a pre-vote request for term %d", term)
 
+        if self.receiving_heartbeats:
+            logger.debug(
+                "Pre-vote rejected as still receiving heartbeats from a leader"
+            )
+            return False
+
         if term < self.log.current_term:
             logger.debug("Pre-vote rejected as term already over")
             return False
@@ -420,6 +432,12 @@ class Node:
         if term > self.log.current_term:
             self.become_follower()
             await self.log.set_term(term)
+
+        if self.receiving_heartbeats:
+            logger.debug(
+                "Vote request rejected as still receiving heartbeats from a leader"
+            )
+            return False
 
         if term < self.log.current_term:
             logger.debug("Vote request rejected as term already over")
