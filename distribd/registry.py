@@ -182,6 +182,49 @@ async def get_blob_by_hash(request):
 @routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")
 async def start_upload(request):
     repository = request.match_info["repository"]
+    mount_digest = request.query.get("mount", "")
+    mount_repository = request.query.get("from", "")
+
+    if mount_digest and mount_repository:
+        if mount_repository == repository:
+            raise exceptions.BlobUploadInvalid(
+                mount=mount_digest, repository=mount_repository
+            )
+
+        registry_state = request.app["registry_state"]
+        mount_alg, mount_hash = mount_digest.split(":", 1)
+        if registry_state.is_blob_available(mount_repository, mount_hash):
+            send_action = request.app["send_action"]
+
+            success = await send_action(
+                [
+                    {
+                        "type": RegistryActions.BLOB_MOUNTED,
+                        "hash": mount_hash,
+                        "repository": repository,
+                    },
+                ]
+            )
+
+            if not success:
+                logger.warning(
+                    "Can cross-mount %s from %s to %s but failed to commit to journal",
+                    mount_digest,
+                    mount_repository,
+                    repository,
+                )
+                raise exceptions.BlobUploadInvalid(
+                    mount=mount_digest, repository=mount_repository
+                )
+
+            return web.Response(
+                status=201,
+                headers={
+                    "Location": f"/v2/{repository}/blobs/{mount_digest}",
+                    "Content-Length": 0,
+                    "Docker-Content-Digest": mount_digest,
+                },
+            )
 
     session_id = str(uuid.uuid4())
 
