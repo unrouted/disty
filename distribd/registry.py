@@ -221,7 +221,7 @@ async def start_upload(request):
                 status=201,
                 headers={
                     "Location": f"/v2/{repository}/blobs/{mount_digest}",
-                    "Content-Length": 0,
+                    "Content-Length": "0",
                     "Docker-Content-Digest": mount_digest,
                 },
             )

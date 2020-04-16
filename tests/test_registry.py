@@ -140,10 +140,10 @@ async def get_manifest(port, hash):
     raise RuntimeError("Didn't achieve consistency in time")
 
 
-async def get_manifest_byt_tag(port, tag):
+async def get_manifest_byt_tag(port, tag, repository="alpine"):
     for i in range(100):
         async with aiohttp.ClientSession() as session:
-            url = f"http://localhost:{port}/v2/alpine/manifests/{tag}"
+            url = f"http://localhost:{port}/v2/{repository}/manifests/{tag}"
 
             async with session.head(url) as resp:
                 if resp.status == 404:
@@ -160,7 +160,7 @@ async def get_manifest_byt_tag(port, tag):
     raise RuntimeError("Didn't achieve consistency in time")
 
 
-async def assert_blob(hash):
+async def assert_blob(hash, repository="alpine"):
     for port in (9080, 9081, 9082):
         content_length, body = await get_blob(port, hash)
         assert content_length == "4"
@@ -239,6 +239,34 @@ async def test_put_blob_without_patches(fake_cluster):
             assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
 
         await assert_blob(digest)
+
+
+async def test_put_blob_with_cross_mount(fake_cluster):
+    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+
+    async with aiohttp.ClientSession() as session:
+        # First upload an ordinary blob
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
+            location = resp.headers["Location"]
+
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:{digest}", data=b"9080"
+        ) as resp:
+            assert resp.status == 201
+            assert resp.headers["Location"] == f"/v2/alpine/blobs/sha256:{digest}"
+            assert resp.headers["Docker-Content-Digest"] == f"sha256:{digest}"
+
+        # Then cross-mount it from alpine repository to enipla registry
+        url2 = f"http://localhost:9080/v2/enipla/blobs/uploads/?mount=sha256:{digest}&from=alpine"
+        async with session.post(url2) as resp:
+            assert resp.status == 201
+            assert resp.headers["Location"] == f"/v2/enipla/blobs/sha256:{digest}"
+
+        await assert_blob(digest, repository="enipla")
 
 
 async def test_list_tags(fake_cluster):
