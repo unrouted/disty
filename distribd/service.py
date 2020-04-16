@@ -75,6 +75,4 @@ async def main(argv=None):
         pass
 
     finally:
-        await asyncio.shield(
-            asyncio.gather(node.close(), log.close(), mirrorer.close())
-        )
+        await asyncio.gather(node.close(), log.close(), mirrorer.close())
