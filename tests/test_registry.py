@@ -309,7 +309,7 @@ async def test_list_tags(fake_cluster):
 
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
-            assert resp.status == 200
+            assert resp.status == 201
             hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
 
         await assert_manifest(hash, manifest)
@@ -333,7 +333,7 @@ async def test_delete_manifest(fake_cluster):
 
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
-            assert resp.status == 200
+            assert resp.status == 201
             hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
 
         await assert_manifest(hash, manifest)
@@ -365,7 +365,7 @@ async def test_full_manifest_round_trip(fake_cluster):
     logger.critical("Starting put")
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
-            assert resp.status == 200
+            assert resp.status == 201
             hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
     logger.critical("Finished put")
 

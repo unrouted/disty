@@ -20,6 +20,7 @@ class RegistryState(Reducer):
         self.state = {}
         self.manifests = {}
         self.blobs = {}
+        self.tags_for_hash = {}
 
     def is_blob_available(self, repository, hash):
         if hash not in self.blobs:
@@ -40,7 +41,7 @@ class RegistryState(Reducer):
         return True
 
     def get_tags(self, repository):
-        return list(self.state.get(repository, {}).keys())
+        return list(self.state[repository].keys())
 
     def get_tag(self, repository, tag):
         logger.debug("%s %s %s", self.state, repository, tag)
@@ -52,6 +53,9 @@ class RegistryState(Reducer):
         if entry["type"] == RegistryActions.HASH_TAGGED:
             repository = self.state.setdefault(entry["repository"], {})
             repository[entry["tag"]] = entry["hash"]
+
+            tags_for_hash = self.tags_for_hash.setdefault(entry["hash"], set())
+            tags_for_hash.add((entry["repository"], entry["tag"]))
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
             blob = self.blobs.setdefault(entry["hash"], set())
@@ -68,5 +72,10 @@ class RegistryState(Reducer):
         elif entry["type"] == RegistryActions.MANIFEST_DELETED:
             manifest = self.manifests.setdefault(entry["hash"], set())
             manifest.discard(entry["repository"])
+
+            for repository, tag in set(self.tags_for_hash.get(entry["hash"], [])):
+                if repository != entry["repository"]:
+                    continue
+                self.state.get(repository, {}).pop(tag, None)
 
         logger.critical("%r", self.state)

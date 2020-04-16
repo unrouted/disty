@@ -31,9 +31,10 @@ async def handle_v2_root(request):
 async def list_images_in_repository(request):
     registry_state = request.app["registry_state"]
     repository = request.match_info["repository"]
-    tags = registry_state.get_tags(repository)
 
-    if not tags:
+    try:
+        tags = registry_state.get_tags(repository)
+    except KeyError:
         raise exceptions.NameUnknown(repository=repository)
 
     return web.json_response({"name": repository, "tags": tags})
@@ -168,6 +169,11 @@ async def delete_manifest_by_hash(request):
     return web.Response(status=202, headers={"Content-Length": "0"})
 
 
+@routes.delete("/v2/{repository:[^{}]+}/manifests/{tag}")
+async def delete_manifest_by_ref(request):
+    raise exceptions.Unsupported()
+
+
 @routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
 async def head_blob(request):
     images_directory = request.app["images_directory"]
@@ -252,6 +258,8 @@ async def delete_blob_by_hash(request):
 
 @routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")
 async def start_upload(request):
+    images_directory = request.app["images_directory"]
+
     repository = request.match_info["repository"]
     mount_digest = request.query.get("mount", "")
     mount_repository = request.query.get("from", "")
@@ -299,9 +307,68 @@ async def start_upload(request):
 
     session_id = str(uuid.uuid4())
 
-    request.app["sessions"][session_id] = {
+    session = request.app["sessions"][session_id] = {
         "hasher": hashlib.sha256(),
     }
+
+    expected_digest = request.query.get("digest", None)
+    if expected_digest:
+        uploads = images_directory / "uploads"
+        if not uploads.exists():
+            os.makedirs(uploads)
+
+        upload_path = uploads / session_id
+
+        async with AIOFile(upload_path, "ab") as fp:
+            writer = Writer(fp)
+            chunk = await request.content.read(1024 * 1024)
+            while chunk:
+                await writer(chunk)
+                session["hasher"].update(chunk)
+                chunk = await request.content.read(1024 * 1024)
+            await fp.fsync()
+
+        hash = session["hasher"].hexdigest()
+        digest = f"sha256:{hash}"
+
+        if expected_digest != digest:
+            raise exceptions.BlobUploadInvalid()
+
+        blob_path = get_blob_path(images_directory, hash)
+        blob_dir = blob_path.parent
+        if not blob_dir.exists():
+            os.makedirs(blob_dir)
+
+        os.rename(upload_path, blob_path)
+
+        send_action = request.app["send_action"]
+        identifier = request.app["identifier"]
+
+        success = await send_action(
+            [
+                {
+                    "type": RegistryActions.BLOB_STORED,
+                    "hash": hash,
+                    "location": identifier,
+                },
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "hash": hash,
+                    "repository": repository,
+                },
+            ]
+        )
+
+        if not success:
+            raise exceptions.BlobUploadInvalid()
+
+        return web.Response(
+            status=201,
+            headers={
+                "Location": f"/v2/{repository}/blobs/{digest}",
+                "Docker-Content-Digest": digest,
+            },
+        )
 
     return web.json_response(
         {},
@@ -329,6 +396,25 @@ async def upload_chunk_by_patch(request):
         os.makedirs(uploads)
 
     upload_path = uploads / session_id
+
+    content_range = request.headers.get("Content-Range", "")
+    if content_range:
+        size = 0
+        if os.path.exists(upload_path):
+            size = os.path.getsize(upload_path)
+
+        content_range = request.headers["Content-Range"]
+        left, right = content_range.split("-")
+
+        if int(left) != size:
+            raise web.HTTPRequestRangeNotSatisfiable(
+                headers={
+                    "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
+                    "Range": f"0-{size}",
+                    "Content-Length": "0",
+                    "Blob-Upload-Session-ID": session_id,
+                }
+            )
 
     async with AIOFile(upload_path, "ab") as fp:
         writer = Writer(fp)
@@ -425,6 +511,12 @@ async def put_manifest(request):
     tag = request.match_info["tag"]
 
     manifest = await request.read()
+
+    try:
+        json.loads(manifest)
+    except json.decoder.JSONDecodeError:
+        raise exceptions.ManifestInvalid()
+
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
 
@@ -466,8 +558,12 @@ async def put_manifest(request):
     if not success:
         raise exceptions.ManifestInvalid()
 
-    return web.json_response(
-        {}, status=200, headers={"Docker-Content-Digest": prefixed_hash},
+    return web.Response(
+        status=201,
+        headers={
+            "Location": f"/v2/{repository}/manifests/{prefixed_hash}",
+            "Docker-Content-Digest": prefixed_hash,
+        },
     )
 
 

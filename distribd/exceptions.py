@@ -123,7 +123,7 @@ class Denied(JSONExceptionMixin, web.HTTPForbidden):
     message = "requested access to the resource is denied"
 
 
-class Unsupported(JSONExceptionMixin, web.HTTPMethodNotAllowed):
+class Unsupported(JSONExceptionMixin, web.HTTPBadRequest):
 
     """The operation was unsupported due to a missing implementation or invalid set of parameters."""
 
