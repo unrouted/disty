@@ -61,6 +61,10 @@ async def head_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
+    registry_state = request.app["registry_state"]
+    if not registry_state.is_manifest_available(repository, hash):
+        raise exceptions.ManifestUnknown(hash=hash)
+
     return await _manifest_head_by_hash(images_directory, repository, hash)
 
 
@@ -76,6 +80,10 @@ async def head_manifest_by_tag(request):
         hash = registry_state.get_tag(repository, tag)
     except KeyError:
         raise exceptions.ManifestUnknown(tag=tag)
+
+    registry_state = request.app["registry_state"]
+    if not registry_state.is_manifest_available(repository, hash):
+        raise exceptions.ManifestUnknown(hash=hash)
 
     return await _manifest_head_by_hash(images_directory, repository, hash)
 
@@ -106,6 +114,10 @@ async def get_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
+    registry_state = request.app["registry_state"]
+    if not registry_state.is_manifest_available(repository, hash):
+        raise exceptions.ManifestUnknown(hash=hash)
+
     return await _manifest_by_hash(images_directory, repository, hash)
 
 
@@ -122,7 +134,38 @@ async def get_manifest_by_tag(request):
     except KeyError:
         raise exceptions.ManifestUnknown(tag=tag)
 
+    registry_state = request.app["registry_state"]
+    if not registry_state.is_manifest_available(repository, hash):
+        raise exceptions.ManifestUnknown(hash=hash)
+
     return await _manifest_by_hash(images_directory, repository, hash)
+
+
+@routes.delete("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
+async def delete_manifest_by_hash(request):
+    registry_state = request.app["registry_state"]
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    if not registry_state.is_manifest_available(repository, hash):
+        raise exceptions.ManifestUnknown(hash=hash)
+
+    send_action = request.app["send_action"]
+
+    success = await send_action(
+        [
+            {
+                "type": RegistryActions.MANIFEST_DELETED,
+                "hash": hash,
+                "repository": repository,
+            },
+        ]
+    )
+
+    if not success:
+        raise exceptions.LeaderUnavailable()
+
+    return web.Response(status=202, headers={"Content-Length": "0"})
 
 
 @routes.head("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
@@ -177,6 +220,34 @@ async def get_blob_by_hash(request):
         },
         path=hash_path,
     )
+
+
+@routes.delete("/v2/{repository:[^{}]+}/blobs/sha256:{hash}")
+async def delete_blob_by_hash(request):
+    registry_state = request.app["registry_state"]
+
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    if not registry_state.is_blob_available(repository, hash):
+        raise exceptions.BlobUnknown(hash=hash)
+
+    send_action = request.app["send_action"]
+
+    success = await send_action(
+        [
+            {
+                "type": RegistryActions.BLOB_DELETED,
+                "hash": hash,
+                "repository": repository,
+            },
+        ]
+    )
+
+    if not success:
+        raise exceptions.LeaderUnavailable()
+
+    return web.Response(status=202, headers={"Content-Length": "0"})
 
 
 @routes.post("/v2/{repository:[^{}]+}/blobs/uploads/")

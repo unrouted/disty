@@ -269,6 +269,35 @@ async def test_put_blob_with_cross_mount(fake_cluster):
         await assert_blob(digest, repository="enipla")
 
 
+async def test_put_blob_and_delete(fake_cluster):
+    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            location = resp.headers["Location"]
+
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:{digest}", data=b"9080"
+        ) as resp:
+            assert resp.status == 201
+            location = "http://localhost:9080" + resp.headers["Location"]
+
+        async with session.head(location) as resp:
+            assert resp.status == 200
+
+        async with session.delete(location) as resp:
+            assert resp.status == 202
+
+        async with session.head(location) as resp:
+            assert resp.status == 404
+
+        async with session.delete(location) as resp:
+            assert resp.status == 404
+
+
 async def test_list_tags(fake_cluster):
     manifest = {
         "manifests": [],
@@ -291,6 +320,37 @@ async def test_list_tags(fake_cluster):
             ) as resp:
                 body = await resp.json()
                 assert body == {"name": "alpine", "tags": ["3.11"]}
+
+
+async def test_delete_manifest(fake_cluster):
+    manifest = {
+        "manifests": [],
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "schemaVersion": 2,
+    }
+
+    url = f"http://localhost:9080/v2/alpine/manifests/3.11"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.put(url, json=manifest) as resp:
+            assert resp.status == 200
+            hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+
+        await assert_manifest(hash, manifest)
+
+        manifest_url = f"http://localhost:9080/v2/alpine/manifests/sha256:{hash}"
+
+        async with session.head(manifest_url) as resp:
+            assert resp.status == 200
+
+        async with session.delete(manifest_url) as resp:
+            assert resp.status == 202
+
+        async with session.head(manifest_url) as resp:
+            assert resp.status == 404
+
+        async with session.delete(manifest_url) as resp:
+            assert resp.status == 404
 
 
 async def test_full_manifest_round_trip(fake_cluster):
