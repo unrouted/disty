@@ -39,6 +39,47 @@ async def list_images_in_repository(request):
     return web.json_response({"name": repository, "tags": tags})
 
 
+async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
+    manifest_path = get_manifest_path(images_directory, hash)
+    if not manifest_path.is_file():
+        raise exceptions.ManifestUnknown(hash=hash)
+
+    size = os.path.getsize(manifest_path)
+
+    return web.Response(
+        status=200,
+        headers={
+            "Content-Length": str(size),
+            "Docker-Content-Digest": f"sha256:{hash}",
+        },
+    )
+
+
+@routes.head("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
+async def head_manifest_by_hash(request):
+    images_directory = request.app["images_directory"]
+    repository = request.match_info["repository"]
+    hash = request.match_info["hash"]
+
+    return await _manifest_head_by_hash(images_directory, repository, hash)
+
+
+@routes.head("/v2/{repository:[^{}]+}/manifests/{tag}")
+async def head_manifest_by_tag(request):
+    registry_state = request.app["registry_state"]
+    images_directory = request.app["images_directory"]
+
+    repository = request.match_info["repository"]
+    tag = request.match_info["tag"]
+
+    try:
+        hash = registry_state.get_tag(repository, tag)
+    except KeyError:
+        raise exceptions.ManifestUnknown(tag=tag)
+
+    return await _manifest_head_by_hash(images_directory, repository, hash)
+
+
 async def _manifest_by_hash(images_directory, repository: str, hash: str):
     manifest_path = get_manifest_path(images_directory, hash)
     if not manifest_path.is_file():
@@ -47,10 +88,13 @@ async def _manifest_by_hash(images_directory, repository: str, hash: str):
     async with AIOFile(manifest_path, "r") as fp:
         manifest = json.loads(await fp.read())
 
+    size = os.path.getsize(manifest_path)
+
     return web.FileResponse(
         headers={
             "Docker-Content-Digest": f"sha256:{hash}",
             "Content-Type": manifest["mediaType"],
+            "Content-Length": str(size),
         },
         path=manifest_path,
     )
@@ -123,10 +167,13 @@ async def get_blob_by_hash(request):
     if not hash_path.is_file():
         raise exceptions.BlobUnknown(hash=hash)
 
+    size = os.path.getsize(hash_path)
+
     return web.FileResponse(
         headers={
             "Docker-Content-Digest": f"sha256:{hash}",
             "Content-Type": "application/octet-stream",
+            "Content-Length": str(size),
         },
         path=hash_path,
     )

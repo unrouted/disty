@@ -123,13 +123,17 @@ async def get_blob(port, hash):
 async def get_manifest(port, hash):
     for i in range(100):
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://localhost:{port}/v2/alpine/manifests/sha256:{hash}"
-            ) as resp:
+            url = f"http://localhost:{port}/v2/alpine/manifests/sha256:{hash}"
+
+            async with session.head(url) as resp:
                 if resp.status == 404:
                     # Eventual consistency...
                     await asyncio.sleep(0.1)
                     continue
+                assert resp.status == 200
+
+            async with session.get(url) as resp:
+                assert resp.status == 200
                 assert resp.headers["Docker-Content-Digest"] == f"sha256:{hash}"
                 return resp.headers["Content-Length"], await resp.json()
 
@@ -139,13 +143,17 @@ async def get_manifest(port, hash):
 async def get_manifest_byt_tag(port, tag):
     for i in range(100):
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://localhost:{port}/v2/alpine/manifests/{tag}"
-            ) as resp:
+            url = f"http://localhost:{port}/v2/alpine/manifests/{tag}"
+
+            async with session.head(url) as resp:
                 if resp.status == 404:
                     # Eventual consistency...
                     await asyncio.sleep(0.1)
                     continue
+                assert resp.status == 200
+
+            async with session.get(url) as resp:
+                assert resp.status == 200
                 digest = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
                 return digest, await resp.json()
 
