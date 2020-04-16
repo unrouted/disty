@@ -37,6 +37,17 @@ async def list_images_in_repository(request):
     except KeyError:
         raise exceptions.NameUnknown(repository=repository)
 
+    tags.sort()
+
+    last = request.query.get("last", None)
+    if last:
+        start = tags.index(last)
+        tags = tags[start:]
+
+    n = request.query.get("n", None)
+    if n:
+        tags = tags[: int(n)]
+
     return web.json_response({"name": repository, "tags": tags})
 
 
