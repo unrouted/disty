@@ -9,6 +9,7 @@ from aiohttp import web
 
 from . import exceptions
 from .actions import RegistryActions
+from .analyzer import analyze
 from .utils.registry import get_blob_path, get_manifest_path
 from .utils.web import run_server
 
@@ -523,10 +524,8 @@ async def put_manifest(request):
 
     manifest = await request.read()
 
-    try:
-        json.loads(manifest)
-    except json.decoder.JSONDecodeError:
-        raise exceptions.ManifestInvalid()
+    # This makes sure the manifest is somewhat valid
+    analyze(request.headers.get("Content-Type", ""), manifest)
 
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
