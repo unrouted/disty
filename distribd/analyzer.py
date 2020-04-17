@@ -1,7 +1,14 @@
 import json
+import logging
+import os
+import pathlib
+
+from jsonschema import ValidationError, validate
 
 from .exceptions import ManifestInvalid
 from .utils.dispatch import Dispatcher
+
+logger = logging.getLogger(__name__)
 
 analyzers = Dispatcher()
 
@@ -25,22 +32,10 @@ def distribution_manifest_v2(manifest):
     https://github.com/docker/distribution/blob/master/docs/spec/manifest-v2-2.md#image-manifest-field-descriptions
     """
     dependencies = set()
-
-    if "config" not in manifest:
-        raise ManifestInvalid(reason="no_config")
-
-    if "digest" not in manifest["config"]:
-        raise ManifestInvalid(reason="no_config_digest")
-
-    if "layers" not in manifest:
-        raise ManifestInvalid(reason="no_layers")
-
-    dependencies.add(manifest["config"["digest"]])
+    dependencies.add(manifest["config"]["digest"])
 
     for layer in manifest["layers"]:
-        if "digest" not in layer:
-            raise ManifestInvalid(reason="layer_missing_digest")
-        dependencies.add(manifest["digest"])
+        dependencies.add(layer["digest"])
 
     return dependencies
 
@@ -67,10 +62,10 @@ def manifest_v1_json(manifest):
 
     https://github.com/moby/moby/blob/master/image/spec/v1.md#image-json-description
     """
-    return []
+    raise ManifestInvalid(reason="legacy_format_not_supported")
 
 
-@analyzers.register("application/vnd.docker.distribution.manifest.v1+json")
+@analyzers.register("application/vnd.docker.plugin.v1+json")
 def plugin_json(manifest):
     """
     application/vnd.docker.plugin.v1+json: Plugin config JSON
@@ -78,6 +73,21 @@ def plugin_json(manifest):
     https://docs.docker.com/engine/extend/config/
     """
     return []
+
+
+def load_schemas():
+    schemas = {}
+
+    schema_path = pathlib.Path(__file__).parent / "schemas"
+    for path in os.listdir(schema_path):
+        sub_type = path.rsplit(".", 1)[0]
+        content_type = f"application/{sub_type}"
+
+        logger.debug("Loading schema %s", path)
+        with open(schema_path / path, "r") as fp:
+            schemas[content_type] = json.load(fp)
+
+    return schemas
 
 
 def analyze(content_type, manifest):
@@ -89,4 +99,17 @@ def analyze(content_type, manifest):
     if content_type not in analyzers:
         return []
 
+    if content_type not in schemas:
+        raise ManifestInvalid(reason="no_schema_for_this_type")
+
+    schema = schemas[content_type]
+
+    try:
+        validate(instance=parsed, schema=schema)
+    except ValidationError as e:
+        raise ManifestInvalid(reason="schema_check_fail")
+
     return analyzers[content_type](parsed)
+
+
+schemas = load_schemas()
