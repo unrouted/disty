@@ -115,6 +115,9 @@ class Mirrorer(Reducer):
                 )
                 return
 
+        except asyncio.CancelledError:
+            pass
+
         except Exception:
             logger.exception("Unhandled error whilst processing blob download %r", hash)
 

@@ -371,6 +371,35 @@ async def test_list_tags(fake_cluster):
                 assert body == {"name": "alpine", "tags": ["3.11"]}
 
 
+async def test_list_tags_pagination(fake_cluster):
+    manifest = {
+        "manifests": [],
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "schemaVersion": 2,
+    }
+
+    async with aiohttp.ClientSession() as session:
+        for tag in ("3.10", "3.11", "3.12"):
+            url = f"http://localhost:9080/v2/alpine/manifests/{tag}"
+
+            async with session.put(url, json=manifest) as resp:
+                assert resp.status == 201
+                hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+
+        await assert_manifest(hash, manifest)
+
+        for port in (9080, 9081, 9082):
+            async with session.get(
+                f"http://localhost:{port}/v2/alpine/tags/list?n=1"
+            ) as resp:
+                body = await resp.json()
+                assert body == {"name": "alpine", "tags": ["3.10"]}
+                assert (
+                    resp.headers["Link"]
+                    == '/v2/alpine/tags/list?n=1&last=3.10; rel="next"'
+                )
+
+
 async def test_delete_manifest(fake_cluster):
     manifest = {
         "manifests": [],

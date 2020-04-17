@@ -6,6 +6,7 @@ import uuid
 
 from aiofile import AIOFile, Writer
 from aiohttp import web
+from yarl import URL
 
 from . import exceptions
 from .actions import RegistryActions
@@ -40,16 +41,31 @@ async def list_images_in_repository(request):
 
     tags.sort()
 
+    include_link = False
+
     last = request.query.get("last", None)
     if last:
         start = tags.index(last)
         tags = tags[start:]
 
     n = request.query.get("n", None)
-    if n:
-        tags = tags[: int(n)]
+    if n is not None:
+        n = int(n)
+        if n < len(tags):
+            include_link = True
 
-    return web.json_response({"name": repository, "tags": tags})
+        tags = tags[:n]
+
+    headers = {}
+
+    if include_link:
+        url = URL(f"/v2/{repository}/tags/list")
+        if n is not None:
+            url = url.update_query({"n": str(n)})
+        url = url.update_query({"last": tags[-1]})
+        headers["Link"] = f'{url}; rel="next"'
+
+    return web.json_response({"name": repository, "tags": tags}, headers=headers)
 
 
 async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
