@@ -106,7 +106,7 @@ def analyze(content_type, manifest):
 
     try:
         validate(instance=parsed, schema=schema)
-    except ValidationError as e:
+    except ValidationError:
         raise ManifestInvalid(reason="schema_check_fail")
 
     return analyzers[content_type](parsed)

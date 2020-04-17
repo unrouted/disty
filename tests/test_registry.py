@@ -258,14 +258,10 @@ async def test_put_blob_with_cross_mount(fake_cluster):
         ) as resp:
             assert resp.status == 202
 
-        async with session.delete(
-            f"http://localhost:9080{location}"
-        ) as resp:
+        async with session.delete(f"http://localhost:9080{location}") as resp:
             assert resp.status == 204
 
-        async with session.delete(
-            f"http://localhost:9080{location}"
-        ) as resp:
+        async with session.delete(f"http://localhost:9080{location}") as resp:
             assert resp.status == 404
 
         async with session.put(
@@ -300,6 +296,26 @@ async def test_put_blob_and_cancel(fake_cluster):
             assert resp.headers["Location"] == f"/v2/enipla/blobs/sha256:{digest}"
 
         await assert_blob(digest, repository="enipla")
+
+
+async def test_put_blob_and_get_status(fake_cluster):
+    async with aiohttp.ClientSession() as session:
+        # First upload an ordinary blob
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
+            location = resp.headers["Location"]
+
+        async with session.patch(
+            f"http://localhost:9080{location}", data=b"9080"
+        ) as resp:
+            assert resp.status == 202
+
+        async with session.get(f"http://localhost:9080{location}") as resp:
+            assert resp.status == 204
+            assert resp.headers["Range"] == "0-4"
 
 
 async def test_put_blob_and_delete(fake_cluster):
