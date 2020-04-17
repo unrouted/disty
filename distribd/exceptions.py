@@ -27,6 +27,14 @@ class BlobUnknown(JSONExceptionMixin, web.HTTPNotFound):
     message = "blob unknown to registry"
 
 
+class BlobUploadUnknown(JSONExceptionMixin, web.HTTPNotFound):
+
+    """This error MAY be returned when a blob is unknown to the registry in a specified repository. This can be returned with a standard get or if a manifest references an unknown layer during upload."""
+
+    code = "BLOB_UPLOAD_UNKNOWN"
+    message = "blob upload unknown to registry"
+
+
 class BlobUploadInvalid(JSONExceptionMixin, web.HTTPBadRequest):
 
     """The blob upload encountered an error and can no longer proceed."""

@@ -253,6 +253,39 @@ async def test_put_blob_with_cross_mount(fake_cluster):
             assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
             location = resp.headers["Location"]
 
+        async with session.patch(
+            f"http://localhost:9080{location}", data=b"9080"
+        ) as resp:
+            assert resp.status == 202
+
+        async with session.delete(
+            f"http://localhost:9080{location}"
+        ) as resp:
+            assert resp.status == 204
+
+        async with session.delete(
+            f"http://localhost:9080{location}"
+        ) as resp:
+            assert resp.status == 404
+
+        async with session.put(
+            f"http://localhost:9080{location}?digest=sha256:{digest}", data=b"9080"
+        ) as resp:
+            assert resp.status == 400
+
+
+async def test_put_blob_and_cancel(fake_cluster):
+    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+
+    async with aiohttp.ClientSession() as session:
+        # First upload an ordinary blob
+        async with session.post(
+            "http://localhost:9080/v2/alpine/blobs/uploads/"
+        ) as resp:
+            assert resp.status == 202
+            assert resp.headers["Location"].startswith("/v2/alpine/blobs/uploads/")
+            location = resp.headers["Location"]
+
         async with session.put(
             f"http://localhost:9080{location}?digest=sha256:{digest}", data=b"9080"
         ) as resp:

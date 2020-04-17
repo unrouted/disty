@@ -516,6 +516,26 @@ async def upload_finish(request):
     )
 
 
+@routes.delete("/v2/{repository:[^{}]+}/blobs/uploads/{session_id}")
+async def cancel_upload(request):
+    images_directory = request.app["images_directory"]
+    session_id = request.match_info["session_id"]
+
+    upload_path = images_directory / "uploads" / session_id
+    if not upload_path.exists():
+        raise exceptions.BlobUploadUnknown()
+
+    try:
+        upload_path.unlink()
+    except:
+        pass
+
+    return web.Response(
+        status=204,
+        headers={"Content-Length": "0"}
+    )
+
+
 @routes.put("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def put_manifest(request):
     images_directory = request.app["images_directory"]
