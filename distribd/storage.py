@@ -8,7 +8,7 @@ from aiofile import AIOFile, Writer
 logger = logging.getLogger(__name__)
 
 
-class Log:
+class Storage:
     def __init__(self, path):
         self._path = path
         self._term_path = path.parent / "term"
