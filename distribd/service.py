@@ -57,7 +57,7 @@ async def main(argv=None):
 
     try:
         await asyncio.gather(
-            run_raft_forever(machine, raft_port),
+            run_raft_forever(machine, storage, raft_port),
             run_registry(
                 machine.identifier,
                 registry_state,

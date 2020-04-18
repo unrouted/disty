@@ -5,6 +5,8 @@ import os
 
 from aiofile import AIOFile, Writer
 
+from .machine import Machine
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,17 @@ class Storage:
 
         # List of (commit_index, event)
         self._waiters = []
+
+    async def step(self, machine: Machine):
+        aws = []
+
+        if machine.term > self.current_term:
+            aws.append(self.set_term(machine.term))
+
+        if not aws:
+            return
+
+        await asyncio.gather(aws)
 
     async def set_term(self, term):
         async with self._commit_lock:

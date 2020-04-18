@@ -53,7 +53,7 @@ async def send_message(session: aiohttp.ClientSession, message: Message):
             logger.debug("Message rejected")
 
 
-async def process_queue(machine: Machine, queue: asyncio.Queue):
+async def process_queue(machine: Machine, storage, queue: asyncio.Queue):
     async with aiohttp.ClientSession() as session:
         while True:
             msg = await queue.get()
@@ -61,7 +61,7 @@ async def process_queue(machine: Machine, queue: asyncio.Queue):
             try:
                 machine.step(Msg.from_dict(msg))
 
-                # await storage.step(machine)
+                await storage.step(machine)
 
                 if machine.outbox:
                     aws = []
@@ -102,12 +102,12 @@ async def ticker(machine, queue):
         await asyncio.sleep(0.1)
 
 
-async def run_raft_forever(machine: Machine, port: int):
+async def run_raft_forever(machine: Machine, storage, port: int):
     queue = asyncio.Queue()
 
     ticker_fn = ticker(machine, queue)
 
-    queue_worker = process_queue(machine, queue)
+    queue_worker = process_queue(machine, storage, queue)
 
     server = run_server(
         "127.0.0.1",
