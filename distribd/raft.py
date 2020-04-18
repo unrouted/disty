@@ -5,8 +5,8 @@ import aiohttp
 from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
 
-from .config import config
-from .machine import Machine, Message
+from . import config
+from .machine import Machine, Message, Msg
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ async def status(request):
 
 
 async def send_message(session: aiohttp.ClientSession, message: Message):
-    url = config[message.destination]["raft_url"]
+    url = config.config[message.destination]["raft_url"]
     body = message.to_dict()
 
     async with session.post(f"{url}/rpc", json=body) as resp:
@@ -58,34 +58,64 @@ async def process_queue(machine: Machine, queue: asyncio.Queue):
         while True:
             msg = await queue.get()
 
-            machine.step(Message(**msg))
+            try:
+                machine.step(Msg.from_dict(msg))
 
-            # await storage.step(machine)
+                # await storage.step(machine)
 
-            if machine.outbox:
-                aws = []
-                for message in machine.outbox:
-                    aws.append(send_message(session, message))
+                if machine.outbox:
+                    aws = []
+                    for message in machine.outbox:
+                        aws.append(send_message(session, message))
 
-                for future in aws.as_completed(aws):
-                    try:
-                        await future()
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        logger.exception("Unhandled error while sending message")
+                    for future in asyncio.as_completed(aws):
+                        try:
+                            await future
 
-                machine.outbox = []
+                        except asyncio.CancelledError:
+                            raise
+
+                        except aiohttp.ClientError:
+                            # Message wasn't delivered - client broken or netsplit
+                            pass
+
+                        except Exception:
+                            logger.exception("Unhandled error while sending message")
+
+                    machine.outbox = []
+            except Exception:
+                logger.exception("Unhandled error processing incoming message")
 
             queue.task_done()
+
+
+async def ticker(machine, queue):
+    while True:
+        await queue.put(
+            {
+                "type": str(Message.Tick),
+                "source": machine.identifier,
+                "destination": machine.identifier,
+                "term": 0,
+            }
+        )
+        await asyncio.sleep(0.1)
 
 
 async def run_raft_forever(machine: Machine, port: int):
     queue = asyncio.Queue()
 
-    queue_worker = asyncio.ensure_future(process_queue(machine, queue))
-    server = asyncio.ensure_future(
-        run_server("127.0.0.1", port, routes, queue=queue, machine=machine)
+    ticker_fn = ticker(machine, queue)
+
+    queue_worker = process_queue(machine, queue)
+
+    server = run_server(
+        "127.0.0.1",
+        port,
+        routes,
+        access_log_class=RaftAccessLog,
+        queue=queue,
+        machine=machine,
     )
 
-    return await asyncio.gather(server, queue_worker)
+    return await asyncio.gather(ticker_fn, server, queue_worker)

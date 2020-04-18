@@ -15,7 +15,7 @@ from . import exceptions
 logger = logging.getLogger(__name__)
 
 
-class Message(enum.Enum):
+class Message(str, enum.Flag):
 
     Tick = "Tick"
     Vote = "Vote"
@@ -69,11 +69,27 @@ class Msg:
     def to_dict(self):
         msg = {
             "source": self.source,
-            "type": str(self.message_type),
+            "destination": self.destination,
+            "type": str(self.type),
             "term": self.term,
         }
         msg.update(self.kwargs)
         return msg
+
+    @classmethod
+    def from_dict(cls, message: dict):
+        source = message.pop("source")
+        destination = message.pop("destination")
+        message_type = getattr(Message, message.pop("type").split(".")[1])
+        term = message.pop("term")
+
+        return cls(
+            source=source,
+            destination=destination,
+            message_type=message_type,
+            term=term,
+            **message,
+        )
 
 
 class Peer:
@@ -101,7 +117,6 @@ class Log:
         pass
 
     def append(self, entry):
-        print("append")
         self._log.append(entry)
 
     def __getitem__(self, key):
@@ -137,6 +152,9 @@ class Machine:
 
         # volatile state
         self.commit_index = 0
+
+    def start(self):
+        self._become_follower(self.term)
 
     def add_peer(self, identifier):
         peer = Peer(identifier)
@@ -213,7 +231,7 @@ class Machine:
 
         for peer in self.peers.values():
             # FIXME: What about the rest of the payload?
-            self.send(peer, Message.PreVote, self.term + 1)
+            self.send(peer, Message.PreVote, self.term + 1, index=self.log.last_index)
 
     def _become_candidate(self):
         logger.debug("Became candidate")
@@ -224,7 +242,7 @@ class Machine:
 
         for peer in self.peers.values():
             # FIXME: What about the rest of the payload?
-            self.send(peer, Message.Vote, self.term)
+            self.send(peer, Message.Vote, self.term, index=self.log.last_index)
 
     def _become_leader(self):
         logger.debug("Became leader")
@@ -250,17 +268,14 @@ class Machine:
     def can_vote(self, message):
         # We have already voted, but for someone else
         if self.voted_for and self.voted_for == message.source:
-            print("vote for same")
             return True
 
         # We have not voted, but we think there is a leader
         if not self.voted_for and not self.obedient:
-            print("not obedient")
             return True
 
         # FIXME: Is last_term appropriate here???
         if message.type == Message.PreVote and message.term > self.term:
-            print("later term so prevoting")
             return True
 
         return False
@@ -298,8 +313,8 @@ class Machine:
         return min(len(ours), len(theirs))
 
     def step(self, message):
-        logger.debug(message)
-        print(message.__dict__)
+        if message.type != Message.Tick:
+            logger.debug(message.__dict__)
 
         self.step_term(message)
 
@@ -307,7 +322,6 @@ class Machine:
             return
 
         if message.type == Message.AppendEntries:
-            print("Processing AppendEntries")
             if message.prev_index > self.log.last_index:
                 logger.debug(
                     "Leader assumed we had log entry %d but we do not",
@@ -374,33 +388,36 @@ class Machine:
             # If we have a leader we should ignore PreVote and Vote
             if message.type in (Message.PreVote, Message.Vote):
                 if self.leader is not None and self.leader_active:
+                    logger.debug("PreVote: sticky leader")
                     return
 
             # Never change term in response to prevote
             if message.type == Message.PreVote:
+                logger.debug("PreVote: Not bumping term")
                 return
 
             if message.type == Message.PreVoteReply and not message.reject:
                 # We send pre-votes with a future term, when we become a
                 # candidate we will actually apply it
+                logger.debug("PreVote: not rejected; not bumping")
                 return
 
             self._become_follower(message.term, message.source)
 
         elif message.term < self.term:
             if message.type == Message.PreVote:
-                #  Need to send a reject
-                pass
+                self.reply(message, term=self.term, reject=True)
+
+            logger.debug("Message from old term")
             return
 
     def step_voting(self, message):
-        if message.type not in (Message.Vote, Message.PreVote):
+        if message.type != Message.Vote and message.type != Message.PreVote:
             return
 
         can_vote = self.can_vote(message)
         peer_current = self.peer_current(message.index, message.term)
 
-        print(can_vote, peer_current)
         if not can_vote or not peer_current:
             logger.debug("Vote for %s rejected")
             self.reply(message, self.term, reject=True)

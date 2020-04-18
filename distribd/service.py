@@ -47,6 +47,8 @@ async def main(argv=None):
         if identifier != other_identifier:
             machine.add_peer(other_identifier)
 
+    machine.start()
+
     registry_state = RegistryState()
     log.add_reducer(registry_state.dispatch_entries)
 
