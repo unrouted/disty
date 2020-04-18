@@ -9,9 +9,10 @@ import verboselogs
 
 from . import config
 from .log import Log
+from .machine import Machine
 from .mirror import Mirrorer
 from .prometheus import run_prometheus
-from .raft import Node
+from .raft import run_raft_forever
 from .registry import run_registry
 from .state import RegistryState
 
@@ -40,33 +41,33 @@ async def main(argv=None):
     log = Log(images_directory / "journal")
     await log.open()
 
-    node = Node(identifier, log)
+    machine = Machine(identifier)
 
     for other_identifier, detail in config.config.items():
         if identifier != other_identifier:
-            node.add_member(other_identifier)
+            machine.add_peer(other_identifier)
 
     registry_state = RegistryState()
     log.add_reducer(registry_state.dispatch_entries)
 
-    mirrorer = Mirrorer(images_directory, node.identifier, node.send_action)
+    mirrorer = Mirrorer(images_directory, machine.identifier, lambda x: None)
     log.add_reducer(mirrorer.dispatch_entries)
 
     try:
         await asyncio.gather(
-            node.run_forever(raft_port),
+            run_raft_forever(machine, raft_port),
             run_registry(
-                node.identifier,
+                machine.identifier,
                 registry_state,
-                node.send_action,
+                lambda x: None,
                 images_directory,
                 registry_port,
             ),
             run_prometheus(
-                node.identifier,
+                machine.identifier,
                 registry_state,
                 images_directory,
-                node,
+                machine,
                 prometheus_port,
             ),
         )
@@ -75,4 +76,4 @@ async def main(argv=None):
         pass
 
     finally:
-        await asyncio.gather(node.close(), log.close(), mirrorer.close())
+        await asyncio.gather(log.close(), mirrorer.close())
