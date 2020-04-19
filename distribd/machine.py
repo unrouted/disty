@@ -338,6 +338,8 @@ class Machine:
             )
             return False
 
+        return True
+
     def step(self, message):
         self.log.truncate_index = None
 
@@ -352,6 +354,7 @@ class Machine:
         if message.type == Message.AppendEntries:
             if not self.is_append_entries_valid(message):
                 self.reply(message, self.term, reject=True)
+                return
 
             self._reset_election_tick()
             self.obedient = True

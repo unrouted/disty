@@ -22,6 +22,8 @@ examples = [
             [(1, {"type": "consensus"}), (3, {})],
             # Consisentency but not immediately
             [(1, {"type": "consensus"}), (4, {})],
+            # Consisentency but not immediately
+            [(1, {"type": "consensus"}), (5, {})],
         ],
     ),
     # Example 2 - 1 node has more entries than other nodes
