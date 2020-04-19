@@ -5,7 +5,7 @@ import aiohttp
 from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
 
-from . import config
+from . import config, exceptions
 from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
 from .storage import Storage
@@ -30,24 +30,28 @@ class Raft:
 
     async def append(self, entries):
         if self.machine.state == NodeState.LEADER:
-            f = asyncio.Future()
-            await self.queue.put(
-                (
-                    {
-                        "type": str(Message.AddEntries),
-                        "source": self.machine.identifier,
-                        "destination": self.machine.identifier,
-                        "term": 0,
-                        "entries": entries,
-                    },
-                    f,
-                )
-            )
-            index, term = await f
+            index, term = await self._append_local(entries)
         else:
             index, term = await self._append_remote(entries)
 
         return await self.reducers.wait_for_commit(term, index)
+
+    async def _append_local(self, entries):
+        f = asyncio.Future()
+        await self.queue.put(
+            (
+                {
+                    "type": str(Message.AddEntries),
+                    "source": self.machine.identifier,
+                    "destination": self.machine.identifier,
+                    "term": 0,
+                    "entries": entries,
+                },
+                f,
+            )
+        )
+        await f
+        return self.machine.log.last_index, self.machine.log.last_term
 
     async def close(self):
         self._closed = True
@@ -160,7 +164,9 @@ class HttpRaft(Raft):
 
     async def _receive_append(self, request):
         entries = await request.json()
-        index, term = await self.append(entries)
+        if self.machine.state != NodeState.LEADER:
+            raise exceptions.LeaderUnavailable()
+        index, term = await self._append_local(entries)
         return web.json_response({"index": index, "term": term})
 
     async def _receive_status(self, request):
