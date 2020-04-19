@@ -103,18 +103,27 @@ class Log:
     def __init__(self):
         self._log = []
 
+        self.snapshot = None
+        self.snapshot_index = 0
+        self.snapshot_term = 0
+
+    def load(self, log):
+        self._log = []
+        self._log.extend(log)
+
     @property
     def last_index(self):
-        return len(self._log)
+        return self.snapshot_index + len(self._log)
 
     @property
     def last_term(self):
-        if not self.last_index:
-            return 0
+        if not self._log:
+            return self.snapshot_term
         return self._log[-1][0]
 
     def truncate(self, index):
-        pass
+        self.truncate_index = index
+        self._log = self._log[: self.truncate_index]
 
     def append(self, entry):
         self._log.append(entry)
@@ -152,6 +161,7 @@ class Machine:
 
         # volatile state
         self.commit_index = 0
+        self.truncate_index = 0
 
     def start(self):
         self._become_follower(self.term)
@@ -312,7 +322,25 @@ class Machine:
                 return i
         return min(len(ours), len(theirs))
 
+    def is_append_entries_valid(self, message: Msg):
+        if message.prev_index > self.log.last_index:
+            logger.debug(
+                "Leader assumed we had log entry %d but we do not", message.prev_index,
+            )
+            return False
+
+        if message.prev_index and self.log[message.prev_index][0] != message.prev_term:
+            logger.warning(
+                "Log not valid - mismatched terms %d and %d at index %d",
+                message.prev_term,
+                self.log[message.prev_index][0],
+                message.prev_index,
+            )
+            return False
+
     def step(self, message):
+        self.log.truncate_index = None
+
         if message.type != Message.Tick:
             logger.debug(message.__dict__)
 
@@ -322,24 +350,8 @@ class Machine:
             return
 
         if message.type == Message.AppendEntries:
-            if message.prev_index > self.log.last_index:
-                logger.debug(
-                    "Leader assumed we had log entry %d but we do not",
-                    message.prev_index,
-                )
-                return False
-
-            if (
-                message.prev_index
-                and self.log[message.prev_index][0] != message.prev_term
-            ):
-                logger.warning(
-                    "Log not valid - mismatched terms %d and %d at index %d",
-                    message.prev_term,
-                    self.log[message.prev_index][0],
-                    message.prev_index,
-                )
-                return False
+            if not self.is_append_entries_valid(message):
+                self.reply(message, self.term, reject=True)
 
             self._reset_election_tick()
             self.obedient = True
@@ -355,7 +367,7 @@ class Machine:
 
             if self.log.last_index > prev_index:
                 logger.error("Need to truncate log to recover quorum")
-                if not self.log.rollback(prev_index):
+                if not self.log.truncate(prev_index):
                     return False
 
             for entry in entries:

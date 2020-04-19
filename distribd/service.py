@@ -42,6 +42,8 @@ async def main(argv=None):
     await storage.open()
 
     machine = Machine(identifier)
+    machine.term = storage.current_term
+    machine.log.load(storage.log)
 
     for other_identifier, detail in config.config.items():
         if identifier != other_identifier:

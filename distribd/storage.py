@@ -32,7 +32,7 @@ class Storage:
         self._fp: AIOFile = None
         self._writer: Writer = None
 
-        self._log = []
+        self.log = []
 
         # Functions to call with changes that are safe to apply to replicated data structures.
         self._callbacks = []
@@ -44,14 +44,20 @@ class Storage:
         aws = []
 
         if machine.term > self.current_term:
-            aws.append(self.set_term(machine.term))
+            aws.append(self.write_term(machine.term))
+
+        if machine.log.snapshot_index != self.snapshot_index:
+            aws.append(self.write_snapshot(machine.term))
+
+        if machine.truncate_index or machine.log.last_index != self.last_index:
+            aws.append(self.write_journal(machine))
 
         if not aws:
             return
 
-        await asyncio.gather(aws)
+        await asyncio.gather(*aws)
 
-    async def set_term(self, term):
+    async def write_term(self, term):
         async with self._commit_lock:
             if term <= self.current_term:
                 return
@@ -63,18 +69,32 @@ class Storage:
 
             self.current_term = term
 
+    async def write_snapshot(self, snapshot_index, snapshot_term, snapshot):
+        # FIXME: Write to disk
+        self.snapshot = snapshot
+        self.snapshot_index = snapshot_index
+        self.snapshot_term
+
+    async def write_journal(self, machine: Machine):
+        if machine.log.truncate_index is not None:
+            await self.rollback(machine.log.truncate_index)
+
+        while self.last_index < machine.log.last_index:
+            term, entry = machine.log[self.last_index + 1]
+            await self.commit(term, entry)
+
     def add_reducer(self, callback):
         self._callbacks.append(callback)
 
     @property
     def last_term(self):
-        if self._log:
-            return self._log[-1][0]
+        if self.log:
+            return self.log[-1][0]
         return self.snapshot_term
 
     @property
     def last_index(self):
-        return self.snapshot_index + len(self._log)
+        return self.snapshot_index + len(self.log)
 
     def read_term(self):
         if not os.path.exists(self._term_path):
@@ -87,7 +107,7 @@ class Storage:
         if not os.path.exists(self._path):
             return
 
-        self._log = []
+        self.log = []
 
         with open(self._path, "r") as fp:
             for i, line in enumerate(fp):
@@ -98,13 +118,13 @@ class Storage:
                     # FIXME: Take a copy of journal at truncate at this point?
                     return
 
-                self._log.append(tuple(payload))
+                self.log.append(tuple(payload))
 
         logger.info("Restored to term: %d index: %d", self.last_term, self.last_index)
 
         if self.last_term > self.current_term:
             logger.warning("Journal is ahead of persisted term - fixing")
-            await self.set_term(self.last_term)
+            await self.write_term(self.last_term)
 
     async def open(self):
         self.read_term()
@@ -135,11 +155,11 @@ class Storage:
             await self.close()
 
             while self.last_index > last_index:
-                del self._log[-1]
+                del self.log[-1]
 
             async with AIOFile(self._path, "w") as fp:
                 writer = Writer(fp)
-                for row in self._log:
+                for row in self.log:
                     await writer(json.dumps(row) + "\n")
                 await fp.fsync()
 
@@ -157,7 +177,7 @@ class Storage:
             await self._writer(json.dumps(record) + "\n")
             await self._fp.fsync()
 
-            self._log.append(record)
+            self.log.append(record)
 
         logger.debug("Committed term %d index %d", self.last_term, self.last_index)
 
@@ -165,7 +185,7 @@ class Storage:
         """Indexes up to `index` can now be applied to the state machine."""
         logger.critical("Safe to apply log up to index %d", index)
 
-        entries = self._log[self.applied_index : index]
+        entries = self.log[self.applied_index : index]
 
         for callback in self._callbacks:
             callback(entries)
@@ -188,9 +208,9 @@ class Storage:
                 key.stop - 1 if key.stop else None,
                 key.step,
             )
-            return self._log[new_slice]
+            return self.log[new_slice]
 
-        return self._log[key - 1]
+        return self.log[key - 1]
 
     async def wait_for_commit(self, term, index):
         ev = asyncio.Event()
