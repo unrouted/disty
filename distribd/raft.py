@@ -138,7 +138,7 @@ class HttpRaft(Raft):
             "status": self.machine.state,
             "log_last_index": self.machine.log.last_index,
             "log_last_term": self.machine.log.last_term,
-            # "applied_index": self.machine.log.applied_index,
+            "applied_index": self.reducers.applied_index,
             "committed_index": self.machine.commit_index,
             "consensus": self.machine.leader_active,
         }
