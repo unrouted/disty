@@ -11,7 +11,7 @@ from . import config
 from .machine import Machine
 from .mirror import Mirrorer
 from .prometheus import run_prometheus
-from .raft import build_raft
+from .raft import HttpRaft
 from .registry import run_registry
 from .state import RegistryState
 from .storage import Storage
@@ -51,21 +51,21 @@ async def main(argv=None):
 
     machine.start()
 
-    raft_runner, append = build_raft(machine=machine, storage=storage, port=raft_port,)
+    raft = HttpRaft(machine, storage)
 
     registry_state = RegistryState()
     storage.add_reducer(registry_state.dispatch_entries)
 
-    mirrorer = Mirrorer(images_directory, machine.identifier, append)
+    mirrorer = Mirrorer(images_directory, machine.identifier, raft.append)
     storage.add_reducer(mirrorer.dispatch_entries)
 
     try:
         await asyncio.gather(
-            raft_runner(),
+            raft.run_forever(raft_port),
             run_registry(
                 machine.identifier,
                 registry_state,
-                append,
+                raft.append,
                 images_directory,
                 registry_port,
             ),
