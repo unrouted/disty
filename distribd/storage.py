@@ -71,6 +71,12 @@ class Storage:
             await self.rollback(machine.log.truncate_index)
 
         while self.last_index < machine.log.last_index:
+            logger.critical(
+                "write_journal %s %s %s",
+                machine.identifier,
+                machine.log.last_index,
+                self.last_index,
+            )
             term, entry = machine.log[self.last_index + 1]
             await self.commit(term, entry)
 

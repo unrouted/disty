@@ -12,6 +12,9 @@ class RegistryActions(str, enum.Enum):
     # Associate a blob hash with a repository
     BLOB_MOUNTED = "blob-mounted"
 
+    # Associate a blob hash with a repository
+    BLOB_UNMOUNTED = "blob-unmounted"
+
     # A given sha256 hash was stored on a node
     MANIFEST_STORED = "manifest-stored"
 
@@ -20,6 +23,9 @@ class RegistryActions(str, enum.Enum):
 
     # Associate a manifest hash with a repository.
     MANIFEST_MOUNTED = "manifest-mounted"
+
+    # Associate a manifest hash with a repository.
+    MANIFEST_UNMOUNTED = "manifest-unmounted"
 
     # A given sha256 manifest hash was tagged with a repository and a tag
     HASH_TAGGED = "hash-tagged"

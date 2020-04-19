@@ -29,7 +29,7 @@ class Reducers:
 
         logger.critical("Safe to apply log up to index %d", machine.commit_index)
 
-        entries = self.machine.log[self.applied_index : machine.commit_index]
+        entries = self.machine.log[self.applied_index : machine.commit_index + 1]
 
         for callback in self._callbacks:
             callback(entries)
@@ -46,7 +46,14 @@ class Reducers:
         self.applied_index = machine.commit_index
 
     async def wait_for_commit(self, term, index):
+        logger.critical("Waiting for commit %s %s", term, index)
         ev = asyncio.Event()
         self._waiters.append((index, ev))
         await ev.wait()
-        return self[index][0] == term
+        logger.critical(
+            "Commit availalbe for waiter %s %s %s",
+            term,
+            index,
+            self.machine.log[index][0] == term,
+        )
+        return self.machine.log[index][0] == term

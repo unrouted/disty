@@ -125,6 +125,7 @@ class Log:
     def truncate(self, index):
         self.truncate_index = index
         self._log = self._log[: self.truncate_index]
+        return True
 
     def append(self, entry):
         self._log.append(entry)
@@ -227,14 +228,14 @@ class Machine:
         self.tick = self.current_tick() + (HEARTBEAT_TICK * 1000000)
 
     def _become_follower(self, term, leader=None):
-        logger.debug("Became follower")
+        logger.debug("Became follower %s %s", self.identifier, leader)
         self.state = NodeState.FOLLOWER
         self._reset(term)
         self.leader = leader
         self._reset_election_tick()
 
     def _become_pre_candidate(self):
-        logger.debug("Became pre-candidate")
+        logger.debug("Became pre-candidate %s", self.identifier)
         self.state = NodeState.PRE_CANDIDATE
         self.obedient = False
         self.vote_count = 1
@@ -245,10 +246,12 @@ class Machine:
             self.send(peer, Message.PreVote, self.term + 1, index=self.log.last_index)
 
     def _become_candidate(self):
-        logger.debug("Became candidate")
+        logger.debug("Became candidate %s", self.identifier)
         self.state = NodeState.CANDIDATE
         self._reset(self.term + 1)
         self.vote_count = 1
+        self.voted_for = self.identifier
+
         self._reset_election_tick()
 
         for peer in self.peers.values():
@@ -256,7 +259,7 @@ class Machine:
             self.send(peer, Message.Vote, self.term, index=self.log.last_index)
 
     def _become_leader(self):
-        logger.debug("Became leader")
+        logger.debug("Became leader %s", self.identifier)
         self.state = NodeState.LEADER
         self._reset(self.term)
         self._reset_heartbeat_tick()
@@ -344,8 +347,9 @@ class Machine:
     def step(self, message):
         self.log.truncate_index = None
 
-        if message.type != Message.Tick:
-            logger.debug(message.__dict__)
+        if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
+            if message.type != Message.AppendEntries or len(message.entries) > 0:
+                logger.debug(message.__dict__)
 
         self.step_term(message)
 
@@ -359,6 +363,7 @@ class Machine:
 
             self._reset_election_tick()
             self.obedient = True
+
             self.leader = message.source
 
             # If leader sends us a batch of entries we already have we can avoid truncating
@@ -382,13 +387,6 @@ class Machine:
                 self.commit_index = commit_index
 
             self.reply(message, self.term, reject=False, log_index=self.log.last_index)
-
-        if message.type == Message.AddEntries:
-            if self.state == NodeState.LEADER:
-                for entry in message.entries:
-                    self.append(entry)
-                self.broadcast_entries()
-            return
 
         if self.state == NodeState.FOLLOWER:
             self.step_follower(message)
@@ -442,7 +440,7 @@ class Machine:
         peer_current = self.peer_current(message.index, message.term)
 
         if not can_vote or not peer_current:
-            logger.debug("Vote for %s rejected")
+            logger.debug("Vote for %s rejected", message.source)
             self.reply(message, self.term, reject=True)
             return
 
@@ -484,7 +482,13 @@ class Machine:
                 self._become_follower(self.term)
 
     def step_leader(self, message):
-        if message.type == Message.AppendEntriesReply:
+        if message.type == Message.AddEntries:
+            logger.critical("PROCESSING Message.AddEntries")
+            for entry in message.entries:
+                self.append(entry)
+            self.broadcast_entries()
+
+        elif message.type == Message.AppendEntriesReply:
             peer = self.peers[message.source]
 
             if message.reject:

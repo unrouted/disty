@@ -45,6 +45,8 @@ examples = [
             [(1, {"type": "consensus"}), (3, {})],
             # Consisentency between node 2 and 3, but not immediately
             [(1, {"type": "consensus"}), (4, {})],
+            # Consisentency between node 2 and 3, but not immediately
+            [(1, {"type": "consensus"}), (5, {})],
             # Node 1 leader, consensu achieved eventually
             [
                 (1, {"type": "consensus"}),
@@ -64,8 +66,8 @@ examples = [
 ]
 
 
-@pytest.mark.parametrize("node1,node2,node3,agreements", examples)
-async def test_recovery(tmp_path, monkeypatch, node1, node2, node3, agreements):
+@pytest.fixture
+async def fake_cluster(tmp_path, monkeypatch, loop):
     test_config = {}
 
     for node in ("node1", "node2", "node3"):
@@ -88,21 +90,31 @@ async def test_recovery(tmp_path, monkeypatch, node1, node2, node3, agreements):
 
     monkeypatch.setattr(config, "config", test_config)
 
-    with open(tmp_path / "node1" / "journal", "w") as fp:
-        for row in node1:
-            fp.write(json.dumps(row) + "\n")
+    servers = []
 
-    with open(tmp_path / "node2" / "journal", "w") as fp:
-        for row in node2:
-            fp.write(json.dumps(row) + "\n")
+    async def start(node, journal):
+        with open(tmp_path / "node1" / "journal", "w") as fp:
+            for row in journal:
+                fp.write(json.dumps(row) + "\n")
 
-    with open(tmp_path / "node3" / "journal", "w") as fp:
-        for row in node3:
-            fp.write(json.dumps(row) + "\n")
+        servers.append(asyncio.ensure_future(main([node])))
 
-    servers = asyncio.ensure_future(
-        asyncio.gather(main(["node1"]), main(["node2"]), main(["node3"]),)
-    )
+    yield start
+
+    for server in servers:
+        server.cancel()
+
+    try:
+        await asyncio.gather(*servers)
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.mark.parametrize("node1,node2,node3,agreements", examples)
+async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements):
+    await fake_cluster("node1", node1)
+    await fake_cluster("node2", node2)
+    await fake_cluster("node3", node2)
     await asyncio.sleep(0)
 
     for i in range(100):
@@ -134,13 +146,6 @@ async def test_recovery(tmp_path, monkeypatch, node1, node2, node3, agreements):
         logger.critical("node 3: %s", result3)
 
         raise RuntimeError("Did not converge on a valid agreement")
-
-    # Cancel servers. Ignore CancelledError.
-    servers.cancel()
-    try:
-        await servers
-    except asyncio.CancelledError:
-        pass
 
 
 def unused_port():
@@ -153,49 +158,22 @@ def unused_port():
 @pytest.mark.parametrize("node1,node2,node3,agreements", examples)
 @pytest.mark.parametrize("third_node", ["node1", "node2", "node3"])
 async def test_third_node_recovery(
-    tmp_path, monkeypatch, node1, node2, node3, agreements, third_node
+    tmp_path, fake_cluster, node1, node2, node3, agreements, third_node
 ):
-    test_config = {}
+    nodes = {
+        "node1": node1,
+        "node2": node2,
+        "node3": node3,
+    }
 
-    for node in ("node1", "node2", "node3"):
-        dir = tmp_path / node
-        if not dir.exists():
-            os.makedirs(dir)
-
-        raft_port = unused_port()
-        registry_port = unused_port()
-        prometheus_port = unused_port()
-
-        test_config[node] = {
-            "raft_port": raft_port,
-            "raft_url": f"http://127.0.0.1:{raft_port}",
-            "registry_port": registry_port,
-            "registry_url": f"http://127.0.0.1:{registry_port}",
-            "prometheus_port": prometheus_port,
-            "images_directory": dir,
-        }
-
-    monkeypatch.setattr(config, "config", test_config)
-
-    with open(tmp_path / "node1" / "journal", "w") as fp:
-        for row in node1:
-            fp.write(json.dumps(row) + "\n")
-
-    with open(tmp_path / "node2" / "journal", "w") as fp:
-        for row in node2:
-            fp.write(json.dumps(row) + "\n")
-
-    with open(tmp_path / "node3" / "journal", "w") as fp:
-        for row in node3:
-            fp.write(json.dumps(row) + "\n")
-
-    ports = [p for p in ["node1", "node2", "node3"] if p != third_node]
-    servers = [asyncio.ensure_future(main([str(port)])) for port in ports]
+    for name, journal in nodes.items():
+        if name != third_node:
+            await fake_cluster(name, journal)
 
     # FIXME: Need to find a wait to wait for stability
     await asyncio.sleep(2)
 
-    servers.append(asyncio.ensure_future(main([str(third_node)])))
+    await fake_cluster(third_node, nodes[third_node])
     await asyncio.sleep(0)
 
     for i in range(100):
@@ -227,11 +205,3 @@ async def test_third_node_recovery(
         logger.critical("node 3: %s", result3)
 
         raise RuntimeError("Did not converge on a valid agreement")
-
-    # Cancel servers. Ignore CancelledError.
-    servers = asyncio.gather(*servers)
-    servers.cancel()
-    try:
-        await servers
-    except asyncio.CancelledError:
-        pass

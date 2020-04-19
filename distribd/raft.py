@@ -37,6 +37,7 @@ class Raft:
         return await self.reducers.wait_for_commit(term, index)
 
     async def _append_local(self, entries):
+        logger.critical("_append_local: %s", self.machine.identifier)
         f = asyncio.Future()
         await self.queue.put(
             (
@@ -58,8 +59,8 @@ class Raft:
 
     async def _process_queue(self):
         while not self._closed:
-            payload = await self.queue.get()
             try:
+                payload = await self.queue.get()
                 msg, task_complete = payload
 
                 self.machine.step(Msg.from_dict(msg))
@@ -84,6 +85,11 @@ class Raft:
                     self.machine.outbox = []
 
                 await self.reducers.step(self.machine)
+
+            except asyncio.CancelledError as e:
+                if task_complete:
+                    task_complete.set_exception(e)
+                return
 
             except Exception as e:
                 logger.exception("Unhandled error processing incoming message")
@@ -134,13 +140,22 @@ class HttpRaft(Raft):
         self.session = aiohttp.ClientSession()
 
     async def _append_remote(self, entries):
-        if not self.machne.leader:
-            raise RuntimeError("No leader")
+        logger.critical("_append_remote: %s", self.machine.identifier)
+
+        if not self.machine.leader:
+            logger.critical(
+                "_append_remote: no leader: %s %s %s",
+                self.machine.identifier,
+                self.machine.leader,
+                self.machine.leader_active,
+            )
+            raise exceptions.LeaderUnavailable()
 
         url = config.config[self.machine.leader]["raft_url"]
 
         async with self.session.post(f"{url}/append", json=entries) as resp:
             if resp.status != 200:
+                logger.critical(resp.status, await resp.text())
                 raise RuntimeError("Remote append failed")
             payload = await resp.json()
             return payload["index"], payload["term"]
@@ -170,12 +185,28 @@ class HttpRaft(Raft):
         return web.json_response({"index": index, "term": term})
 
     async def _receive_status(self, request):
+        stable = self.machine.log.last_index == self.reducers.applied_index
+        stable = stable and self.machine.leader_active
+        stable = stable and (
+            self.machine.state == NodeState.LEADER or self.machine.leader is not None
+        )
+
+        print(
+            self.machine.identifier,
+            stable,
+            self.reducers.applied_index,
+            self.machine.state,
+        )
+
         payload = {
-            "status": self.machine.state,
+            "state": self.machine.state,
             "log_last_index": self.machine.log.last_index,
             "log_last_term": self.machine.log.last_term,
             "applied_index": self.reducers.applied_index,
             "committed_index": self.machine.commit_index,
+            # No unapplied log entries
+            "stable": stable,
+            # DEPRECATED
             "consensus": self.machine.leader_active,
         }
 
