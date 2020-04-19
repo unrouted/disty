@@ -19,7 +19,6 @@ class RaftAccessLog(AbstractAccessLogger):
 
 
 class Raft:
-
     def __init__(self, machine: Machine, storage: Storage):
         self.machine = machine
         self.storage = storage
@@ -91,7 +90,6 @@ class Raft:
 
 
 class HttpRaft(Raft):
-
     def __init__(self, machine: Machine, storage: Storage):
         super().__init__(machine, storage)
         self.session = aiohttp.ClientSession()
@@ -144,15 +142,12 @@ class HttpRaft(Raft):
 
     async def _run_listener(self, port):
         routes = web.RouteTableDef()
-        routes.post('/rpc')(self._receive_message)
-        routes.post('/append')(self._receive_append)
-        routes.get('/status')(self._receive_status)
+        routes.post("/rpc")(self._receive_message)
+        routes.post("/append")(self._receive_append)
+        routes.get("/status")(self._receive_status)
 
         return await run_server(
-            "127.0.0.1",
-            port,
-            routes,
-            access_log_class=RaftAccessLog,
+            "127.0.0.1", port, routes, access_log_class=RaftAccessLog,
         )
 
     async def close(self):
