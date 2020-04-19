@@ -6,7 +6,7 @@ from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
 
 from . import config
-from .machine import Machine, Message, Msg
+from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
 from .storage import Storage
 from .utils.web import run_server
@@ -27,16 +27,34 @@ class Raft:
         self.queue = asyncio.Queue()
 
     async def append(self, entry):
-        pass
+        if self.machine.state == NodeState.LEADER:
+            f = asyncio.Future()
+            await self.queue.put(
+                (
+                    {
+                        "type": str(Message.AddEntries),
+                        "source": self.machine.identifier,
+                        "destination": self.machine.identifier,
+                        "term": 0,
+                    },
+                    f,
+                )
+            )
+            index, term = await f
+        else:
+            index, term = await self._append_remote(entry)
+
+        return await self.reducers.wait_for_commit(term, index)
 
     async def close(self):
         pass
 
     async def _process_queue(self):
         while True:
-            msg = await self.queue.get()
-
+            payload = await self.queue.get()
             try:
+                msg, task_complete = payload
+
                 self.machine.step(Msg.from_dict(msg))
 
                 await self.storage.step(self.machine)
@@ -60,20 +78,29 @@ class Raft:
 
                 await self.reducers.step(self.machine)
 
-            except Exception:
+            except Exception as e:
                 logger.exception("Unhandled error processing incoming message")
+                if task_complete:
+                    task_complete.set_exception(e)
+
+            else:
+                if task_complete:
+                    task_complete.set_result(self.machine)
 
             self.queue.task_done()
 
     async def _ticker(self):
         while True:
             await self.queue.put(
-                {
-                    "type": str(Message.Tick),
-                    "source": self.machine.identifier,
-                    "destination": self.machine.identifier,
-                    "term": 0,
-                }
+                (
+                    {
+                        "type": str(Message.Tick),
+                        "source": self.machine.identifier,
+                        "destination": self.machine.identifier,
+                        "term": 0,
+                    },
+                    None,
+                )
             )
             await asyncio.sleep(0.1)
 
@@ -90,7 +117,7 @@ class Raft:
     async def send(self, message: Msg):
         raise NotImplementedError(self.send)
 
-    async def _append_remote(self, message: Msg):
+    async def _append_remote(self, entry):
         raise NotImplementedError(self.send)
 
 
@@ -124,14 +151,14 @@ class HttpRaft(Raft):
             pass
 
     async def _receive_message(self, request):
-        await self.queue.put(await request.json())
+        payload = await request.json()
+        await self.queue.put((payload, None))
         return web.json_response({})
 
     async def _receive_append(self, request):
         entry = await request.json()
-
-        await self.queue.put(entry)
-        return web.json_response({})
+        index, term = await self.append(entry)
+        return web.json_response({"index": index, "term": term})
 
     async def _receive_status(self, request):
         payload = {

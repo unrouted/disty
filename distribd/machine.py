@@ -24,6 +24,7 @@ class Message(str, enum.Flag):
     PreVoteReply = "PreVoteReply"
     AppendEntries = "AppendEntries"
     AppendEntriesReply = "AppendEntriesReply"
+    AddEntries = "AddEntries"
 
 
 REPLIES = {
@@ -484,7 +485,6 @@ class Machine:
                     peer.next_index -= 1
                 return
 
-            print(message.log_index, self.log.last_index, self.log[1:])
             peer.match_index = min(message.log_index, self.log.last_index)
             peer.next_index = peer.match_index + 1
 
