@@ -383,6 +383,13 @@ class Machine:
 
             self.reply(message, self.term, reject=False, log_index=self.log.last_index)
 
+        if message.type == Message.AddEntries:
+            if self.state == NodeState.LEADER:
+                for entry in message.entries:
+                    self.append(entry)
+                self.broadcast_entries()
+            return
+
         if self.state == NodeState.FOLLOWER:
             self.step_follower(message)
 

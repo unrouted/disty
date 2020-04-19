@@ -26,7 +26,9 @@ class Raft:
         self.reducers = reducers
         self.queue = asyncio.Queue()
 
-    async def append(self, entry):
+        self._closed = False
+
+    async def append(self, entries):
         if self.machine.state == NodeState.LEADER:
             f = asyncio.Future()
             await self.queue.put(
@@ -36,21 +38,22 @@ class Raft:
                         "source": self.machine.identifier,
                         "destination": self.machine.identifier,
                         "term": 0,
+                        "entries": entries,
                     },
                     f,
                 )
             )
             index, term = await f
         else:
-            index, term = await self._append_remote(entry)
+            index, term = await self._append_remote(entries)
 
         return await self.reducers.wait_for_commit(term, index)
 
     async def close(self):
-        pass
+        self._closed = True
 
     async def _process_queue(self):
-        while True:
+        while not self._closed:
             payload = await self.queue.get()
             try:
                 msg, task_complete = payload
@@ -90,7 +93,7 @@ class Raft:
             self.queue.task_done()
 
     async def _ticker(self):
-        while True:
+        while not self._closed:
             await self.queue.put(
                 (
                     {
@@ -117,7 +120,7 @@ class Raft:
     async def send(self, message: Msg):
         raise NotImplementedError(self.send)
 
-    async def _append_remote(self, entry):
+    async def _append_remote(self, entries):
         raise NotImplementedError(self.send)
 
 
@@ -126,13 +129,13 @@ class HttpRaft(Raft):
         super().__init__(machine, storage, reducers)
         self.session = aiohttp.ClientSession()
 
-    async def _append_remote(self, entry):
+    async def _append_remote(self, entries):
         if not self.machne.leader:
             raise RuntimeError("No leader")
 
         url = config.config[self.machine.leader]["raft_url"]
 
-        async with self.session.post(f"{url}/append", json=entry) as resp:
+        async with self.session.post(f"{url}/append", json=entries) as resp:
             if resp.status != 200:
                 raise RuntimeError("Remote append failed")
             payload = await resp.json()
@@ -156,8 +159,8 @@ class HttpRaft(Raft):
         return web.json_response({})
 
     async def _receive_append(self, request):
-        entry = await request.json()
-        index, term = await self.append(entry)
+        entries = await request.json()
+        index, term = await self.append(entries)
         return web.json_response({"index": index, "term": term})
 
     async def _receive_status(self, request):
