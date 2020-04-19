@@ -7,6 +7,7 @@ from aiohttp.abc import AbstractAccessLogger
 
 from . import config
 from .machine import Machine, Message, Msg
+from .storage import Storage
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -102,20 +103,26 @@ async def ticker(machine, queue):
         await asyncio.sleep(0.1)
 
 
-async def run_raft_forever(machine: Machine, storage, port: int):
+def build_raft(machine: Machine, storage: Storage, port: int):
     queue = asyncio.Queue()
 
-    ticker_fn = ticker(machine, queue)
+    async def append(entry):
+        pass
 
-    queue_worker = process_queue(machine, storage, queue)
+    async def run_raft():
+        ticker_fn = ticker(machine, queue)
 
-    server = run_server(
-        "127.0.0.1",
-        port,
-        routes,
-        access_log_class=RaftAccessLog,
-        queue=queue,
-        machine=machine,
-    )
+        queue_worker = process_queue(machine, storage, queue)
 
-    return await asyncio.gather(ticker_fn, server, queue_worker)
+        server = run_server(
+            "127.0.0.1",
+            port,
+            routes,
+            access_log_class=RaftAccessLog,
+            queue=queue,
+            machine=machine,
+        )
+
+        return await asyncio.gather(ticker_fn, server, queue_worker)
+
+    return run_raft, append
