@@ -7,6 +7,7 @@ from aiohttp.abc import AbstractAccessLogger
 
 from . import config
 from .machine import Machine, Message, Msg
+from .reducers import Reducers
 from .storage import Storage
 from .utils.web import run_server
 
@@ -19,9 +20,10 @@ class RaftAccessLog(AbstractAccessLogger):
 
 
 class Raft:
-    def __init__(self, machine: Machine, storage: Storage):
+    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
         self.machine = machine
         self.storage = storage
+        self.reducers = reducers
         self.queue = asyncio.Queue()
 
     async def append(self, entry):
@@ -55,6 +57,9 @@ class Raft:
                             logger.exception("Unhandled error while sending message")
 
                     self.machine.outbox = []
+
+                await self.reducers.step(self.machine)
+
             except Exception:
                 logger.exception("Unhandled error processing incoming message")
 
@@ -90,8 +95,8 @@ class Raft:
 
 
 class HttpRaft(Raft):
-    def __init__(self, machine: Machine, storage: Storage):
-        super().__init__(machine, storage)
+    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
+        super().__init__(machine, storage, reducers)
         self.session = aiohttp.ClientSession()
 
     async def _append_remote(self, entry):

@@ -21,9 +21,6 @@ class Storage:
 
         self.current_term = 0
 
-        # Entries that are safely committed
-        self.applied_index = 0
-
         # You cannot make changes to the log without holding the commit lock.
         # This ensures the txn log on disk and in memory is actually in the same order.
         self._commit_lock = asyncio.Lock()
@@ -33,12 +30,6 @@ class Storage:
         self._writer: Writer = None
 
         self.log = []
-
-        # Functions to call with changes that are safe to apply to replicated data structures.
-        self._callbacks = []
-
-        # List of (commit_index, event)
-        self._waiters = []
 
     async def step(self, machine: Machine):
         aws = []
@@ -82,9 +73,6 @@ class Storage:
         while self.last_index < machine.log.last_index:
             term, entry = machine.log[self.last_index + 1]
             await self.commit(term, entry)
-
-    def add_reducer(self, callback):
-        self._callbacks.append(callback)
 
     @property
     def last_term(self):
@@ -181,26 +169,6 @@ class Storage:
 
         logger.debug("Committed term %d index %d", self.last_term, self.last_index)
 
-    async def apply(self, index):
-        """Indexes up to `index` can now be applied to the state machine."""
-        logger.critical("Safe to apply log up to index %d", index)
-
-        entries = self.log[self.applied_index : index]
-
-        for callback in self._callbacks:
-            callback(entries)
-
-        waiters = []
-        for waiter_index, ev in self._waiters:
-            if waiter_index <= index:
-                ev.set()
-                continue
-            waiters.append((waiter_index, ev))
-        self._waiters = waiters
-
-        logger.debug("Applied index %d", index)
-        self.applied_index = index
-
     def __getitem__(self, key):
         if isinstance(key, slice):
             new_slice = slice(
@@ -211,9 +179,3 @@ class Storage:
             return self.log[new_slice]
 
         return self.log[key - 1]
-
-    async def wait_for_commit(self, term, index):
-        ev = asyncio.Event()
-        self._waiters.append((index, ev))
-        await ev.wait()
-        return self[index][0] == term

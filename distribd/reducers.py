@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class Reducers:
-    def __init__(self, path):
+    def __init__(self, machine: Machine):
         # Entries that are safely committed
         self.applied_index = 0
 
@@ -16,6 +16,11 @@ class Reducers:
 
         # List of (commit_index, event)
         self._waiters = []
+
+        self.machine = machine
+
+    def add_reducer(self, callback):
+        self._callbacks.append(callback)
 
     async def step(self, machine: Machine):
         """Indexes up to `commit_index` can now be applied to the state machine."""
