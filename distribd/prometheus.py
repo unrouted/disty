@@ -8,24 +8,27 @@ routes = web.RouteTableDef()
 
 
 class MetricsCollector:
-    def __init__(self, node):
-        self.node = node
+    def __init__(self, raft):
+        self.raft = raft
+        self.machine = raft.machine
+        self.identifier = self.machine.identifier
+        self.reducers = raft.reducers
 
     def collect(self):
-        # last_applied = GaugeMetricFamily(
-        #    "distribd_last_applied_index",
-        #    "Last index that was applied",
-        #    labels=["identifier"],
-        # )
-        # last_applied.add_metric([self.node.identifier], self.node.log.applied_index)
-        # yield last_applied
+        last_applied = GaugeMetricFamily(
+            "distribd_last_applied_index",
+            "Last index that was applied",
+            labels=["identifier"],
+        )
+        last_applied.add_metric([self.identifier], self.reducers.applied_index)
+        yield last_applied
 
         last_committed = GaugeMetricFamily(
             "distribd_last_committed_index",
             "Last index that was committed",
             labels=["identifier"],
         )
-        last_committed.add_metric([self.node.identifier], self.node.commit_index)
+        last_committed.add_metric([self.identifier], self.machine.commit_index)
         yield last_committed
 
         last_saved = GaugeMetricFamily(
@@ -33,7 +36,7 @@ class MetricsCollector:
             "Last index that was stored in the commit log",
             labels=["identifier"],
         )
-        last_saved.add_metric([self.node.identifier], self.node.log.last_index)
+        last_saved.add_metric([self.identifier], self.machine.log.last_index)
         yield last_saved
 
         last_term_saved = GaugeMetricFamily(
@@ -41,7 +44,7 @@ class MetricsCollector:
             "Last term that was stored in the commit log",
             labels=["identifier"],
         )
-        last_term_saved.add_metric([self.node.identifier], self.node.log.last_term)
+        last_term_saved.add_metric([self.identifier], self.machine.log.last_term)
         yield last_term_saved
 
         current_term = GaugeMetricFamily(
@@ -49,7 +52,7 @@ class MetricsCollector:
             "The current term for a node",
             labels=["identifier"],
         )
-        current_term.add_metric([self.node.identifier], self.node.term)
+        current_term.add_metric([self.identifier], self.machine.term)
         yield current_term
 
         current_state = GaugeMetricFamily(
@@ -57,7 +60,7 @@ class MetricsCollector:
             "The current state for a node",
             labels=["identifier", "state"],
         )
-        current_state.add_metric([self.node.identifier, str(self.node.state)], 1)
+        current_state.add_metric([self.identifier, str(self.machine.state)], 1)
         yield current_state
 
 
@@ -74,9 +77,9 @@ async def ok(request):
     return web.json_response({"ok": True})
 
 
-async def run_prometheus(identifier, registry_state, images_directory, node, port):
+async def run_prometheus(identifier, registry_state, images_directory, raft, port):
     registry = CollectorRegistry()
-    collector = MetricsCollector(node)
+    collector = MetricsCollector(raft)
     registry.register(collector)
 
     return await run_server(
@@ -86,6 +89,6 @@ async def run_prometheus(identifier, registry_state, images_directory, node, por
         identifier=identifier,
         registry_state=registry_state,
         images_directory=images_directory,
-        node=node,
+        raft=raft,
         prometheus_registry=registry,
     )

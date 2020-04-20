@@ -76,7 +76,7 @@ async def main(argv=None):
                 machine.identifier,
                 registry_state,
                 images_directory,
-                machine,
+                raft,
                 prometheus_port,
             ),
         )
