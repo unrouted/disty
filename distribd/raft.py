@@ -82,8 +82,6 @@ class Raft:
                         except Exception:
                             logger.exception("Unhandled error while sending message")
 
-                    self.machine.outbox = []
-
                 await self.reducers.step(self.machine)
 
             except asyncio.CancelledError as e:

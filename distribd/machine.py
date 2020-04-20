@@ -346,6 +346,7 @@ class Machine:
 
     def step(self, message):
         self.log.truncate_index = None
+        self.machine.outbox = []
 
         if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
             if message.type != Message.AppendEntries or len(message.entries) > 0:
