@@ -6,6 +6,8 @@ import socket
 
 from distribd import config
 from distribd.service import main
+from distribd.machine import NodeState
+
 import pytest
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ async def fake_cluster(tmp_path, monkeypatch, loop):
     servers = []
 
     async def start(node, journal):
-        with open(tmp_path / "node1" / "journal", "w") as fp:
+        with open(tmp_path / node / "journal", "w") as fp:
             for row in journal:
                 fp.write(json.dumps(row) + "\n")
 
