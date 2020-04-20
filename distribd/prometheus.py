@@ -12,13 +12,13 @@ class MetricsCollector:
         self.node = node
 
     def collect(self):
-        last_applied = GaugeMetricFamily(
-            "distribd_last_applied_index",
-            "Last index that was applied",
-            labels=["identifier"],
-        )
-        last_applied.add_metric([self.node.identifier], self.node.log.applied_index)
-        yield last_applied
+        # last_applied = GaugeMetricFamily(
+        #    "distribd_last_applied_index",
+        #    "Last index that was applied",
+        #    labels=["identifier"],
+        # )
+        # last_applied.add_metric([self.node.identifier], self.node.log.applied_index)
+        # yield last_applied
 
         last_committed = GaugeMetricFamily(
             "distribd_last_committed_index",
@@ -49,7 +49,7 @@ class MetricsCollector:
             "The current term for a node",
             labels=["identifier"],
         )
-        current_term.add_metric([self.node.identifier], self.node.log.current_term)
+        current_term.add_metric([self.node.identifier], self.node.term)
         yield current_term
 
         current_state = GaugeMetricFamily(

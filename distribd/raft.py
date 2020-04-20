@@ -1,38 +1,17 @@
 import asyncio
-import enum
 import logging
-import math
-import random
 
 import aiohttp
 from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
 
-from . import config
-from .exceptions import LeaderUnavailable
-from .jobs import WorkerPool
+from . import config, exceptions
+from .machine import Machine, Message, Msg, NodeState
+from .reducers import Reducers
+from .storage import Storage
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
-
-ELECTION_TIMEOUT_HIGH = 600
-ELECTION_TIMEOUT_LOW = ELECTION_TIMEOUT_HIGH / 2
-
-HEARTBEAT_TIMEOUT = 100
-
-# SCALE_FACTOR = 1000
-SCALE_FACTOR = 500
-
-
-class NotALeader(Exception):
-    pass
-
-
-class NodeState(enum.IntEnum):
-
-    FOLLOWER = 1
-    CANDIDATE = 2
-    LEADER = 3
 
 
 class RaftAccessLog(AbstractAccessLogger):
@@ -40,570 +19,209 @@ class RaftAccessLog(AbstractAccessLogger):
         pass
 
 
-class Node:
-    def __init__(self, identifier, log):
-        self.state = NodeState.FOLLOWER
-        self.identifier = identifier
+class Raft:
+    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
+        self.machine = machine
+        self.storage = storage
+        self.reducers = reducers
+        self.queue = asyncio.Queue()
 
-        # persistent state
-        self.log = log
-        self.voted_for = None
+        self._closed = False
 
-        # volatile state
-        self.commit_index = 0
+    async def append(self, entries):
+        if self.machine.state == NodeState.LEADER:
+            index, term = await self._append_local(entries)
+        else:
+            index, term = await self._append_remote(entries)
 
-        # leader state
-        self.remotes = []
+        return await self.reducers.wait_for_commit(term, index)
 
-        # volatile follower state
-        self.receiving_heartbeats = False
-
-        self._pool = WorkerPool()
-        self._heartbeat = None
+    async def _append_local(self, entries):
+        logger.critical("_append_local: %s", self.machine.identifier)
+        f = asyncio.Future()
+        await self.queue.put(
+            (
+                {
+                    "type": str(Message.AddEntries),
+                    "source": self.machine.identifier,
+                    "destination": self.machine.identifier,
+                    "term": 0,
+                    "entries": entries,
+                },
+                f,
+            )
+        )
+        await f
+        return self.machine.log.last_index, self.machine.log.last_term
 
     async def close(self):
-        await asyncio.gather(*[peer.close() for peer in self.remotes])
-        await self._pool.close()
+        self._closed = True
 
-    async def add_entry(self, entry):
-        if self.state != NodeState.LEADER:
-            raise NotALeader("Only leader can append to log")
-        await self.log.commit(self.log.current_term, entry)
-        return self.log.last_term, self.log.last_index
-
-    async def send_action(self, entries):
-        if self.state == NodeState.LEADER:
-            for entry in entries:
-                wait_term, wait_index = await self.add_entry(entry)
-        else:
-            wait_term, wait_index = await self.leader.send_add_entries(entries)
-        return await self.log.wait_for_commit(wait_term, wait_index)
-
-    @property
-    def cluster_size(self):
-        return len(self.remotes) + 1
-
-    @property
-    def quorum(self):
-        return math.floor(self.cluster_size / 2) + 1
-
-    @property
-    def leader(self):
-        for peer in self.remotes:
-            if peer.is_leader:
-                return peer
-
-        # FIXME Can we wait for there to be a leader???
-        raise LeaderUnavailable()
-
-    def add_member(self, identifier):
-        node = RemoteNode(identifier)
-        self.remotes.append(node)
-
-    def cancel_election_timeout(self):
-        if self._heartbeat:
-            self._heartbeat.cancel()
-            self._heartbeat = None
-
-    def reset_election_timeout(self):
-        self.cancel_election_timeout()
-        timeout = (
-            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
-        )
-        loop = asyncio.get_event_loop()
-        self._heartbeat = loop.call_later(timeout, self.become_candidate)
-
-    def become_follower(self):
-        self.voted_for = None
-        self.reset_election_timeout()
-
-        if self.state == NodeState.FOLLOWER:
-            return
-
-        self.state = NodeState.FOLLOWER
-        logger.debug("Became follower")
-
-    def become_candidate(self):
-        if self.state == NodeState.LEADER:
-            logger.debug("Can't become candidate when already leader")
-            return
-
-        if self.state == NodeState.CANDIDATE:
-            return
-
-        logger.debug("Became candidate")
-        self.state = NodeState.CANDIDATE
-        self.receiving_heartbeats = False
-        self.voted_for = None
-
-        self._pool.spawn(self.do_gather_votes())
-
-    def become_leader(self):
-        self.cancel_election_timeout()
-
-        if self.state == NodeState.LEADER:
-            return
-
-        self.state = NodeState.LEADER
-
-        logger.debug("Became leader")
-
-        for peer in self.remotes:
-            peer.next_index = self.log.last_index + 1
-            peer.match_index = 0
-
-        self._pool.spawn(self.do_heartbeats())
-
-        # It's considered "unsafe" to commit a transaction from a previous term
-        # But safe to indirectly commit it when commiting a no-op in the current term
-        self._pool.spawn(self.add_entry({}))
-
-    async def advance_commit_index(self):
-        commit_index = 0
-        i = max(self.commit_index, 1)
-        while i <= self.log.last_index:
-            if self.log[i][0] != self.log.current_term:
-                i += 1
-                continue
-
-            # Start counting at 1 because we count as a vote
-            match_count = 1
-            for peer in self.remotes:
-                if peer.match_index >= i:
-                    match_count += 1
-
-            if match_count >= self.quorum:
-                commit_index = i
-
-            i += 1
-
-        if commit_index <= self.commit_index:
-            return
-
-        logger.debug(
-            "Achieved a quorum - advancing commit index from %d to %d",
-            self.commit_index,
-            commit_index,
-        )
-        self.commit_index = commit_index
-
-        await self.log.apply(self.commit_index)
-
-    async def do_pre_vote(self):
-        """Try and gather pre-votes from all peers for current term."""
-        if self.state != NodeState.CANDIDATE:
-            return
-
-        payload = {
-            "term": self.log.current_term,
-            "candidate_id": self.identifier,
-            "last_index": self.log.last_index,
-            "last_term": self.log.last_term,
-        }
-
-        requests = [node.send_pre_vote(payload) for node in self.remotes]
-
-        random_timeout = (
-            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
-        )
-
-        votes = 1
-        for response in asyncio.as_completed(requests, timeout=random_timeout):
+    async def _process_queue(self):
+        while not self._closed:
             try:
-                response = await response
-            except asyncio.TimeoutError:
-                continue
-            except Exception:
-                logger.exception(
-                    "Unhandled exception whilst trying to gather pre votes"
-                )
-                continue
+                payload = await self.queue.get()
+                msg, task_complete = payload
 
-            # If they are in a newer term than us stop trying to become a leader immediately
-            if response["term"] > self.log.current_term:
-                return False
+                self.machine.step(Msg.from_dict(msg))
 
-            if response["vote_granted"] is True:
-                votes += 1
+                await self.storage.step(self.machine)
 
-        if self.state != NodeState.CANDIDATE:
-            return False
+                if self.machine.outbox:
+                    aws = []
+                    for message in self.machine.outbox:
+                        aws.append(self.send(message))
 
-        if votes >= self.quorum:
-            return True
+                    for future in asyncio.as_completed(aws):
+                        try:
+                            await future
 
-        return False
+                        except asyncio.CancelledError:
+                            raise
 
-    async def do_gather_votes(self):
-        """Try and gather votes from all peers for current term."""
-        if self.state != NodeState.CANDIDATE:
-            return
+                        except Exception:
+                            logger.exception("Unhandled error while sending message")
 
-        await self.log.set_term(self.log.current_term + 1)
-        self.voted_for = self.identifier
+                    self.machine.outbox = []
 
-        if not await self.do_pre_vote():
-            return
+                await self.reducers.step(self.machine)
 
-        payload = {
-            "term": self.log.current_term,
-            "candidate_id": self.identifier,
-            "last_index": self.log.last_index,
-            "last_term": self.log.last_term,
-        }
-
-        requests = [node.send_request_vote(payload) for node in self.remotes]
-
-        random_timeout = (
-            random.randrange(ELECTION_TIMEOUT_LOW, ELECTION_TIMEOUT_HIGH) / SCALE_FACTOR
-        )
-
-        votes = 1
-        for response in asyncio.as_completed(requests, timeout=random_timeout):
-            try:
-                response = await response
-            except asyncio.TimeoutError:
-                continue
-            except Exception:
-                logger.exception("Unhandled exception whilst trying to gather votes")
-                continue
-
-            # If they are in a newer term than us stop trying to become a leader immediately
-            if response["term"] > self.log.current_term:
-                self.become_follower()
-                await self.log.set_term(response["term"])
+            except asyncio.CancelledError as e:
+                if task_complete:
+                    task_complete.set_exception(e)
                 return
 
-            if response["vote_granted"] is True:
-                votes += 1
+            except Exception as e:
+                logger.exception("Unhandled error processing incoming message")
+                if task_complete:
+                    task_complete.set_exception(e)
 
-        if self.state != NodeState.CANDIDATE:
-            return
+            else:
+                if task_complete:
+                    task_complete.set_result(self.machine)
 
-        if votes >= self.quorum:
-            self.become_leader()
-            return
+            self.queue.task_done()
 
-        self.become_follower()
-
-    async def do_heartbeat(self, node):
-        if self.state != NodeState.LEADER:
-            return
-
-        # The biggest prev_index can be is log.last_index, so cap its size to that.
-        # Though the question is, how does it end up bigger than last_index in the first place.
-        prev_index = min(node.next_index - 1, self.log.last_index)
-        prev_term = self.log[prev_index][0] if prev_index >= 1 else 0
-        entries = self.log[node.next_index :]
-
-        payload = {
-            "term": self.log.current_term,
-            "leader_id": self.identifier,
-            "prev_index": prev_index,
-            "prev_term": prev_term,
-            "entries": entries,
-            "leader_commit": self.commit_index,
-        }
-
-        result = await node.send_append_entries(payload)
-
-        if result["term"] > self.log.current_term:
-            self.become_follower()
-            await self.log.set_term(result["term"])
-            return
-
-        if not result["success"]:
-            if node.next_index > 1:
-                node.next_index -= 1
-            return
-
-        node.next_index += len(entries)
-        node.match_index = node.next_index - 1
-
-        await self.advance_commit_index()
-
-    async def do_heartbeats(self):
-        while self.state == NodeState.LEADER:
-            for node in self.remotes:
-                self._pool.spawn(self.do_heartbeat(node))
-
-            await asyncio.sleep(HEARTBEAT_TIMEOUT / SCALE_FACTOR)
-
-    def find_first_inconsistency(self, ours, theirs):
-        for i, (our_entry, their_entry) in enumerate(zip(ours, theirs)):
-            if our_entry[0] != their_entry[0]:
-                return i
-        return min(len(ours), len(theirs))
-
-    async def recv_append_entries(self, request):
-        term = request["term"]
-
-        if term > self.log.current_term:
-            self.become_follower()
-            await self.log.set_term(term)
-
-        if term < self.log.current_term:
-            logger.debug(
-                "Message received for old term %d, current term is %d",
-                term,
-                self.log.current_term,
+    async def _ticker(self):
+        while not self._closed:
+            await self.queue.put(
+                (
+                    {
+                        "type": str(Message.Tick),
+                        "source": self.machine.identifier,
+                        "destination": self.machine.identifier,
+                        "term": 0,
+                    },
+                    None,
+                )
             )
-            return False
+            await asyncio.sleep(0.1)
 
-        # become_follower does this as well. would be nice not to dupe it.
-        self.reset_election_timeout()
+    async def run_forever(self, port: int):
+        ticker_fn = self._ticker()
+        queue_worker = self._process_queue()
+        listener = self._run_listener(port)
 
-        prev_index = request["prev_index"]
-        prev_term = request["prev_term"]
+        try:
+            return await asyncio.gather(ticker_fn, queue_worker, listener)
+        finally:
+            await self.close()
 
-        if prev_index > self.log.last_index:
-            logger.debug("Leader assumed we had log entry %d but we do not", prev_index)
-            return False
+    async def send(self, message: Msg):
+        raise NotImplementedError(self.send)
 
-        if prev_index and self.log[prev_index][0] != prev_term:
-            logger.warning(
-                "Log not valid - mismatched terms %d and %d at index %d",
-                prev_term,
-                self.log[prev_index][0],
-                prev_index,
-            )
-            return False
-
-        self.receiving_heartbeats = True
-
-        for peer in self.remotes:
-            peer.is_leader = peer.identifier == request["leader_id"]
-
-        # If leader sends us a batch of entries we already have we can avoid truncating
-        # if they are actually consistent
-        inconsistency_offset = self.find_first_inconsistency(
-            self.log[prev_index + 1 :], request["entries"]
-        )
-        prev_index += inconsistency_offset
-        entries = request["entries"][inconsistency_offset:]
-
-        if self.log.last_index > prev_index:
-            logger.error("Need to truncate log to recover quorum")
-            if not await self.log.rollback(prev_index):
-                return False
-
-        for entry in entries:
-            await self.log.commit(entry[0], entry[1])
-
-        if request["leader_commit"] > self.commit_index:
-            commit_index = min(request["leader_commit"], self.log.last_index)
-            self.commit_index = commit_index
-            await self.log.apply(self.commit_index)
-
-        return True
-
-    async def recv_pre_vote(self, request):
-        term = request["term"]
-        logger.debug("Received a pre-vote request for term %d", term)
-
-        if self.receiving_heartbeats:
-            logger.debug(
-                "Pre-vote rejected as still receiving heartbeats from a leader"
-            )
-            return False
-
-        if term < self.log.current_term:
-            logger.debug("Pre-vote rejected as term already over")
-            return False
-
-        last_term = request["last_term"]
-        if last_term < self.log.last_term:
-            logger.debug(
-                "Pre-vote request rejected as last term older than current term"
-            )
-            return False
-
-        last_index = request["last_index"]
-        if last_index < self.log.last_index:
-            logger.debug("Pre-vote request rejected as last index older than own log")
-            return False
-
-        return True
-
-    async def recv_request_vote(self, request):
-        term = request["term"]
-        logger.debug("Received a vote request for term %d", term)
-
-        if term > self.log.current_term:
-            self.become_follower()
-            await self.log.set_term(term)
-
-        if self.receiving_heartbeats:
-            logger.debug(
-                "Vote request rejected as still receiving heartbeats from a leader"
-            )
-            return False
-
-        if term < self.log.current_term:
-            logger.debug("Vote request rejected as term already over")
-            return False
-
-        if self.voted_for and request["candidate_id"] != self.voted_for:
-            logger.debug(
-                "Vote request rejected as already voted for %s", self.voted_for
-            )
-            return False
-
-        last_term = request["last_term"]
-        if last_term < self.log.last_term:
-            logger.debug("Vote request rejected as last term older than current term")
-            return False
-
-        last_index = request["last_index"]
-        if last_index < self.log.last_index:
-            logger.debug("Vote request rejected as last index older than own log")
-            return False
-
-        self.voted_for = request["candidate_id"]
-
-        # This is over cautious.
-        self.reset_election_timeout()
-
-        return True
-
-    async def run_forever(self, port):
-        self.become_follower()
-        return await run_server(
-            "127.0.0.1", port, routes, access_log_class=RaftAccessLog, node=self
-        )
+    async def _append_remote(self, entries):
+        raise NotImplementedError(self.send)
 
 
-class RemoteNode:
-    def __init__(self, identifier):
-        self.identifier = identifier
-        self.url = config.config[identifier]["raft_url"]
-        self.is_leader = False
-        self.next_index = 0
-        self.match_index = 0
+class HttpRaft(Raft):
+    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
+        super().__init__(machine, storage, reducers)
         self.session = aiohttp.ClientSession()
 
-    async def send_add_entries(self, payload):
+    async def _append_remote(self, entries):
+        logger.critical("_append_remote: %s", self.machine.identifier)
+
+        if not self.machine.leader:
+            logger.critical(
+                "_append_remote: no leader: %s %s %s",
+                self.machine.identifier,
+                self.machine.leader,
+                self.machine.leader_active,
+            )
+            raise exceptions.LeaderUnavailable()
+
+        url = config.config[self.machine.leader]["raft_url"]
+
+        async with self.session.post(f"{url}/append", json=entries) as resp:
+            if resp.status != 200:
+                logger.critical(resp.status, await resp.text())
+                raise RuntimeError("Remote append failed")
+            payload = await resp.json()
+            return payload["index"], payload["term"]
+
+    async def send(self, message: Msg):
+        url = config.config[message.destination]["raft_url"]
+        body = message.to_dict()
+
         try:
-            resp = await self.session.post(f"{self.url}/add-entries", json=payload)
-        except aiohttp.ClientConnectionError:
-            raise NotALeader()
+            async with self.session.post(f"{url}/rpc", json=body) as resp:
+                if resp.status != 200:
+                    logger.debug("Message rejected")
+        except aiohttp.ClientError:
+            # Message wasn't delivered - client broken or netsplit
+            pass
 
-        if resp.status != 200:
-            raise NotALeader("Unable to write to this node")
-        payload = await resp.json()
-        return payload["last_term"], payload["last_index"]
+    async def _receive_message(self, request):
+        payload = await request.json()
+        await self.queue.put((payload, None))
+        return web.json_response({})
 
-    async def send_append_entries(self, payload):
-        try:
-            resp = await self.session.post(f"{self.url}/append-entries", json=payload)
-        except aiohttp.ClientConnectionError:
-            return {"term": 0, "success": False}
+    async def _receive_append(self, request):
+        entries = await request.json()
+        if self.machine.state != NodeState.LEADER:
+            raise exceptions.LeaderUnavailable()
+        index, term = await self._append_local(entries)
+        return web.json_response({"index": index, "term": term})
 
-        if resp.status != 200:
-            return {"term": 0, "success": False}
-        return await resp.json()
-
-    async def send_request_vote(self, payload):
-        try:
-            resp = await self.session.post(f"{self.url}/request-vote", json=payload)
-        except aiohttp.ClientConnectionError:
-            return {"term": 0, "vote_granted": False}
-
-        if resp.status != 200:
-            return {"term": 0, "vote_granted": False}
-        return await resp.json()
-
-    async def send_pre_vote(self, payload):
-        try:
-            resp = await self.session.post(f"{self.url}/pre-vote", json=payload)
-        except aiohttp.ClientConnectionError:
-            return {"term": 0, "vote_granted": False}
-
-        if resp.status != 200:
-            return {"term": 0, "vote_granted": False}
-        return await resp.json()
-
-    async def close(self):
-        await self.session.close()
-
-
-routes = web.RouteTableDef()
-
-
-@routes.post("/append-entries")
-async def append_entries(request):
-    node = request.app["node"]
-
-    payload = await request.json()
-
-    return web.json_response(
-        {
-            "term": node.log.current_term,
-            "success": await node.recv_append_entries(payload),
-        }
-    )
-
-
-@routes.post("/pre-vote")
-async def pre_vote(request):
-    node = request.app["node"]
-
-    payload = await request.json()
-
-    return web.json_response(
-        {
-            "term": node.log.current_term,
-            "vote_granted": await node.recv_pre_vote(payload),
-        }
-    )
-
-
-@routes.post("/request-vote")
-async def request_vote(request):
-    node = request.app["node"]
-
-    payload = await request.json()
-
-    return web.json_response(
-        {
-            "term": node.log.current_term,
-            "vote_granted": await node.recv_request_vote(payload),
-        }
-    )
-
-
-@routes.post("/add-entries")
-async def add_entry(request):
-    node = request.app["node"]
-
-    payload = await request.json()
-
-    if node.state != NodeState.LEADER:
-        return web.json_response(
-            status=400, reason="Not a leader", json={"reason": "NOT_A_LEADER"},
+    async def _receive_status(self, request):
+        stable = self.machine.log.last_index == self.reducers.applied_index
+        stable = stable and self.machine.leader_active
+        stable = stable and (
+            self.machine.state == NodeState.LEADER or self.machine.leader is not None
         )
 
-    for entry in payload:
-        last_term, last_index = await node.add_entry(entry)
+        print(
+            self.machine.identifier,
+            stable,
+            self.reducers.applied_index,
+            self.machine.state,
+        )
 
-    return web.json_response({"last_term": last_term, "last_index": last_index})
+        payload = {
+            "state": self.machine.state,
+            "log_last_index": self.machine.log.last_index,
+            "log_last_term": self.machine.log.last_term,
+            "applied_index": self.reducers.applied_index,
+            "committed_index": self.machine.commit_index,
+            # No unapplied log entries
+            "stable": stable,
+            # DEPRECATED
+            "consensus": self.machine.leader_active,
+        }
 
+        return web.json_response(payload)
 
-@routes.get("/status")
-async def status(request):
-    node = request.app["node"]
+    async def _run_listener(self, port):
+        routes = web.RouteTableDef()
+        routes.post("/rpc")(self._receive_message)
+        routes.post("/append")(self._receive_append)
+        routes.get("/status")(self._receive_status)
 
-    consensus = node.state == NodeState.LEADER or (
-        any(peer.is_leader for peer in node.remotes)
-    )
+        return await run_server(
+            "127.0.0.1", port, routes, access_log_class=RaftAccessLog,
+        )
 
-    payload = {
-        "status": node.state,
-        "log_last_index": node.log.last_index,
-        "log_last_term": node.log.last_term,
-        "applied_index": node.log.applied_index,
-        "committed_index": node.commit_index,
-        "consensus": consensus,
-    }
-
-    return web.json_response(payload)
+    async def close(self):
+        await super().close()
+        await self.session.close()

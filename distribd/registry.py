@@ -184,7 +184,7 @@ async def delete_manifest_by_hash(request):
     success = await send_action(
         [
             {
-                "type": RegistryActions.MANIFEST_DELETED,
+                "type": RegistryActions.MANIFEST_UNMOUNTED,
                 "hash": hash,
                 "repository": repository,
             },
@@ -271,7 +271,7 @@ async def delete_blob_by_hash(request):
     success = await send_action(
         [
             {
-                "type": RegistryActions.BLOB_DELETED,
+                "type": RegistryActions.BLOB_UNMOUNTED,
                 "hash": hash,
                 "repository": repository,
             },
@@ -375,14 +375,14 @@ async def start_upload(request):
         success = await send_action(
             [
                 {
-                    "type": RegistryActions.BLOB_STORED,
-                    "hash": hash,
-                    "location": identifier,
-                },
-                {
                     "type": RegistryActions.BLOB_MOUNTED,
                     "hash": hash,
                     "repository": repository,
+                },
+                {
+                    "type": RegistryActions.BLOB_STORED,
+                    "hash": hash,
+                    "location": identifier,
                 },
             ]
         )
@@ -510,12 +510,12 @@ async def upload_finish(request):
 
     success = await send_action(
         [
-            {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
             {
                 "type": RegistryActions.BLOB_MOUNTED,
                 "hash": hash,
                 "repository": repository,
             },
+            {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
         ]
     )
 
@@ -602,14 +602,14 @@ async def put_manifest(request):
     success = await send_action(
         [
             {
-                "type": RegistryActions.MANIFEST_STORED,
-                "hash": hash,
-                "location": identifier,
-            },
-            {
                 "type": RegistryActions.MANIFEST_MOUNTED,
                 "hash": hash,
                 "repository": repository,
+            },
+            {
+                "type": RegistryActions.MANIFEST_STORED,
+                "hash": hash,
+                "location": identifier,
             },
             {
                 "type": RegistryActions.HASH_TAGGED,

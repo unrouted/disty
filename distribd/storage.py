@@ -5,10 +5,12 @@ import os
 
 from aiofile import AIOFile, Writer
 
+from .machine import Machine
+
 logger = logging.getLogger(__name__)
 
 
-class Log:
+class Storage:
     def __init__(self, path):
         self._path = path
         self._term_path = path.parent / "term"
@@ -19,9 +21,6 @@ class Log:
 
         self.current_term = 0
 
-        # Entries that are safely committed
-        self.applied_index = 0
-
         # You cannot make changes to the log without holding the commit lock.
         # This ensures the txn log on disk and in memory is actually in the same order.
         self._commit_lock = asyncio.Lock()
@@ -30,15 +29,26 @@ class Log:
         self._fp: AIOFile = None
         self._writer: Writer = None
 
-        self._log = []
+        self.log = []
 
-        # Functions to call with changes that are safe to apply to replicated data structures.
-        self._callbacks = []
+    async def step(self, machine: Machine):
+        aws = []
 
-        # List of (commit_index, event)
-        self._waiters = []
+        if machine.term > self.current_term:
+            aws.append(self.write_term(machine.term))
 
-    async def set_term(self, term):
+        if machine.log.snapshot_index != self.snapshot_index:
+            aws.append(self.write_snapshot(machine.term))
+
+        if machine.truncate_index or machine.log.last_index != self.last_index:
+            aws.append(self.write_journal(machine))
+
+        if not aws:
+            return
+
+        await asyncio.gather(*aws)
+
+    async def write_term(self, term):
         async with self._commit_lock:
             if term <= self.current_term:
                 return
@@ -50,18 +60,35 @@ class Log:
 
             self.current_term = term
 
-    def add_reducer(self, callback):
-        self._callbacks.append(callback)
+    async def write_snapshot(self, snapshot_index, snapshot_term, snapshot):
+        # FIXME: Write to disk
+        self.snapshot = snapshot
+        self.snapshot_index = snapshot_index
+        self.snapshot_term
+
+    async def write_journal(self, machine: Machine):
+        if machine.log.truncate_index is not None:
+            await self.rollback(machine.log.truncate_index)
+
+        while self.last_index < machine.log.last_index:
+            logger.critical(
+                "write_journal %s %s %s",
+                machine.identifier,
+                machine.log.last_index,
+                self.last_index,
+            )
+            term, entry = machine.log[self.last_index + 1]
+            await self.commit(term, entry)
 
     @property
     def last_term(self):
-        if self._log:
-            return self._log[-1][0]
+        if self.log:
+            return self.log[-1][0]
         return self.snapshot_term
 
     @property
     def last_index(self):
-        return self.snapshot_index + len(self._log)
+        return self.snapshot_index + len(self.log)
 
     def read_term(self):
         if not os.path.exists(self._term_path):
@@ -74,7 +101,7 @@ class Log:
         if not os.path.exists(self._path):
             return
 
-        self._log = []
+        self.log = []
 
         with open(self._path, "r") as fp:
             for i, line in enumerate(fp):
@@ -85,13 +112,13 @@ class Log:
                     # FIXME: Take a copy of journal at truncate at this point?
                     return
 
-                self._log.append(tuple(payload))
+                self.log.append(tuple(payload))
 
         logger.info("Restored to term: %d index: %d", self.last_term, self.last_index)
 
         if self.last_term > self.current_term:
             logger.warning("Journal is ahead of persisted term - fixing")
-            await self.set_term(self.last_term)
+            await self.write_term(self.last_term)
 
     async def open(self):
         self.read_term()
@@ -122,11 +149,11 @@ class Log:
             await self.close()
 
             while self.last_index > last_index:
-                del self._log[-1]
+                del self.log[-1]
 
             async with AIOFile(self._path, "w") as fp:
                 writer = Writer(fp)
-                for row in self._log:
+                for row in self.log:
                     await writer(json.dumps(row) + "\n")
                 await fp.fsync()
 
@@ -144,29 +171,9 @@ class Log:
             await self._writer(json.dumps(record) + "\n")
             await self._fp.fsync()
 
-            self._log.append(record)
+            self.log.append(record)
 
         logger.debug("Committed term %d index %d", self.last_term, self.last_index)
-
-    async def apply(self, index):
-        """Indexes up to `index` can now be applied to the state machine."""
-        logger.critical("Safe to apply log up to index %d", index)
-
-        entries = self._log[self.applied_index : index]
-
-        for callback in self._callbacks:
-            callback(entries)
-
-        waiters = []
-        for waiter_index, ev in self._waiters:
-            if waiter_index <= index:
-                ev.set()
-                continue
-            waiters.append((waiter_index, ev))
-        self._waiters = waiters
-
-        logger.debug("Applied index %d", index)
-        self.applied_index = index
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -175,12 +182,6 @@ class Log:
                 key.stop - 1 if key.stop else None,
                 key.step,
             )
-            return self._log[new_slice]
+            return self.log[new_slice]
 
-        return self._log[key - 1]
-
-    async def wait_for_commit(self, term, index):
-        ev = asyncio.Event()
-        self._waiters.append((index, ev))
-        await ev.wait()
-        return self[index][0] == term
+        return self.log[key - 1]

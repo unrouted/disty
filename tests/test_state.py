@@ -41,7 +41,7 @@ def test_blob_not_available_after_delete():
             [
                 1,
                 {
-                    "type": RegistryActions.BLOB_DELETED,
+                    "type": RegistryActions.BLOB_UNMOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
                 },
@@ -67,7 +67,7 @@ def test_blob_available_after_delete_and_restore():
             [
                 1,
                 {
-                    "type": RegistryActions.BLOB_DELETED,
+                    "type": RegistryActions.BLOB_UNMOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
                 },
@@ -124,7 +124,7 @@ def test_manifest_not_available_after_delete():
             [
                 1,
                 {
-                    "type": RegistryActions.MANIFEST_DELETED,
+                    "type": RegistryActions.MANIFEST_UNMOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
                 },
@@ -150,7 +150,7 @@ def test_manifest_available_after_delete_and_restore():
             [
                 1,
                 {
-                    "type": RegistryActions.MANIFEST_DELETED,
+                    "type": RegistryActions.MANIFEST_UNMOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
                 },

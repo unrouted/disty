@@ -61,7 +61,7 @@ class RegistryState(Reducer):
             blob = self.blobs.setdefault(entry["hash"], set())
             blob.add(entry["repository"])
 
-        elif entry["type"] == RegistryActions.BLOB_DELETED:
+        elif entry["type"] == RegistryActions.BLOB_UNMOUNTED:
             blob = self.blobs.setdefault(entry["hash"], set())
             blob.discard(entry["repository"])
 
@@ -69,7 +69,7 @@ class RegistryState(Reducer):
             manifest = self.manifests.setdefault(entry["hash"], set())
             manifest.add(entry["repository"])
 
-        elif entry["type"] == RegistryActions.MANIFEST_DELETED:
+        elif entry["type"] == RegistryActions.MANIFEST_UNMOUNTED:
             manifest = self.manifests.setdefault(entry["hash"], set())
             manifest.discard(entry["repository"])
 
@@ -78,4 +78,4 @@ class RegistryState(Reducer):
                     continue
                 self.state.get(repository, {}).pop(tag, None)
 
-        logger.critical("%r", self.state)
+        logger.critical("STATE %r", self.state)

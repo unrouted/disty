@@ -19,7 +19,7 @@ class WorkerPool(Scheduler):
 
     def spawn(self, coro):
         if self._closed:
-            raise RuntimeError("Scheduling a new job after closing")
+            return
         job = Job(coro, self, self._loop)
         should_start = self._limit is None or self.active_count < self._limit
         self._jobs.add(job)
@@ -28,4 +28,3 @@ class WorkerPool(Scheduler):
         else:
             # wait for free slot in queue
             self._pending.put_nowait(job)
-        return job
