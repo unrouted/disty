@@ -49,7 +49,7 @@ def test_become_candidate():
     m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
 
-    m.step(m.outbox.pop(0).reply(1, reject=False))
+    # One vote is enough to win a prevote and make us a candidate
     m.step(m.outbox.pop(0).reply(1, reject=False))
 
     assert m.state == NodeState.CANDIDATE
@@ -67,7 +67,7 @@ def test_candidate_timeout():
     m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
 
-    m.step(m.outbox.pop(0).reply(1, reject=False))
+    # One vote is enough to win a prevote and make us a candidate
     m.step(m.outbox.pop(0).reply(1, reject=False))
     assert m.state == NodeState.CANDIDATE
 
@@ -84,13 +84,19 @@ def test_become_leader():
 
     m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
-    m.outbox = []
     m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
     m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
 
-    m.outbox = []
+    assert m.vote_count == 1
+    assert m.state == NodeState.CANDIDATE
+
+    # If a node rejects then we should still be a candidate
+    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=True))
+    assert m.vote_count == 1
+    assert m.state == NodeState.CANDIDATE
+
+    # 3 node cluster, so one node replying is enough to get a quorum
     m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
-    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=False))
 
     assert m.state == NodeState.LEADER
     assert len(m.outbox) == 2
@@ -103,6 +109,19 @@ def test_become_leader():
 
     assert m.outbox[0].type == Message.AppendEntries
     assert m.outbox[1].type == Message.AppendEntries
+
+    # Further votes should have no effect
+    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=True))
+
+    assert m.vote_count == 2
+    assert m.state == NodeState.LEADER
+    assert len(m.outbox) == 0
+
+    assert m.peers["node2"].next_index == 1
+    assert m.peers["node2"].match_index == 0
+
+    assert m.peers["node3"].next_index == 1
+    assert m.peers["node3"].match_index == 0
 
 
 def test_leader_handle_append_entries_reply_success():
@@ -119,23 +138,24 @@ def test_leader_handle_append_entries_reply_success():
 
     m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
-    m.outbox = []
+
     m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
     m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
 
-    m.outbox = []
     m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
+    outbox = list(m.outbox)
     m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=False))
+    outbox.extend(m.outbox)
 
-    m.step(m.outbox[0].reply(1, reject=False, log_index=3))
-    m.step(m.outbox[1].reply(1, reject=False, log_index=3))
+    m.step(outbox[0].reply(1, reject=False, log_index=3))
+    m.step(outbox[1].reply(1, reject=False, log_index=3))
 
     assert m.peers["node2"].next_index == 4
     assert m.peers["node2"].match_index == 3
 
     # Make sure we can't commit what we don't have
-    m.step(m.outbox[0].reply(1, reject=False, log_index=10))
-    m.step(m.outbox[1].reply(1, reject=False, log_index=10))
+    m.step(outbox[0].reply(1, reject=False, log_index=10))
+    m.step(outbox[1].reply(1, reject=False, log_index=10))
 
     # These have gone up one because the leader has committed an empty log entry
     # As it has started a new term.

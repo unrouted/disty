@@ -9,6 +9,7 @@ from . import config, exceptions
 from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
 from .storage import Storage
+from .utils.tick import Tick
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ class Raft:
         self.queue = asyncio.Queue()
 
         self._closed = False
+
+        self._ticker = Tick(self._tick)
 
     async def append(self, entries):
         if self.machine.state == NodeState.LEADER:
@@ -57,7 +60,24 @@ class Raft:
     async def close(self):
         self._closed = True
 
+    def _tick(self):
+        self.queue.put_nowait(
+            (
+                {
+                    "type": str(Message.Tick),
+                    "source": self.machine.identifier,
+                    "destination": self.machine.identifier,
+                    "term": 0,
+                },
+                None,
+            )
+        )
+
     async def _process_queue(self):
+        task_complete = None
+
+        self._ticker.reschedule(self.machine.next_tick)
+
         while not self._closed:
             try:
                 payload = await self.queue.get()
@@ -84,6 +104,8 @@ class Raft:
 
                 await self.reducers.step(self.machine)
 
+                self._ticker.reschedule(self.machine.next_tick)
+
             except asyncio.CancelledError as e:
                 if task_complete:
                     task_complete.set_exception(e)
@@ -100,28 +122,12 @@ class Raft:
 
             self.queue.task_done()
 
-    async def _ticker(self):
-        while not self._closed:
-            await self.queue.put(
-                (
-                    {
-                        "type": str(Message.Tick),
-                        "source": self.machine.identifier,
-                        "destination": self.machine.identifier,
-                        "term": 0,
-                    },
-                    None,
-                )
-            )
-            await asyncio.sleep(0.1)
-
     async def run_forever(self, port: int):
-        ticker_fn = self._ticker()
         queue_worker = self._process_queue()
         listener = self._run_listener(port)
 
         try:
-            return await asyncio.gather(ticker_fn, queue_worker, listener)
+            return await asyncio.gather(queue_worker, listener)
         finally:
             await self.close()
 

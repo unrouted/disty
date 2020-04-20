@@ -1,3 +1,5 @@
+import logging
+
 import aiohttp
 import pytest
 
@@ -8,3 +10,8 @@ async def client_session(loop):
         timeout=aiohttp.ClientTimeout(total=0.1)
     ) as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def configure_logging(caplog):
+    caplog.set_level(logging.DEBUG)

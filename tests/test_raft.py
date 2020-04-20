@@ -6,8 +6,6 @@ import socket
 
 from distribd import config
 from distribd.service import main
-from distribd.machine import NodeState
-
 import pytest
 
 logger = logging.getLogger(__name__)

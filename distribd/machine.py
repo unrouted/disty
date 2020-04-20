@@ -205,6 +205,19 @@ class Machine:
 
         return self.obedient is True
 
+    @property
+    def next_tick(self):
+        """
+        Returns the time at which this node should wake and run a Message.Tick (in ns).
+
+        At the moment, this is just self._tick. In the future we might want to have
+        seperate heartbeats for different peers, in which case this would return the smallest
+        tick value.
+
+        This can return 0 if no tick should be scheduled.
+        """
+        return self.tick
+
     def append(self, entry):
         if self.state != NodeState.LEADER:
             raise exceptions.NotALeader()
@@ -346,7 +359,7 @@ class Machine:
 
     def step(self, message):
         self.log.truncate_index = None
-        self.machine.outbox = []
+        self.outbox = []
 
         if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
             if message.type != Message.AppendEntries or len(message.entries) > 0:
