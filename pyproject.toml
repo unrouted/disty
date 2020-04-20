@@ -15,6 +15,7 @@ prometheus_client = "^0.7.1"
 aiojobs = "^0.2.2"
 jsonschema = "^3.2.0"
 yarl = "^1.4.2"
+pyjwt = {version = "^1.7.1", extras = ["crypto"]}
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.770"

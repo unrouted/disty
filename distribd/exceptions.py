@@ -115,12 +115,45 @@ class TagInvalid(JSONExceptionMixin, web.HTTPBadRequest):
     message = "manifest tag did not match URI"
 
 
-class Unauthorized(JSONExceptionMixin, web.HTTPUnauthorized):
+class Unauthorized(web.HTTPUnauthorized):
 
     """The access controller was unable to authenticate the client. Often this will be accompanied by a Www-Authenticate HTTP response header indicating how to authenticate."""
 
     code = "UNAUTHORIZED"
     message = "authentication required"
+
+    def __init__(self, realm, service, repository=None, actions=None):
+        details = None
+
+        # If authenticate request has a repository and actions put it in details in the right format
+        # Otherwise details should be `nil`
+        if repository and actions:
+            details = []
+            for action in actions:
+                details.append(
+                    {"Type": "Repository", "Name": repository, "Action": action}
+                )
+
+        error = {
+            "code": self.code,
+            "message": self.message,
+            "detail": details,
+        }
+
+        # Www-Authenticate can only contain a cope if we know the repository/action
+        scope = ""
+        if repository and actions:
+            action_str = ",".join(actions)
+            scope = f',scope="repository:{repository}:{action_str}"'
+
+        super().__init__(
+            headers={
+                "Docker-Distribution-Api-Version": "registry/2.0",
+                "Content-Type": "application/json",
+                "Www-Authenticate": f'Bearer realm="{realm}",service="{service}"{scope}',
+            },
+            text=json.dumps({"errors": [error]}),
+        )
 
 
 class Denied(JSONExceptionMixin, web.HTTPForbidden):

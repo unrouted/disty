@@ -139,7 +139,7 @@ async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements)
         if all_matching and match_one_agreement:
             break
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.5)
     else:
         logger.critical("node 1: %s", result1)
         logger.critical("node 2: %s", result2)
