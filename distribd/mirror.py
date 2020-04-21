@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class Mirrorer(Reducer):
     def __init__(self, peers, image_directory, identifier, send_action):
+        self.peers = peers
         self.image_directory = image_directory
         self.identifier = identifier
         self.send_action = send_action
@@ -35,6 +36,10 @@ class Mirrorer(Reducer):
     async def _do_transfer(self, hash, urls, destination):
         if destination.exists():
             logger.debug("%s already exists, not requesting", destination)
+            return
+
+        if not urls:
+            logger.debug("No urls for hash %s yet", hash)
             return
 
         url = random.choice(urls)
@@ -94,13 +99,14 @@ class Mirrorer(Reducer):
         urls = []
 
         for location in self.blob_locations[hash]:
-            if location not in self.peers[location]:
+            if location not in self.peers:
                 continue
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/blobs/sha256:{hash}")
 
+        print(urls)
         return urls
 
     async def do_download_blob(self, hash, retry_count=0):
@@ -159,7 +165,7 @@ class Mirrorer(Reducer):
         urls = []
 
         for location in self.manifest_locations[hash]:
-            if location not in self.peers[location]:
+            if location not in self.peers:
                 continue
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]

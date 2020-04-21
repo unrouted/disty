@@ -1,9 +1,7 @@
 import asyncio
 import logging
-import socket
 
 import aiohttp
-from distribd import config
 from distribd.machine import NodeState
 from distribd.service import main
 import pytest
@@ -11,19 +9,12 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-def unused_port():
-    """Return a port that is unused on the current host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-async def check_consensus(config, session):
+async def check_consensus(cluster_config, session):
     consensus = set()
     states = set()
 
-    for node in config.values():
-        port = node["raft_port"]
+    for node, config in cluster_config.items():
+        port = config["raft"]["port"].get(int)
 
         try:
             async with session.get(f"http://localhost:{port}/status") as resp:
@@ -43,45 +34,25 @@ async def check_consensus(config, session):
 
 
 @pytest.fixture
-async def fake_cluster(loop, tmp_path, monkeypatch, client_session):
-    test_config = {}
-
-    for node in ("node1", "node2", "node3"):
-        dir = tmp_path / node
-
-        raft_port = unused_port()
-        registry_port = unused_port()
-        prometheus_port = unused_port()
-
-        test_config[node] = {
-            "raft_port": raft_port,
-            "raft_url": f"http://127.0.0.1:{raft_port}",
-            "registry_port": registry_port,
-            "registry_url": f"http://127.0.0.1:{registry_port}",
-            "prometheus_port": prometheus_port,
-            "images_directory": dir,
-        }
-
-    monkeypatch.setattr(config, "config", test_config)
-
+async def fake_cluster(loop, cluster_config, tmp_path, monkeypatch, client_session):
     servers = asyncio.ensure_future(
         asyncio.gather(
-            main(["--name", "node1"]),
-            main(["--name", "node2"]),
-            main(["--name", "node3"]),
+            main([], cluster_config["node1"]),
+            main([], cluster_config["node2"]),
+            main([], cluster_config["node3"]),
         )
     )
 
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.1)
 
     for i in range(100):
-        if await check_consensus(test_config, client_session):
+        if await check_consensus(cluster_config, client_session):
             break
         await asyncio.sleep(0.1)
     else:
         raise RuntimeError("No consensus")
 
-    yield test_config
+    yield cluster_config
 
     # Cancel servers. Ignore CancelledError.
     servers.cancel()
@@ -93,7 +64,7 @@ async def fake_cluster(loop, tmp_path, monkeypatch, client_session):
 
 async def test_v2_redir(fake_cluster, client_session):
     for node in ("node1", "node2", "node3"):
-        port = fake_cluster[node]["registry_port"]
+        port = fake_cluster[node]["registry"]["port"].get(int)
 
         async with client_session.get(
             f"http://localhost:{port}/v2", allow_redirects=False
@@ -104,7 +75,7 @@ async def test_v2_redir(fake_cluster, client_session):
 
 async def test_list_tags_404(fake_cluster, client_session):
     for node in ("node1", "node2", "node3"):
-        port = fake_cluster[node]["registry_port"]
+        port = fake_cluster[node]["registry"]["port"].get(int)
 
         async with client_session.get(
             f"http://localhost:{port}/v2/alpine/tags/list"
@@ -188,7 +159,7 @@ async def get_manifest_byt_tag(port, tag, repository="alpine"):
 
 async def assert_blob(fake_cluster, hash, repository="alpine"):
     for node in ("node1", "node2", "node3"):
-        port = fake_cluster[node]["registry_port"]
+        port = fake_cluster[node]["registry"]["port"].get(int)
         content_length, body = await get_blob(port, hash)
         assert content_length == "4"
         assert body == b"9080"
@@ -196,14 +167,14 @@ async def assert_blob(fake_cluster, hash, repository="alpine"):
 
 async def assert_manifest(fake_cluster, hash, expected_body):
     for node in ("node1", "node2", "node3"):
-        port = fake_cluster[node]["registry_port"]
+        port = fake_cluster[node]["registry"]["port"].get(int)
         logger.critical("Getting manifest for port %s", port)
         content_length, body = await get_manifest(port, hash)
         assert body == expected_body
 
 
 async def test_put_blob_fail_invalid_hash(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -225,7 +196,7 @@ async def test_put_blob_fail_invalid_hash(fake_cluster):
 
 
 async def test_put_blob(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
     digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
@@ -252,7 +223,7 @@ async def test_put_blob(fake_cluster):
 
 
 async def test_put_blob_without_patches(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
     digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
@@ -274,7 +245,7 @@ async def test_put_blob_without_patches(fake_cluster):
 
 
 async def test_put_blob_with_cross_mount(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
     digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
@@ -304,7 +275,7 @@ async def test_put_blob_with_cross_mount(fake_cluster):
 
 
 async def test_put_blob_and_cancel(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
     digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
@@ -333,7 +304,7 @@ async def test_put_blob_and_cancel(fake_cluster):
 
 
 async def test_put_blob_and_get_status(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     async with aiohttp.ClientSession() as session:
         # First upload an ordinary blob
@@ -355,7 +326,7 @@ async def test_put_blob_and_get_status(fake_cluster):
 
 
 async def test_put_blob_and_delete(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
     digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
@@ -385,7 +356,7 @@ async def test_put_blob_and_delete(fake_cluster):
 
 
 async def test_list_tags(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     manifest = {
         "manifests": [],
@@ -403,7 +374,7 @@ async def test_list_tags(fake_cluster):
         await assert_manifest(fake_cluster, hash, manifest)
 
         for node in fake_cluster.values():
-            port = node["registry_port"]
+            port = node["registry"]["port"].get(int)
             async with session.get(
                 f"http://localhost:{port}/v2/alpine/tags/list"
             ) as resp:
@@ -412,7 +383,7 @@ async def test_list_tags(fake_cluster):
 
 
 async def test_list_tags_pagination(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     manifest = {
         "manifests": [],
@@ -431,7 +402,7 @@ async def test_list_tags_pagination(fake_cluster):
         await assert_manifest(fake_cluster, hash, manifest)
 
         for node in fake_cluster.values():
-            port = node["registry_port"]
+            port = node["registry"]["port"].get(int)
 
             async with session.get(
                 f"http://localhost:{port}/v2/alpine/tags/list?n=1"
@@ -445,7 +416,7 @@ async def test_list_tags_pagination(fake_cluster):
 
 
 async def test_delete_manifest(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     manifest = {
         "manifests": [],
@@ -478,7 +449,7 @@ async def test_delete_manifest(fake_cluster):
 
 
 async def test_full_manifest_round_trip(fake_cluster):
-    port = fake_cluster["node1"]["registry_port"]
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
 
     manifest = {
         "manifests": [],
