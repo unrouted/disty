@@ -6,6 +6,7 @@ import sys
 
 import coloredlogs
 import verboselogs
+from confuse import Configuration
 
 from . import config
 from .machine import Machine
@@ -27,10 +28,14 @@ async def main(argv=None):
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("nodename")
+    parser.add_argument("--name", dest="node.identifier")
     args = parser.parse_args(argv or sys.argv[1:])
 
-    identifier = f"{args.nodename}"
+    app_config = Configuration('distribd', __name__)
+    app_config.set_args(args)
+
+    identifier = app_config["node.identifier"].get(str)
+
     logger.debug("Starting node %s", identifier)
 
     cfg = config.config[identifier]
@@ -66,6 +71,7 @@ async def main(argv=None):
         await asyncio.gather(
             raft.run_forever(raft_port),
             run_registry(
+                config,
                 machine.identifier,
                 registry_state,
                 raft.append,

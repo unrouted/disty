@@ -670,7 +670,7 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(identifier, registry_state, send_action, images_directory, port):
+async def run_registry(config, identifier, registry_state, send_action, images_directory, port):
     return await run_server(
         "0.0.0.0",
         port,
@@ -681,4 +681,5 @@ async def run_registry(identifier, registry_state, send_action, images_directory
         images_directory=images_directory,
         sessions={},
         token_server={},
+        config=config,
     )

@@ -16,6 +16,7 @@ aiojobs = "^0.2.2"
 jsonschema = "^3.2.0"
 yarl = "^1.4.2"
 pyjwt = {version = "^1.7.1", extras = ["crypto"]}
+confuse = "^1.1.0"
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.770"

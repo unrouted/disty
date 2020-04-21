@@ -9,14 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 def authenticate(request, repository=None, actions=None):
-    token_server = request.app["token_server"]
+    config = request.app["config"]["token_server"]
 
-    if not token_server.get("enabled", False):
+    if not config["enabled"].get(bool):
         return True
 
-    realm = token_server["realm"]
-    service = token_server["service"]
-    public_key = token_server["public_key"]
+    realm = config["realm"].get(str)
+    service = config["service"].get(str)
+    public_key = config["public_key"].get(str)
 
     if "Authorization" not in request.headers:
         raise exceptions.Unauthorized(realm, service, repository, actions)
