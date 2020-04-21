@@ -15,7 +15,11 @@ async def test_prometheus(loop, tmp_path, monkeypatch, client_session):
     monkeypatch.setattr(config, "config", test_config)
 
     servers = asyncio.ensure_future(
-        asyncio.gather(main(["8080"]), main(["8081"]), main(["8082"]),)
+        asyncio.gather(
+            main(["--name", "8080"]),
+            main(["--name", "8081"]),
+            main(["--name", "8082"]),
+        )
     )
     await asyncio.sleep(0)
 

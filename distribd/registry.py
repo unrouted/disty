@@ -11,8 +11,8 @@ from yarl import URL
 from . import exceptions
 from .actions import RegistryActions
 from .analyzer import analyze
-from .authenticate import authenticate
 from .utils.registry import get_blob_path, get_manifest_path
+from .utils.tokenchecker import TokenChecker
 from .utils.web import run_server
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ async def handle_bare_v2(request):
 
 @routes.get("/v2/")
 async def handle_v2_root(request):
-    authenticate(request)
+    request.app["token_checker"].authenticate(request)
     return web.Response(text="")
 
 
@@ -36,7 +36,7 @@ async def list_images_in_repository(request):
     registry_state = request.app["registry_state"]
     repository = request.match_info["repository"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     try:
         tags = registry_state.get_tags(repository)
@@ -94,7 +94,7 @@ async def head_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     registry_state = request.app["registry_state"]
     if not registry_state.is_manifest_available(repository, hash):
@@ -111,7 +111,7 @@ async def head_manifest_by_tag(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     try:
         hash = registry_state.get_tag(repository, tag)
@@ -151,7 +151,7 @@ async def get_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     registry_state = request.app["registry_state"]
     if not registry_state.is_manifest_available(repository, hash):
@@ -168,7 +168,7 @@ async def get_manifest_by_tag(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     try:
         hash = registry_state.get_tag(repository, tag)
@@ -188,7 +188,7 @@ async def delete_manifest_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
@@ -214,7 +214,7 @@ async def delete_manifest_by_hash(request):
 @routes.delete("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def delete_manifest_by_ref(request):
     repository = request.match_info["repository"]
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     raise exceptions.Unsupported()
 
@@ -227,7 +227,7 @@ async def head_blob(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     if not registry_state.is_blob_available(repository, hash):
         raise exceptions.BlobUnknown(hash=hash)
@@ -256,7 +256,7 @@ async def get_blob_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["pull"])
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
 
     if not registry_state.is_blob_available(repository, hash):
         raise exceptions.BlobUnknown(hash=hash)
@@ -284,7 +284,7 @@ async def delete_blob_by_hash(request):
     repository = request.match_info["repository"]
     hash = request.match_info["hash"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     if not registry_state.is_blob_available(repository, hash):
         raise exceptions.BlobUnknown(hash=hash)
@@ -315,10 +315,10 @@ async def start_upload(request):
     mount_digest = request.query.get("mount", "")
     mount_repository = request.query.get("from", "")
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     if mount_digest and mount_repository:
-        authenticate(request, mount_repository, ["pull"])
+        request.app["token_checker"].authenticate(request, mount_repository, ["pull"])
 
         if mount_repository == repository:
             raise exceptions.BlobUploadInvalid(
@@ -442,7 +442,7 @@ async def upload_chunk_by_patch(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     session = request.app["sessions"].get(session_id, None)
     if not session:
@@ -502,7 +502,7 @@ async def upload_finish(request):
     session_id = request.match_info["session_id"]
     expected_digest = request.query.get("digest", "")
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     session = request.app["sessions"].get(session_id, None)
     if not session:
@@ -569,7 +569,7 @@ async def upload_status(request):
     session_id = request.match_info["session_id"]
     repository = request.match_info["repository"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     upload_path = images_directory / "uploads" / session_id
     if not upload_path.exists():
@@ -593,7 +593,7 @@ async def cancel_upload(request):
     repository = request.match_info["repository"]
     session_id = request.match_info["session_id"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     upload_path = images_directory / "uploads" / session_id
     if not upload_path.exists():
@@ -613,7 +613,7 @@ async def put_manifest(request):
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
 
-    authenticate(request, repository, ["push"])
+    request.app["token_checker"].authenticate(request, repository, ["push"])
 
     manifest = await request.read()
 
@@ -670,7 +670,11 @@ async def put_manifest(request):
     )
 
 
-async def run_registry(config, identifier, registry_state, send_action, images_directory, port):
+async def run_registry(
+    config, identifier, registry_state, send_action, images_directory, port
+):
+    token_checker = TokenChecker(config)
+
     return await run_server(
         "0.0.0.0",
         port,
@@ -680,6 +684,6 @@ async def run_registry(config, identifier, registry_state, send_action, images_d
         send_action=send_action,
         images_directory=images_directory,
         sessions={},
-        token_server={},
+        token_checker=token_checker,
         config=config,
     )

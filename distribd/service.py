@@ -5,8 +5,8 @@ import pathlib
 import sys
 
 import coloredlogs
-import verboselogs
 from confuse import Configuration
+import verboselogs
 
 from . import config
 from .machine import Machine
@@ -31,8 +31,10 @@ async def main(argv=None):
     parser.add_argument("--name", dest="node.identifier")
     args = parser.parse_args(argv or sys.argv[1:])
 
-    app_config = Configuration('distribd', __name__)
+    app_config = Configuration("distribd", __name__)
     app_config.set_args(args)
+
+    logger.debug("Configuration directory: %s", app_config.config_dir())
 
     identifier = app_config["node.identifier"].get(str)
 
@@ -71,7 +73,7 @@ async def main(argv=None):
         await asyncio.gather(
             raft.run_forever(raft_port),
             run_registry(
-                config,
+                app_config,
                 machine.identifier,
                 registry_state,
                 raft.append,

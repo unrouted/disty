@@ -71,7 +71,11 @@ async def fake_cluster(loop, tmp_path, monkeypatch, client_session):
     monkeypatch.setattr(config, "config", test_config)
 
     servers = asyncio.ensure_future(
-        asyncio.gather(main(["node1"]), main(["node2"]), main(["node3"]),)
+        asyncio.gather(
+            main(["--name", "node1"]),
+            main(["--name", "node2"]),
+            main(["--name", "node3"]),
+        )
     )
 
     await asyncio.sleep(1)

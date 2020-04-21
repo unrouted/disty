@@ -97,7 +97,7 @@ async def fake_cluster(tmp_path, monkeypatch, loop):
             for row in journal:
                 fp.write(json.dumps(row) + "\n")
 
-        servers.append(asyncio.ensure_future(main([node])))
+        servers.append(asyncio.ensure_future(main(["--name", node])))
 
     yield start
 
