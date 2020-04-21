@@ -1,13 +1,16 @@
 import asyncio
 import logging
+import random
 
 import aiohttp
 from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
+from yarl import URL
 
 from . import config, exceptions
 from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
+from .seeding import Seeder
 from .storage import Storage
 from .utils.tick import Tick
 from .utils.web import run_server
@@ -21,7 +24,8 @@ class RaftAccessLog(AbstractAccessLogger):
 
 
 class Raft:
-    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
+    def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
+        self.config = config
         self.machine = machine
         self.storage = storage
         self.reducers = reducers
@@ -73,6 +77,28 @@ class Raft:
             )
         )
 
+    async def step(self, msg):
+        self.machine.step(Msg.from_dict(msg))
+
+        await self.storage.step(self.machine)
+
+        if self.machine.outbox:
+            aws = []
+            for message in self.machine.outbox:
+                aws.append(self.send(message))
+
+            for future in asyncio.as_completed(aws):
+                try:
+                    await future
+
+                except asyncio.CancelledError:
+                    raise
+
+                except Exception:
+                    logger.exception("Unhandled error while sending message")
+
+        await self.reducers.step(self.machine)
+
     async def _process_queue(self):
         task_complete = None
 
@@ -83,26 +109,7 @@ class Raft:
                 payload = await self.queue.get()
                 msg, task_complete = payload
 
-                self.machine.step(Msg.from_dict(msg))
-
-                await self.storage.step(self.machine)
-
-                if self.machine.outbox:
-                    aws = []
-                    for message in self.machine.outbox:
-                        aws.append(self.send(message))
-
-                    for future in asyncio.as_completed(aws):
-                        try:
-                            await future
-
-                        except asyncio.CancelledError:
-                            raise
-
-                        except Exception:
-                            logger.exception("Unhandled error while sending message")
-
-                await self.reducers.step(self.machine)
+                await self.step(msg)
 
                 self._ticker.reschedule(self.machine.next_tick)
 
@@ -139,9 +146,14 @@ class Raft:
 
 
 class HttpRaft(Raft):
-    def __init__(self, machine: Machine, storage: Storage, reducers: Reducers):
-        super().__init__(machine, storage, reducers)
+    def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
+        super().__init__(config, machine, storage, reducers)
         self.session = aiohttp.ClientSession()
+        self.seeder = Seeder(config, self.spread)
+
+    async def step(self, msg):
+        await super().step(msg)
+        self.seeder.step(self.machine)
 
     async def _append_remote(self, entries):
         logger.critical("_append_remote: %s", self.machine.identifier)
@@ -176,6 +188,17 @@ class HttpRaft(Raft):
             # Message wasn't delivered - client broken or netsplit
             pass
 
+    async def spread(self, gossip):
+        async with aiohttp.ClientSession() as session:
+            url = URL(random.choice(self.config["seeding"]["urls"].get(list)))
+            try:
+                async with session.post(url / "seeding", json=gossip) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+            except aiohttp.ClientError:
+                pass
+        return {}
+
     async def _receive_message(self, request):
         payload = await request.json()
         await self.queue.put((payload, None))
@@ -187,6 +210,11 @@ class HttpRaft(Raft):
             raise exceptions.LeaderUnavailable()
         index, term = await self._append_local(entries)
         return web.json_response({"index": index, "term": term})
+
+    async def _receive_gossip(self, request):
+        gossip = await request.json()
+        reply = self.seeder.exchange_gossip(gossip)
+        return web.json_response(reply)
 
     async def _receive_status(self, request):
         stable = self.machine.log.last_index == self.reducers.applied_index
@@ -220,6 +248,7 @@ class HttpRaft(Raft):
         routes = web.RouteTableDef()
         routes.post("/rpc")(self._receive_message)
         routes.post("/append")(self._receive_append)
+        routes.post("/gossip")(self._receive_gossip)
         routes.get("/status")(self._receive_status)
 
         return await run_server(

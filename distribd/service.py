@@ -32,11 +32,11 @@ async def main(argv=None):
     args = parser.parse_args(argv or sys.argv[1:])
 
     app_config = Configuration("distribd", __name__)
-    app_config.set_args(args)
+    app_config.set_args(args, dots=True)
 
     logger.debug("Configuration directory: %s", app_config.config_dir())
 
-    identifier = app_config["node.identifier"].get(str)
+    identifier = app_config["node"]["identifier"].get(str)
 
     logger.debug("Starting node %s", identifier)
 
@@ -61,7 +61,7 @@ async def main(argv=None):
 
     reducers = Reducers(machine)
 
-    raft = HttpRaft(machine, storage, reducers)
+    raft = HttpRaft(app_config, machine, storage, reducers)
 
     registry_state = RegistryState()
     reducers.add_reducer(registry_state.dispatch_entries)
