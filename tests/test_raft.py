@@ -1,10 +1,7 @@
 import asyncio
 import json
 import logging
-import os
-import socket
 
-from distribd import config
 from distribd.service import main
 import pytest
 
@@ -67,37 +64,15 @@ examples = [
 
 
 @pytest.fixture
-async def fake_cluster(tmp_path, monkeypatch, loop):
-    test_config = {}
-
-    for node in ("node1", "node2", "node3"):
-        dir = tmp_path / node
-        if not dir.exists():
-            os.makedirs(dir)
-
-        raft_port = unused_port()
-        registry_port = unused_port()
-        prometheus_port = unused_port()
-
-        test_config[node] = {
-            "raft_port": raft_port,
-            "raft_url": f"http://127.0.0.1:{raft_port}",
-            "registry_port": registry_port,
-            "registry_url": f"http://127.0.0.1:{registry_port}",
-            "prometheus_port": prometheus_port,
-            "images_directory": dir,
-        }
-
-    monkeypatch.setattr(config, "config", test_config)
-
+async def fake_cluster(cluster_config, loop):
     servers = []
 
     async def start(node, journal):
-        with open(tmp_path / node / "journal", "w") as fp:
+        with open(cluster_config[node]["storage"].as_path() / "journal", "w") as fp:
             for row in journal:
                 fp.write(json.dumps(row) + "\n")
 
-        servers.append(asyncio.ensure_future(main(["--name", node])))
+        servers.append(asyncio.ensure_future(main([], cluster_config[node])))
 
     yield start
 
@@ -146,13 +121,6 @@ async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements)
         logger.critical("node 3: %s", result3)
 
         raise RuntimeError("Did not converge on a valid agreement")
-
-
-def unused_port():
-    """Return a port that is unused on the current host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 @pytest.mark.parametrize("node1,node2,node3,agreements", examples)
