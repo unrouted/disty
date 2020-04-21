@@ -1,0 +1,26 @@
+raft:
+    address: 0.0.0.0
+    port: 8080
+
+registry:
+    address: 0.0.0.0
+    port: 9080
+
+prometheus:
+    address: 0.0.0.0
+    port: 7080
+
+storage: var
+
+token_server:
+    enabled: false
+
+    realm: http://localhost:5001/auth
+    service: My registry
+    public_key: token_server.pub
+   
+seeding:
+    urls:
+        - http://localhost:8080
+        - http://localhost:8081
+        - http://localhost:8082

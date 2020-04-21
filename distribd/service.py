@@ -1,14 +1,12 @@
 import argparse
 import asyncio
 import logging
-import pathlib
 import sys
 
 import coloredlogs
 from confuse import Configuration
 import verboselogs
 
-from . import config
 from .machine import Machine
 from .mirror import Mirrorer
 from .prometheus import run_prometheus
@@ -21,7 +19,7 @@ from .storage import Storage
 logger = logging.getLogger(__name__)
 
 
-async def main(argv=None):
+async def main(argv=None, config=None):
     verboselogs.install()
     coloredlogs.install(
         level="DEBUG", fmt="%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -29,22 +27,23 @@ async def main(argv=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", dest="node.identifier")
-    args = parser.parse_args(argv or sys.argv[1:])
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
-    app_config = Configuration("distribd", __name__)
-    app_config.set_args(args, dots=True)
+    if not config:
+        config = Configuration("distribd", __name__)
 
-    logger.debug("Configuration directory: %s", app_config.config_dir())
+    config.set_args(args, dots=True)
 
-    identifier = app_config["node"]["identifier"].get(str)
+    logger.debug("Configuration directory: %s", config.config_dir())
+
+    identifier = config["node"]["identifier"].get(str)
 
     logger.debug("Starting node %s", identifier)
 
-    cfg = config.config[identifier]
-    raft_port = cfg["raft_port"]
-    registry_port = cfg["registry_port"]
-    prometheus_port = cfg["prometheus_port"]
-    images_directory = pathlib.Path(cfg["images_directory"])
+    raft_port = config["raft"]["port"].get(int)
+    registry_port = config["registry"]["port"].get(int)
+    prometheus_port = config["prometheus"]["port"].get(int)
+    images_directory = config["storage"].as_path()
 
     storage = Storage(images_directory / "journal")
     await storage.open()
@@ -53,7 +52,7 @@ async def main(argv=None):
     machine.term = storage.current_term
     machine.log.load(storage.log)
 
-    for other_identifier, detail in config.config.items():
+    for other_identifier in config["peers"].get(list):
         if identifier != other_identifier:
             machine.add_peer(other_identifier)
 
@@ -61,19 +60,19 @@ async def main(argv=None):
 
     reducers = Reducers(machine)
 
-    raft = HttpRaft(app_config, machine, storage, reducers)
+    raft = HttpRaft(config, machine, storage, reducers)
 
     registry_state = RegistryState()
     reducers.add_reducer(registry_state.dispatch_entries)
 
-    mirrorer = Mirrorer(images_directory, machine.identifier, raft.append)
+    mirrorer = Mirrorer(raft.peers, images_directory, machine.identifier, raft.append)
     reducers.add_reducer(mirrorer.dispatch_entries)
 
     try:
         await asyncio.gather(
             raft.run_forever(raft_port),
             run_registry(
-                app_config,
+                config,
                 machine.identifier,
                 registry_state,
                 raft.append,
@@ -93,4 +92,4 @@ async def main(argv=None):
         pass
 
     finally:
-        await asyncio.gather(storage.close(), mirrorer.close())
+        await asyncio.gather(raft.close(), storage.close(), mirrorer.close())

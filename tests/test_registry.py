@@ -31,20 +31,14 @@ async def check_consensus(config, session):
                 payload = await resp.json()
 
         except asyncio.TimeoutError:
-            print("Timeout")
             return False
 
         if not payload["stable"]:
-            print("Not stable")
             return False
-
-        print(port, payload)
 
         consensus.add(payload["applied_index"])
         states.add(payload["state"])
 
-    print("cons", len(consensus) == 1)
-    print("states", states, int(NodeState.LEADER) in states)
     return len(consensus) == 1 and int(NodeState.LEADER) in states
 
 

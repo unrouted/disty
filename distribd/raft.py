@@ -7,7 +7,7 @@ from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
 from yarl import URL
 
-from . import config, exceptions
+from . import exceptions
 from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
 from .seeding import Seeder
@@ -110,7 +110,6 @@ class Raft:
                 msg, task_complete = payload
 
                 await self.step(msg)
-
                 self._ticker.reschedule(self.machine.next_tick)
 
             except asyncio.CancelledError as e:
@@ -149,11 +148,17 @@ class HttpRaft(Raft):
     def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
         super().__init__(config, machine, storage, reducers)
         self.session = aiohttp.ClientSession()
-        self.seeder = Seeder(config, self.spread)
+        self.peers = Seeder(config, self.spread)
+
+    def url_for_peer(self, peer):
+        address = self.peers[peer]["raft"]["address"]
+        port = self.peers[peer]["raft"]["port"]
+
+        return URL.build(host=address, port=port)
 
     async def step(self, msg):
         await super().step(msg)
-        self.seeder.step(self.machine)
+        self.peers.step(self.machine)
 
     async def _append_remote(self, entries):
         logger.critical("_append_remote: %s", self.machine.identifier)
@@ -167,9 +172,8 @@ class HttpRaft(Raft):
             )
             raise exceptions.LeaderUnavailable()
 
-        url = config.config[self.machine.leader]["raft_url"]
-
-        async with self.session.post(f"{url}/append", json=entries) as resp:
+        url = self.url_for_peer(self.machine.leader)
+        async with self.session.post(url / "append", json=entries) as resp:
             if resp.status != 200:
                 logger.critical(resp.status, await resp.text())
                 raise RuntimeError("Remote append failed")
@@ -177,11 +181,15 @@ class HttpRaft(Raft):
             return payload["index"], payload["term"]
 
     async def send(self, message: Msg):
-        url = config.config[message.destination]["raft_url"]
+        if message.destination not in self.peers:
+            # We don't know where this peer is, drop the message
+            return
+
         body = message.to_dict()
 
         try:
-            async with self.session.post(f"{url}/rpc", json=body) as resp:
+            url = self.url_for_peer(message.destination)
+            async with self.session.post(url / "rpc", json=body) as resp:
                 if resp.status != 200:
                     logger.debug("Message rejected")
         except aiohttp.ClientError:
@@ -192,7 +200,7 @@ class HttpRaft(Raft):
         async with aiohttp.ClientSession() as session:
             url = URL(random.choice(self.config["seeding"]["urls"].get(list)))
             try:
-                async with session.post(url / "seeding", json=gossip) as resp:
+                async with session.post(url / "gossip", json=gossip) as resp:
                     if resp.status == 200:
                         return await resp.json()
             except aiohttp.ClientError:
@@ -213,7 +221,7 @@ class HttpRaft(Raft):
 
     async def _receive_gossip(self, request):
         gossip = await request.json()
-        reply = self.seeder.exchange_gossip(gossip)
+        reply = self.peers.exchange_gossip(gossip)
         return web.json_response(reply)
 
     async def _receive_status(self, request):

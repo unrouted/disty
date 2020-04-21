@@ -8,7 +8,6 @@ import uuid
 from aiofile import AIOFile, Writer
 import aiohttp
 
-from . import config
 from .actions import RegistryActions
 from .jobs import WorkerPool
 from .state import Reducer
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Mirrorer(Reducer):
-    def __init__(self, image_directory, identifier, send_action):
+    def __init__(self, peers, image_directory, identifier, send_action):
         self.image_directory = image_directory
         self.identifier = identifier
         self.send_action = send_action
@@ -91,11 +90,18 @@ class Mirrorer(Reducer):
 
     def urls_for_blob(self, hash):
         repo = next(iter(self.blob_repos[hash]))
-        locations = [
-            config.config[l]["registry_url"] for l in self.blob_locations[hash]
-        ]
 
-        return [f"{location}/v2/{repo}/blobs/sha256:{hash}" for location in locations]
+        urls = []
+
+        for location in self.blob_locations[hash]:
+            if location not in self.peers[location]:
+                continue
+            address = self.peers[location]["registry"]["address"]
+            port = self.peers[location]["registry"]["port"]
+            url = f"http://{address}:{port}"
+            urls.append(f"{url}/v2/{repo}/blobs/sha256:{hash}")
+
+        return urls
 
     async def do_download_blob(self, hash, retry_count=0):
         if not self.should_download_blob(hash):
@@ -149,12 +155,18 @@ class Mirrorer(Reducer):
 
     def urls_for_manifest(self, hash):
         repo = next(iter(self.manifest_repos[hash]))
-        locations = [
-            config.config[l]["registry_url"] for l in self.manifest_locations[hash]
-        ]
-        return [
-            f"{location}/v2/{repo}/manifests/sha256:{hash}" for location in locations
-        ]
+
+        urls = []
+
+        for location in self.manifest_locations[hash]:
+            if location not in self.peers[location]:
+                continue
+            address = self.peers[location]["registry"]["address"]
+            port = self.peers[location]["registry"]["port"]
+            url = f"http://{address}:{port}"
+            urls.append(f"{url}/v2/{repo}/manifests/sha256:{hash}")
+
+        return urls
 
     async def do_download_manifest(self, hash, retry_count=0):
         if not self.should_download_manifest(hash):

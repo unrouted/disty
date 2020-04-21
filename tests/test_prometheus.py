@@ -1,30 +1,27 @@
 import asyncio
-import copy
 import logging
 
-from distribd import config
 from distribd.service import main
 
 logger = logging.getLogger(__name__)
 
 
-async def test_prometheus(loop, tmp_path, monkeypatch, client_session):
-    test_config = copy.deepcopy(config.config)
-    for port in ("8080", "8081", "8082"):
-        test_config[f"{port}"]["images_directory"] = tmp_path / port
-    monkeypatch.setattr(config, "config", test_config)
-
+async def test_prometheus(loop, cluster_config, client_session):
     servers = asyncio.ensure_future(
         asyncio.gather(
-            main(["--name", "8080"]),
-            main(["--name", "8081"]),
-            main(["--name", "8082"]),
+            main([], cluster_config["node1"]),
+            main([], cluster_config["node2"]),
+            main([], cluster_config["node3"]),
         )
     )
-    await asyncio.sleep(0)
+    # FIXME Better non-time based hook...
+    await asyncio.sleep(0.1)
 
     for i in range(100):
-        async with client_session.get("http://localhost:8080/status") as resp:
+        address = cluster_config["node1"]["raft"]["address"].get()
+        port = cluster_config["node1"]["raft"]["port"].get()
+
+        async with client_session.get(f"http://{address}:{port}/status") as resp:
             assert resp.status == 200
             payload = await resp.json()
             if payload["consensus"]:
@@ -33,12 +30,15 @@ async def test_prometheus(loop, tmp_path, monkeypatch, client_session):
     else:
         raise RuntimeError("No consensus")
 
-    for port in (7080, 7081, 7082):
-        async with client_session.get(f"http://localhost:{port}/healthz") as resp:
+    for node in ("node1", "node2", "node3"):
+        address = cluster_config[node]["prometheus"]["address"].get()
+        port = cluster_config[node]["prometheus"]["port"].get()
+
+        async with client_session.get(f"http://{address}:{port}/healthz") as resp:
             assert resp.status == 200
             assert await resp.json() == {"ok": True}
 
-        async with client_session.get(f"http://localhost:{port}/metrics") as resp:
+        async with client_session.get(f"http://{address}:{port}/metrics") as resp:
             assert resp.status == 200
 
     # Cancel servers. Ignore CancelledError.
