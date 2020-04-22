@@ -39,7 +39,7 @@ class Seeder:
             # case we have got tastier gossip in the meantime
             self.update_from_gossip(resp)
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     def start_gossiping(self):
         self._task = asyncio.ensure_future(self._gossip())
@@ -101,15 +101,29 @@ class Seeder:
 
         return response
 
+    def all_peers_known(self):
+        for node in self.config["peers"].get(list):
+            if node not in self.nodes:
+                return False
+        return True
+
+    def should_gossip(self, machine):
+        if not self.all_peers_known():
+            return True
+
+        if not machine.leader_active:
+            return True
+
+        return False
+
     def step(self, machine):
-        if machine.leader_active:
-            if self.is_gossiping:
-                logger.debug("Stopping gossiping")
-                self.stop_gossiping()
-        else:
-            if not self.is_gossiping:
-                logger.debug("Starting gossiping")
-                self.start_gossiping()
+        if self.should_gossip(machine) and not self.is_gossiping:
+            logger.debug("Starting gossiping")
+            self.start_gossiping()
+
+        elif not self.should_gossip(machine) and self.is_gossiping:
+            logger.debug("Stopping gossiping")
+            self.stop_gossiping()
 
     def __contains__(self, key):
         return key in self.nodes

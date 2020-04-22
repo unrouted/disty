@@ -4,6 +4,7 @@ import logging
 
 from distribd.service import main
 import pytest
+from aiofile import AIOFile, LineReader
 
 logger = logging.getLogger(__name__)
 
@@ -85,27 +86,22 @@ async def fake_cluster(cluster_config, loop):
         pass
 
 
-@pytest.mark.parametrize("node1,node2,node3,agreements", examples)
-async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements):
-    await fake_cluster("node1", node1)
-    await fake_cluster("node2", node2)
-    await fake_cluster("node3", node2)
-    await asyncio.sleep(0)
-
-    for i in range(100):
+async def wait_converged(tmp_path, agreements):
+    for i in range(500):
         result1 = []
-        with open(tmp_path / "node1" / "journal", "r") as fp:
-            for row in fp:
+
+        async with AIOFile(tmp_path / "node1" / "journal", "r") as afp:
+            async for row in LineReader(afp):
                 result1.append(tuple(json.loads(row)))
 
         result2 = []
-        with open(tmp_path / "node2" / "journal", "r") as fp:
-            for row in fp:
+        async with AIOFile(tmp_path / "node2" / "journal", "r") as afp:
+            async for row in LineReader(afp):
                 result2.append(tuple(json.loads(row)))
 
         result3 = []
-        with open(tmp_path / "node3" / "journal", "r") as fp:
-            for row in fp:
+        async with AIOFile(tmp_path / "node3" / "journal", "r") as afp:
+            async for row in LineReader(afp):
                 result3.append(tuple(json.loads(row)))
 
         all_matching = result1 == result2 == result3
@@ -114,13 +110,23 @@ async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements)
         if all_matching and match_one_agreement:
             break
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
     else:
         logger.critical("node 1: %s", result1)
         logger.critical("node 2: %s", result2)
         logger.critical("node 3: %s", result3)
 
         raise RuntimeError("Did not converge on a valid agreement")
+
+
+@pytest.mark.parametrize("node1,node2,node3,agreements", examples)
+async def test_recovery(tmp_path, fake_cluster, node1, node2, node3, agreements):
+    await fake_cluster("node1", node1)
+    await fake_cluster("node2", node2)
+    await fake_cluster("node3", node2)
+    await asyncio.sleep(0)
+
+    await wait_converged(tmp_path, agreements)
 
 
 @pytest.mark.parametrize("node1,node2,node3,agreements", examples)
@@ -144,32 +150,4 @@ async def test_third_node_recovery(
     await fake_cluster(third_node, nodes[third_node])
     await asyncio.sleep(0)
 
-    for i in range(100):
-        result1 = []
-        with open(tmp_path / "node1" / "journal", "r") as fp:
-            for row in fp:
-                result1.append(tuple(json.loads(row)))
-
-        result2 = []
-        with open(tmp_path / "node2" / "journal", "r") as fp:
-            for row in fp:
-                result2.append(tuple(json.loads(row)))
-
-        result3 = []
-        with open(tmp_path / "node3" / "journal", "r") as fp:
-            for row in fp:
-                result3.append(tuple(json.loads(row)))
-
-        all_matching = result1 == result2 == result3
-        match_one_agreement = any(result1 == agreement for agreement in agreements)
-
-        if all_matching and match_one_agreement:
-            break
-
-        await asyncio.sleep(0.1)
-    else:
-        logger.critical("node 1: %s", result1)
-        logger.critical("node 2: %s", result2)
-        logger.critical("node 3: %s", result3)
-
-        raise RuntimeError("Did not converge on a valid agreement")
+    await wait_converged(tmp_path, agreements)

@@ -298,7 +298,7 @@ class Machine:
             return True
 
         # We have not voted, but we think there is a leader
-        if not self.voted_for and not self.obedient:
+        if not self.voted_for and not self.leader_active:
             return True
 
         # FIXME: Is last_term appropriate here???
@@ -361,9 +361,9 @@ class Machine:
         self.log.truncate_index = None
         self.outbox = []
 
-        if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
-            if message.type != Message.AppendEntries or len(message.entries) > 0:
-                logger.debug(message.__dict__)
+        #if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
+        #    if message.type != Message.AppendEntries or len(message.entries) > 0:
+        logger.debug(message.__dict__)
 
         self.step_term(message)
 
@@ -422,7 +422,7 @@ class Machine:
         if message.term > self.term:
             # If we have a leader we should ignore PreVote and Vote
             if message.type in (Message.PreVote, Message.Vote):
-                if self.leader is not None and self.leader_active:
+                if self.leader_active:
                     logger.debug("PreVote: sticky leader")
                     return
 
