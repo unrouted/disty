@@ -1,6 +1,6 @@
 # distribd
 
-A simple replicated docker registry cluster. `distribd` is like [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. The nodes can tolerate outages as long as there is a quorum.
+A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. The nodes can tolerate outages as long as there is a quorum.
 
 :exclamation: `distribd` is currently still in Alpha. :exclamation:
 
@@ -18,7 +18,7 @@ On the other hand, if you have a self-hosted cluster, and want to run a simple f
 
 ## How does it work?
 
-Artifacts are stored on local disk like with distribution. Then we use raft to replicate metadata about the registry contents:
+Artifacts are stored on local disk like with distribution. Then it uses raft to replicate metadata about the registry contents:
 
 * Hashes of blobs and manifests and where they are stored in the cluster
 * Hashes of blobs and manifests and the repository that owned them. This is used so that you can't access blobs unless they belong to a repository you have access to.
