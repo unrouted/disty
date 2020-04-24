@@ -46,7 +46,8 @@ async def main(argv=None, config=None):
     await storage.open()
 
     machine = Machine(identifier)
-    machine.term = storage.current_term
+    if storage.current_term > machine.term:
+        machine.term = storage.current_term
     machine.log.load(storage.log)
 
     for other_identifier in config["peers"].get(list):

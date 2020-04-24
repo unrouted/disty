@@ -151,7 +151,7 @@ class Machine:
 
         self.peers = {}
 
-        self.term = 0
+        self.term = 1
         self.voted_for = None
 
         self.outbox = []
