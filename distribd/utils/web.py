@@ -23,8 +23,9 @@ async def run_server(bind_config, routes, access_log_class=None, **context):
     site = aiohttp.web.TCPSite(runner, host, port, shutdown_timeout=1.0)
     await site.start()
 
-    actual_port = site._server.sockets[0].getsockname()[1]
-    bind_config["port"].set(actual_port)
+    sockname = site._server.sockets[0].getsockname()
+    bind_config["address"].set(sockname[0])
+    bind_config["port"].set(sockname[1])
 
     try:
         # Sleep forever. No activity is needed.
