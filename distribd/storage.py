@@ -40,7 +40,7 @@ class Storage:
         if machine.log.snapshot_index != self.snapshot_index:
             aws.append(self.write_snapshot(machine.term))
 
-        if machine.truncate_index or machine.log.last_index != self.last_index:
+        if machine.log.truncate_index or machine.log.last_index != self.last_index:
             aws.append(self.write_journal(machine))
 
         if not aws:
@@ -67,6 +67,7 @@ class Storage:
         self.snapshot_term
 
     async def write_journal(self, machine: Machine):
+        print("write_journal")
         if machine.log.truncate_index is not None:
             await self.rollback(machine.log.truncate_index)
 
@@ -78,6 +79,7 @@ class Storage:
                 self.last_index,
             )
             term, entry = machine.log[self.last_index + 1]
+            print(term, entry)
             await self.commit(term, entry)
 
     @property

@@ -106,7 +106,6 @@ class Mirrorer(Reducer):
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/blobs/sha256:{hash}")
 
-        print(urls)
         return urls
 
     async def do_download_blob(self, hash, retry_count=0):

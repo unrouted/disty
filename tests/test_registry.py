@@ -45,9 +45,19 @@ async def fake_cluster(loop, cluster_config, tmp_path, monkeypatch, client_sessi
 
     await asyncio.sleep(0.1)
 
+    seeds = []
+    for node in ("node1", "node2", "node3"):
+        raft_port = cluster_config[node]["raft"]["port"].get()
+        if raft_port != 0:
+            seeds.append(f"http://127.0.0.1:{raft_port}")
+
+    for node in ("node1", "node2", "node3"):
+        cluster_config[node]["seeding"]["urls"].set(seeds)
+
     for i in range(100):
         if await check_consensus(cluster_config, client_session):
             break
+
         await asyncio.sleep(0.1)
     else:
         raise RuntimeError("No consensus")

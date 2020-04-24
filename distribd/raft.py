@@ -128,9 +128,9 @@ class Raft:
 
             self.queue.task_done()
 
-    async def run_forever(self, port: int):
+    async def run_forever(self):
         queue_worker = self._process_queue()
-        listener = self._run_listener(port)
+        listener = self._run_listener()
 
         try:
             return await asyncio.gather(queue_worker, listener)
@@ -153,7 +153,6 @@ class HttpRaft(Raft):
     def url_for_peer(self, peer):
         address = self.peers[peer]["raft"]["address"]
         port = self.peers[peer]["raft"]["port"]
-
         return URL.build(host=address, port=port)
 
     async def step(self, msg):
@@ -231,13 +230,6 @@ class HttpRaft(Raft):
             self.machine.state == NodeState.LEADER or self.machine.leader is not None
         )
 
-        print(
-            self.machine.identifier,
-            stable,
-            self.reducers.applied_index,
-            self.machine.state,
-        )
-
         payload = {
             "state": self.machine.state,
             "log_last_index": self.machine.log.last_index,
@@ -252,7 +244,7 @@ class HttpRaft(Raft):
 
         return web.json_response(payload)
 
-    async def _run_listener(self, port):
+    async def _run_listener(self):
         routes = web.RouteTableDef()
         routes.post("/rpc")(self._receive_message)
         routes.post("/append")(self._receive_append)
@@ -260,9 +252,10 @@ class HttpRaft(Raft):
         routes.get("/status")(self._receive_status)
 
         return await run_server(
-            "127.0.0.1", port, routes, access_log_class=RaftAccessLog,
+            self.config["raft"], routes, access_log_class=RaftAccessLog,
         )
 
     async def close(self):
         await super().close()
+        await self.peers.close()
         await self.session.close()

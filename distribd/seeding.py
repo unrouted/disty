@@ -9,32 +9,46 @@ class Seeder:
         self.config = config
         self.spread = spread
         self.identifier = config["node"]["identifier"].get(str)
+        self.generation = 0
 
-        self.nodes = {
-            self.identifier: {
-                "raft": {
-                    "address": config["raft"]["address"].get(str),
-                    "port": config["raft"]["port"].get(int),
-                },
-                "registry": {
-                    "address": config["registry"]["address"].get(str),
-                    "port": config["registry"]["port"].get(int),
-                },
-                "generation": 0,
-            }
-        }
+        self.peers = {}
 
         self.is_gossiping = False
 
         self._task = None
 
+    async def close(self):
+        task = self._task
+        if task:
+            self.stop_gossiping()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     @property
-    def generation(self):
-        return self.nodes[self.identifier]["generation"]
+    def current_state(self):
+        return {
+            "raft": {
+                "address": self.config["raft"]["address"].get(str),
+                "port": self.config["raft"]["port"].get(int),
+            },
+            "registry": {
+                "address": self.config["registry"]["address"].get(str),
+                "port": self.config["registry"]["port"].get(int),
+            },
+            "generation": self.generation,
+        }
+
+    @property
+    def current_gossip(self):
+        gossip = {self.identifier: self.current_state}
+        gossip.update(self.peers)
+        return gossip
 
     async def _gossip(self):
         while True:
-            resp = await self.spread(self.nodes)
+            resp = await self.spread(self.current_gossip)
             # We use a boot-count aware merge function in
             # case we have got tastier gossip in the meantime
             self.update_from_gossip(resp)
@@ -68,20 +82,20 @@ class Seeder:
         stale = set()
 
         for node, rumour in gossip.items():
-            if node not in self.nodes:
-                self.nodes[node] = rumour
-                continue
-
-            if rumour["generation"] > self.nodes[node]["generation"]:
-                if node == self.identifier:
+            if node == self.identifier:
+                if rumour["generation"] > self.generation:
                     # They have better gossip about us that we do about then??
                     # That can't be true so ratchet our generation
                     # NOTE: Of course, if 2 nodes with same identifier...
-                    self.nodes[node]["generation"] = rumour["generation"] + 1
-                    stale.add(self.identifier)
-                else:
-                    # Not us, just update the gossip
-                    self.nodes[node] = rumour
+                    self.generation = rumour["generation"] + 1
+                continue
+
+            if node not in self.peers:
+                self.peers[node] = rumour
+                continue
+
+            if rumour["generation"] > self.peers[node]["generation"]:
+                self.peers[node] = rumour
                 continue
 
             stale.add(node)
@@ -91,19 +105,19 @@ class Seeder:
     def exchange_gossip(self, gossip):
         stale = self.update_from_gossip(gossip)
 
-        for node, rumour in self.nodes.items():
+        for node, rumour in self.peers.items():
             if node not in gossip:
                 stale.add(node)
 
-        response = {}
+        response = {self.identifier: self.current_state}
         for node in stale:
-            response[node] = self.nodes[node]
+            response[node] = self.peers[node]
 
         return response
 
     def all_peers_known(self):
         for node in self.config["peers"].get(list):
-            if node not in self.nodes:
+            if node not in self.peers:
                 return False
         return True
 
@@ -126,7 +140,7 @@ class Seeder:
             self.stop_gossiping()
 
     def __contains__(self, key):
-        return key in self.nodes
+        return key in self.peers
 
     def __getitem__(self, key):
-        return self.nodes[key]
+        return self.peers[key]

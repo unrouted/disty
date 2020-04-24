@@ -671,13 +671,12 @@ async def put_manifest(request):
 
 
 async def run_registry(
-    config, identifier, registry_state, send_action, images_directory, port
+    config, identifier, registry_state, send_action, images_directory
 ):
     token_checker = TokenChecker(config)
 
     return await run_server(
-        "0.0.0.0",
-        port,
+        config["registry"],
         routes,
         identifier=identifier,
         registry_state=registry_state,

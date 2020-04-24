@@ -2,9 +2,9 @@ import asyncio
 import json
 import logging
 
+from aiofile import AIOFile, LineReader
 from distribd.service import main
 import pytest
-from aiofile import AIOFile, LineReader
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,17 @@ async def fake_cluster(cluster_config, loop):
                 fp.write(json.dumps(row) + "\n")
 
         servers.append(asyncio.ensure_future(main([], cluster_config[node])))
+
+        await asyncio.sleep(0.1)
+
+        seeds = []
+        for node in ("node1", "node2", "node3"):
+            raft_port = cluster_config[node]["raft"]["port"].get()
+            if raft_port != 0:
+                seeds.append(f"http://127.0.0.1:{raft_port}")
+
+        for node in ("node1", "node2", "node3"):
+            cluster_config[node]["seeding"]["urls"].set(seeds)
 
     yield start
 

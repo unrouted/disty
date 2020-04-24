@@ -107,6 +107,7 @@ class Log:
         self.snapshot = None
         self.snapshot_index = 0
         self.snapshot_term = 0
+        self.truncate_index = None
 
     def load(self, log):
         self._log = []
@@ -163,7 +164,6 @@ class Machine:
 
         # volatile state
         self.commit_index = 0
-        self.truncate_index = 0
 
     def start(self):
         self._become_follower(self.term)
@@ -361,7 +361,7 @@ class Machine:
         self.log.truncate_index = None
         self.outbox = []
 
-        #if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
+        # if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
         #    if message.type != Message.AppendEntries or len(message.entries) > 0:
         logger.debug(message.__dict__)
 

@@ -1,6 +1,5 @@
 import logging
 import os
-import socket
 
 import aiohttp
 import confuse
@@ -20,13 +19,6 @@ def configure_logging(caplog):
     caplog.set_level(logging.DEBUG)
 
 
-def unused_port():
-    """Return a port that is unused on the current host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def cluster_config(tmp_path):
     cluster = {}
@@ -43,11 +35,11 @@ def cluster_config(tmp_path):
 
         config["node"]["identifier"].set(node)
         config["raft"]["address"].set("127.0.0.1")
-        config["raft"]["port"].set(unused_port())
+        config["raft"]["port"].set(0)
         config["registry"]["address"].set("127.0.0.1")
-        config["registry"]["port"].set(unused_port())
+        config["registry"]["port"].set(0)
         config["prometheus"]["address"].set("127.0.0.1")
-        config["prometheus"]["port"].set(unused_port())
+        config["prometheus"]["port"].set(0)
         config["storage"].set(str(dir))
 
         config["token_server"]["enabled"].set(False)

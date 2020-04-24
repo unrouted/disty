@@ -40,9 +40,6 @@ async def main(argv=None, config=None):
 
     logger.debug("Starting node %s", identifier)
 
-    raft_port = config["raft"]["port"].get(int)
-    registry_port = config["registry"]["port"].get(int)
-    prometheus_port = config["prometheus"]["port"].get(int)
     images_directory = config["storage"].as_path()
 
     storage = Storage(images_directory / "journal")
@@ -70,21 +67,16 @@ async def main(argv=None, config=None):
 
     try:
         await asyncio.gather(
-            raft.run_forever(raft_port),
+            raft.run_forever(),
             run_registry(
                 config,
                 machine.identifier,
                 registry_state,
                 raft.append,
                 images_directory,
-                registry_port,
             ),
             run_prometheus(
-                machine.identifier,
-                registry_state,
-                images_directory,
-                raft,
-                prometheus_port,
+                config, machine.identifier, registry_state, images_directory, raft,
             ),
         )
 

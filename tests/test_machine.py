@@ -227,6 +227,7 @@ def test_answer_vote():
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
+    m.term = 1
 
     # Vote rejected because in same term
     m.step(Msg("node2", "node1", Message.Vote, 1, index=1))
@@ -248,6 +249,7 @@ def test_answer_vote():
     # Vote in new term, but it is still obedient to current leader
     m.tick = 0
     m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
+    assert m.term == 2
     assert m.outbox[-1].type == Message.VoteReply
     assert m.outbox[-1].reject is False
 
@@ -259,6 +261,55 @@ def test_answer_vote():
 
     # Term should have increased
     assert m.term == 2
+
+
+def test_append_entries_revoke_previous_log_entry():
+    m = Machine("node1")
+    m.add_peer("node2")
+    m.add_peer("node3")
+    m.term = 2
+
+    # Recovered from saved log
+    m.log.append((1, {"type": "consensus"}))
+
+    # Committed when became leader
+    m.log.append((2, {}))
+
+    print(m.log._log)
+    m.step(
+        Msg(
+            "node2",
+            "node1",
+            Message.AppendEntries,
+            term=3,
+            prev_index=2,
+            prev_term=3,
+            entries=[],
+            leader_commit=0,
+        )
+    )
+
+    assert m.log[2] == (2, {})
+    assert m.outbox[-1].type == Message.AppendEntriesReply
+    assert m.outbox[-1].reject is True
+
+    m.step(
+        Msg(
+            "node2",
+            "node1",
+            Message.AppendEntries,
+            term=3,
+            prev_index=1,
+            prev_term=1,
+            entries=[(3, {})],
+            leader_commit=0,
+        )
+    )
+
+    assert m.log[2] == (3, {})
+    assert m.outbox[-1].type == Message.AppendEntriesReply
+    assert m.outbox[-1].reject is False
+    assert m.outbox[-1].log_index == 2
 
 
 def test_find_inconsistencies(loop):
