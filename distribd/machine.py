@@ -458,6 +458,7 @@ class Machine:
             self.reply(message, self.term, reject=True)
             return
 
+        logger.debug("Will vote for %s", message.source)
         self.reply(message, self.term, reject=False)
 
         if message.type == Message.Vote:
