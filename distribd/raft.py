@@ -167,7 +167,7 @@ class HttpRaft(Raft):
     def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
         super().__init__(config, machine, storage, reducers)
         self.session = aiohttp.ClientSession()
-        self.peers = Seeder(config, self.spread)
+        self.peers = Seeder(config, self.storage.session, self.spread)
 
     def url_for_peer(self, peer):
         address = self.peers[peer]["raft"]["address"]

@@ -7,12 +7,12 @@ logger = logging.getLogger(__name__)
 
 
 class Seeder:
-    def __init__(self, config, spread):
+    def __init__(self, config, session, spread):
         self.config = config
         self.spread = spread
         self.identifier = config["node"]["identifier"].get(str)
 
-        self.current_state = {"generation": 0}
+        self.current_state = {"generation": session}
         self.peers = {}
 
         self.is_gossiping = False
@@ -75,7 +75,9 @@ class Seeder:
                     # They have better gossip about us that we do about then??
                     # That can't be true so ratchet our generation
                     # NOTE: Of course, if 2 nodes with same identifier...
-                    self.current_state["generation"] = rumour["generation"] + 1
+                    logger.warning(
+                        "Our generation is older than another peer with same identifier"
+                    )
                 continue
 
             if node not in self.peers:
@@ -138,8 +140,6 @@ class Seeder:
         if "registry" in discovery_info:
             registry = self.current_state.setdefault("registry", {})
             registry.update(discovery_info["registry"])
-
-        self.current_state["generation"] += 1
 
     def step(self, machine: Machine, msg: Msg):
         if msg.type == Message.StateChanged:

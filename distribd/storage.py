@@ -14,6 +14,9 @@ class Storage:
     def __init__(self, path):
         self._path = path
         self._term_path = path.parent / "term"
+        self._session_path = path.parent / "session"
+
+        self.session = 0
 
         self.snapshot = None
         self.snapshot_index = 0
@@ -122,12 +125,28 @@ class Storage:
             logger.warning("Journal is ahead of persisted term - fixing")
             await self.write_term(self.last_term)
 
+    async def read_session(self):
+        if not os.path.exists(self._session_path):
+            return
+        with AIOFile(self._session_path, "r") as afp:
+            self.session = json.loads(await afp.read())
+
+    async def write_session(self):
+        if not os.path.exists(self._session_path):
+            return
+        with AIOFile(self._session_path, "w") as afp:
+            await afp.write(json.dumps(self.session))
+
     async def open(self):
         self.read_term()
         await self.read_log()
 
         if not self._path.parent.exists():
             os.makedirs(self._path.parent)
+
+        await self.read_session()
+        self.session += 1
+        await self.write_session()
 
         self._fp = AIOFile(self._path, "a+")
         await self._fp.open()
