@@ -153,8 +153,6 @@ class Seeder:
             logger.debug("Stopping gossiping")
             self.stop_gossiping()
 
-        logger.debug("%s %s %s", self.identifier, self.current_state, self.peers)
-
     def __contains__(self, key):
         return key in self.peers
 

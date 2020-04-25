@@ -128,11 +128,11 @@ class Storage:
     async def read_session(self):
         if not os.path.exists(self._session_path):
             return
-        with AIOFile(self._session_path, "r") as afp:
+        async with AIOFile(self._session_path, "r") as afp:
             self.session = json.loads(await afp.read())
 
     async def write_session(self):
-        with AIOFile(self._session_path, "w") as afp:
+        async with AIOFile(self._session_path, "w") as afp:
             await afp.write(json.dumps(self.session))
 
     async def open(self):
