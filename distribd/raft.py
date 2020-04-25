@@ -30,6 +30,7 @@ class Raft:
         self.storage = storage
         self.reducers = reducers
         self.queue = asyncio.Queue()
+        self.peers = None
 
         self._closed = False
 
@@ -77,8 +78,24 @@ class Raft:
             )
         )
 
-    async def step(self, msg):
-        self.machine.step(Msg.from_dict(msg))
+    def state_changed(self, **discovery_info):
+        self.queue.put_nowait(
+            (
+                {
+                    "type": str(Message.StateChanged),
+                    "source": self.machine.identifier,
+                    "destination": self.machine.identifier,
+                    "term": 0,
+                    "discovery_info": discovery_info,
+                },
+                None,
+            )
+        )
+
+    async def step(self, raw_msg):
+        msg = Msg.from_dict(raw_msg)
+
+        self.machine.step(msg)
 
         await self.storage.step(self.machine)
 
@@ -98,6 +115,8 @@ class Raft:
                     logger.exception("Unhandled error while sending message")
 
         await self.reducers.step(self.machine)
+
+        self.peers.step(self.machine, msg)
 
     async def _process_queue(self):
         task_complete = None
@@ -154,10 +173,6 @@ class HttpRaft(Raft):
         address = self.peers[peer]["raft"]["address"]
         port = self.peers[peer]["raft"]["port"]
         return URL.build(host=address, port=port)
-
-    async def step(self, msg):
-        await super().step(msg)
-        self.peers.step(self.machine)
 
     async def _append_remote(self, entries):
         logger.critical("_append_remote: %s", self.machine.identifier)
@@ -252,7 +267,7 @@ class HttpRaft(Raft):
         routes.get("/status")(self._receive_status)
 
         return await run_server(
-            self.config["raft"], routes, access_log_class=RaftAccessLog,
+            self, "raft", self.config["raft"], routes, access_log_class=RaftAccessLog,
         )
 
     async def close(self):

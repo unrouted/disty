@@ -70,6 +70,7 @@ async def main(argv=None, config=None):
         await asyncio.gather(
             raft.run_forever(),
             run_registry(
+                raft,
                 config,
                 machine.identifier,
                 registry_state,
@@ -77,7 +78,7 @@ async def main(argv=None, config=None):
                 images_directory,
             ),
             run_prometheus(
-                config, machine.identifier, registry_state, images_directory, raft,
+                raft, config, machine.identifier, registry_state, images_directory,
             ),
         )
 

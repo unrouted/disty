@@ -77,17 +77,18 @@ async def ok(request):
     return web.json_response({"ok": True})
 
 
-async def run_prometheus(config, identifier, registry_state, images_directory, raft):
+async def run_prometheus(raft, config, identifier, registry_state, images_directory):
     registry = CollectorRegistry()
     collector = MetricsCollector(raft)
     registry.register(collector)
 
     return await run_server(
+        raft,
+        "prometheus",
         config["prometheus"],
         routes,
         identifier=identifier,
         registry_state=registry_state,
         images_directory=images_directory,
-        raft=raft,
         prometheus_registry=registry,
     )

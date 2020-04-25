@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class Message(str, enum.Flag):
 
+    StateChanged = "StateChanged"
     Tick = "Tick"
     Vote = "Vote"
     VoteReply = "VoteReply"

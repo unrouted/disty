@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from .machine import Machine, Message, Msg
+
 logger = logging.getLogger(__name__)
 
 
@@ -9,8 +11,8 @@ class Seeder:
         self.config = config
         self.spread = spread
         self.identifier = config["node"]["identifier"].get(str)
-        self.generation = 0
 
+        self.current_state = {"generation": 0}
         self.peers = {}
 
         self.is_gossiping = False
@@ -25,20 +27,6 @@ class Seeder:
                 await task
             except asyncio.CancelledError:
                 pass
-
-    @property
-    def current_state(self):
-        return {
-            "raft": {
-                "address": self.config["raft"]["address"].get(str),
-                "port": self.config["raft"]["port"].get(int),
-            },
-            "registry": {
-                "address": self.config["registry"]["address"].get(str),
-                "port": self.config["registry"]["port"].get(int),
-            },
-            "generation": self.generation,
-        }
 
     @property
     def current_gossip(self):
@@ -83,11 +71,11 @@ class Seeder:
 
         for node, rumour in gossip.items():
             if node == self.identifier:
-                if rumour["generation"] > self.generation:
+                if rumour["generation"] > self.current_state["generation"]:
                     # They have better gossip about us that we do about then??
                     # That can't be true so ratchet our generation
                     # NOTE: Of course, if 2 nodes with same identifier...
-                    self.generation = rumour["generation"] + 1
+                    self.current_state["generation"] = rumour["generation"] + 1
                 continue
 
             if node not in self.peers:
@@ -109,7 +97,9 @@ class Seeder:
             if node not in gossip:
                 stale.add(node)
 
-        response = {self.identifier: self.current_state}
+        response = {}
+        if self.current_state_valid():
+            response[self.identifier] = self.current_state
         for node in stale:
             response[node] = self.peers[node]
 
@@ -121,7 +111,17 @@ class Seeder:
                 return False
         return True
 
+    def current_state_valid(self):
+        if "raft" not in self.current_state:
+            return False
+        if "registry" not in self.current_state:
+            return False
+        return True
+
     def should_gossip(self, machine):
+        if not self.current_state_valid():
+            return False
+
         if not self.all_peers_known():
             return True
 
@@ -130,7 +130,21 @@ class Seeder:
 
         return False
 
-    def step(self, machine):
+    def process_state_change(self, discovery_info):
+        if "raft" in discovery_info:
+            raft = self.current_state.setdefault("raft", {})
+            raft.update(discovery_info["raft"])
+
+        if "registry" in discovery_info:
+            registry = self.current_state.setdefault("registry", {})
+            registry.update(discovery_info["registry"])
+
+        self.current_state["generation"] += 1
+
+    def step(self, machine: Machine, msg: Msg):
+        if msg.type == Message.StateChanged:
+            self.process_state_change(msg.discovery_info)
+
         if self.should_gossip(machine) and not self.is_gossiping:
             logger.debug("Starting gossiping")
             self.start_gossiping()

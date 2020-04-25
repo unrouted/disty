@@ -671,11 +671,13 @@ async def put_manifest(request):
 
 
 async def run_registry(
-    config, identifier, registry_state, send_action, images_directory
+    raft, config, identifier, registry_state, send_action, images_directory
 ):
     token_checker = TokenChecker(config)
 
     return await run_server(
+        raft,
+        "registry",
         config["registry"],
         routes,
         identifier=identifier,

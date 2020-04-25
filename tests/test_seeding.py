@@ -11,6 +11,12 @@ def test_exchange_receive_initial():
     c["registry"]["port"].set(9080)
 
     s = Seeder(c, None)
+    s.process_state_change(
+        {
+            "raft": {"address": "127.0.0.1", "port": 8080},
+            "registry": {"address": "127.0.0.1", "port": 9080},
+        }
+    )
 
     result = s.exchange_gossip(
         {
@@ -26,7 +32,7 @@ def test_exchange_receive_initial():
         "node1": {
             "raft": {"address": "127.0.0.1", "port": 8080},
             "registry": {"address": "127.0.0.1", "port": 9080},
-            "generation": 0,
+            "generation": 1,
         }
     }
 
@@ -40,6 +46,12 @@ def test_exchange_receive_ancestor():
     c["registry"]["port"].set(9080)
 
     s = Seeder(c, None)
+    s.process_state_change(
+        {
+            "raft": {"address": "127.0.0.1", "port": 8080},
+            "registry": {"address": "127.0.0.1", "port": 9080},
+        }
+    )
 
     result = s.exchange_gossip(
         {
