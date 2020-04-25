@@ -132,8 +132,6 @@ class Storage:
             self.session = json.loads(await afp.read())
 
     async def write_session(self):
-        if not os.path.exists(self._session_path):
-            return
         with AIOFile(self._session_path, "w") as afp:
             await afp.write(json.dumps(self.session))
 
