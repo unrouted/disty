@@ -197,6 +197,12 @@ class HttpRaft(Raft):
     async def send(self, message: Msg):
         if message.destination not in self.peers:
             # We don't know where this peer is, drop the message
+            logger.debug(
+                "%r doesn't know how to contact %r, %r",
+                message.source,
+                message.destination,
+                self.peers,
+            )
             return
 
         body = message.to_dict()
@@ -206,8 +212,14 @@ class HttpRaft(Raft):
             async with self.session.post(url / "rpc", json=body) as resp:
                 if resp.status != 200:
                     logger.debug("Message rejected")
-        except aiohttp.ClientError:
+                logger.debug(
+                    "%r: Message delivered to %r", message.source, message.destination
+                )
+        except aiohttp.ClientError as e:
             # Message wasn't delivered - client broken or netsplit
+            logger.debug(
+                "%r failed to contact %r, %r", message.source, message.destination, e
+            )
             pass
 
     async def spread(self, gossip):
