@@ -376,7 +376,11 @@ class Machine:
                 self.reply(message, self.term, reject=True)
                 return
 
-            self._reset_election_tick()
+            if self.state != NodeState.FOLLOWER:
+                self._become_follower(self.term, message.source)
+            else:
+                self._reset_election_tick()
+
             self.obedient = True
 
             self.leader = message.source
