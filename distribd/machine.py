@@ -362,9 +362,9 @@ class Machine:
         self.log.truncate_index = None
         self.outbox = []
 
-        # if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
-        #    if message.type != Message.AppendEntries or len(message.entries) > 0:
-        logger.debug(message.__dict__)
+        if message.type != Message.Tick and message.type != Message.AppendEntriesReply:
+            if message.type != Message.AppendEntries or len(message.entries) > 0:
+                logger.debug(message.__dict__)
 
         self.step_term(message)
 
