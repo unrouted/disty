@@ -18,6 +18,9 @@ class RegistryActions(str, enum.Enum):
     # Associate a blob with metadata about it (like its depgraph)
     BLOB_INFO = "blob-info"
 
+    # How big is our blob store?
+    BLOB_STAT = "blob-stat"
+
     # A given sha256 hash was stored on a node
     MANIFEST_STORED = "manifest-stored"
 
@@ -32,6 +35,9 @@ class RegistryActions(str, enum.Enum):
 
     # Associate a manifest with metadata about it (like its depgraph)
     MANIFEST_INFO = "manifest-info"
+
+    # How big is our manifest store
+    MANIFEST_STAT = "manifest-stat"
 
     # A given sha256 manifest hash was tagged with a repository and a tag
     HASH_TAGGED = "hash-tagged"

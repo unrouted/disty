@@ -360,6 +360,7 @@ async def start_upload(request):
 
     session = request.app["sessions"][session_id] = {
         "hasher": hashlib.sha256(),
+        "size": 0,
     }
 
     expected_digest = request.query.get("digest", None)
@@ -376,6 +377,7 @@ async def start_upload(request):
             while chunk:
                 await writer(chunk)
                 session["hasher"].update(chunk)
+                session["size"] += len(chunk)
                 chunk = await request.content.read(1024 * 1024)
             await fp.fsync()
 
@@ -401,6 +403,11 @@ async def start_upload(request):
                     "type": RegistryActions.BLOB_MOUNTED,
                     "hash": digest,
                     "repository": repository,
+                },
+                {
+                    "type": RegistryActions.BLOB_STAT,
+                    "hash": digest,
+                    "size": session["size"],
                 },
                 {
                     "type": RegistryActions.BLOB_STORED,
@@ -475,6 +482,7 @@ async def upload_chunk_by_patch(request):
         while chunk:
             await writer(chunk)
             session["hasher"].update(chunk)
+            session["size"] += len(chunk)
             chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
@@ -516,6 +524,7 @@ async def upload_finish(request):
         while chunk:
             await writer(chunk)
             session["hasher"].update(chunk)
+            session["size"] += len(chunk)
             chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
@@ -541,6 +550,11 @@ async def upload_finish(request):
                 "type": RegistryActions.BLOB_MOUNTED,
                 "hash": digest,
                 "repository": repository,
+            },
+            {
+                "type": RegistryActions.BLOB_STAT,
+                "hash": digest,
+                "size": session["size"],
             },
             {
                 "type": RegistryActions.BLOB_STORED,
@@ -617,11 +631,11 @@ async def put_manifest(request):
     request.app["token_checker"].authenticate(request, repository, ["push"])
 
     content_type = request.headers.get("Content-Type", "")
-
     if not content_type:
         raise exceptions.ManifestInvalid(reason="no_content_type")
 
     manifest = await request.read()
+    content_size = len(manifest)
 
     # This makes sure the manifest is somewhat valid
     direct_deps, dependencies = await recursive_analyze(
@@ -657,6 +671,11 @@ async def put_manifest(request):
                 "type": RegistryActions.MANIFEST_STORED,
                 "hash": prefixed_hash,
                 "location": identifier,
+            },
+            {
+                "type": RegistryActions.MANIFEST_STAT,
+                "hash": prefixed_hash,
+                "size": content_size,
             },
             {
                 "type": RegistryActions.MANIFEST_INFO,
