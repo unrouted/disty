@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 
+from aiofile import AIOFile
 from jsonschema import ValidationError, validate
 
 from .exceptions import ManifestInvalid
@@ -19,7 +20,7 @@ def distribution_manifest_v1(manifest):
     """ application/vnd.docker.distribution.manifest.v1+json: schema1 (existing manifest format) """
     dependencies = set()
     for layer in manifest["fsLayers"]:
-        dependencies.add(layer["blobSum"])
+        dependencies.add(("application/octet-stream", layer["blobSum"]))
 
     return dependencies
 
@@ -32,10 +33,10 @@ def distribution_manifest_v2(manifest):
     https://github.com/docker/distribution/blob/master/docs/spec/manifest-v2-2.md#image-manifest-field-descriptions
     """
     dependencies = set()
-    dependencies.add(manifest["config"]["digest"])
+    dependencies.add((manifest["config"]["mediaType"], manifest["config"]["digest"]))
 
     for layer in manifest["layers"]:
-        dependencies.add(layer["digest"])
+        dependencies.add((layer["mediaType"], layer["digest"]))
 
     return dependencies
 
@@ -50,7 +51,7 @@ def distribution_manifest_v2_list(manifest):
 
     dependencies = set()
     for layer in manifest["manifests"]:
-        dependencies.add(layer["digest"])
+        dependencies.add((layer["mediaType"], layer["digest"]))
 
     return dependencies
 
@@ -110,6 +111,32 @@ def analyze(content_type, manifest):
         raise ManifestInvalid(reason="schema_check_fail")
 
     return analyzers[content_type](parsed)
+
+
+async def recursive_analyze(mirrorer, content_type, manifest):
+    dependencies = set(analyze(content_type, manifest))
+    seen = set()
+
+    while dependencies:
+        content_type, digest = dependencies.pop()
+
+        if content_type not in schemas:
+            continue
+
+        path = await mirrorer.wait_for_blob(digest)
+
+        async with AIOFile(path, "r") as afp:
+            manifest = await afp.read()
+
+        try:
+            results = analyze(content_type, manifest)
+        except ManifestInvalid:
+            raise ManifestInvalid(reason=f"{digest} invalid")
+
+        for content_type, digest in results:
+            if digest in seen:
+                continue
+            dependencies.add((content_type, digest))
 
 
 schemas = load_schemas()

@@ -10,7 +10,7 @@ from yarl import URL
 
 from . import exceptions
 from .actions import RegistryActions
-from .analyzer import analyze
+from .analyzer import recursive_analyze
 from .utils.registry import get_blob_path, get_manifest_path
 from .utils.tokenchecker import TokenChecker
 from .utils.web import run_server
@@ -609,6 +609,7 @@ async def cancel_upload(request):
 
 @routes.put("/v2/{repository:[^{}]+}/manifests/{tag}")
 async def put_manifest(request):
+    mirrorer = request.app["mirrorer"]
     images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
     tag = request.match_info["tag"]
@@ -618,7 +619,7 @@ async def put_manifest(request):
     manifest = await request.read()
 
     # This makes sure the manifest is somewhat valid
-    analyze(request.headers.get("Content-Type", ""), manifest)
+    await recursive_analyze(mirrorer, request.headers.get("Content-Type", ""), manifest)
 
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
@@ -671,7 +672,7 @@ async def put_manifest(request):
 
 
 async def run_registry(
-    raft, config, identifier, registry_state, send_action, images_directory
+    raft, config, identifier, registry_state, send_action, images_directory, mirrorer
 ):
     token_checker = TokenChecker(config)
 
@@ -687,4 +688,5 @@ async def run_registry(
         sessions={},
         token_checker=token_checker,
         config=config,
+        mirrorer=mirrorer,
     )

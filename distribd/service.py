@@ -81,6 +81,7 @@ async def main(argv=None, config=None):
                 registry_state,
                 raft.append,
                 images_directory,
+                mirrorer,
             ),
             run_prometheus(
                 raft, config, machine.identifier, registry_state, images_directory,

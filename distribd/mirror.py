@@ -42,6 +42,17 @@ class Mirrorer(Reducer):
                 config["mirroring"]["password"].get(str),
             )
 
+        self._futures = {}
+
+    async def wait_for_blob(self, digest):
+        if self.identifier in self.blob_locations.get(digest, []):
+            return get_blob_path(self.image_directory, digest)
+
+        fut = asyncio.Future()
+        self._futures.setdefault(digest, []).append(fut)
+        logger.warning("Waiting for %s", digest)
+        return await fut
+
     async def close(self):
         await self.pool.close()
         await self.session.close()
@@ -97,6 +108,9 @@ class Mirrorer(Reducer):
             return False
 
         os.rename(temporary_path, destination)
+
+        for fut in self._futures.get(hash, []):
+            fut.set_result(destination)
 
         return True
 
