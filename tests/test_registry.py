@@ -552,3 +552,41 @@ async def test_validation_of_inner_manifest_works(fake_cluster):
                     }
                 ]
             }
+
+
+async def test_inner_resource_must_exist(fake_cluster):
+    port = fake_cluster["node1"]["registry"]["port"].get(int)
+
+    manifest = {
+        "manifests": [
+            {
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "digest": "sha256:533622ac90715ccb3fe2659fb9b9d7fc9ae2e261945b02c03a950c2e2027f2e5",
+                "size": 0,
+                "platform": {"os": "linux", "architecture": "amd64"},
+            }
+        ],
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "schemaVersion": 2,
+    }
+
+    headers = {
+        "Content-Type": "application/vnd.docker.distribution.manifest.list.v2+json"
+    }
+
+    url = f"http://localhost:{port}/v2/alpine/manifests/3.11"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.put(url, json=manifest, headers=headers) as resp:
+            assert resp.status == 400
+            assert await resp.json() == {
+                "errors": [
+                    {
+                        "code": "MANIFEST_INVALID",
+                        "message": "manifest invalid",
+                        "detail": {
+                            "reason": "sha256:533622ac90715ccb3fe2659fb9b9d7fc9ae2e261945b02c03a950c2e2027f2e5 missing"
+                        },
+                    }
+                ]
+            }

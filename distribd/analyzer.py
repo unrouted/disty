@@ -114,7 +114,7 @@ def analyze(content_type, manifest):
     return analyzers[content_type](parsed)
 
 
-async def recursive_analyze(mirrorer, content_type, manifest):
+async def recursive_analyze(mirrorer, repository, content_type, manifest):
     analysis = []
 
     dependencies = list(set(analyze(content_type, manifest)))
@@ -124,6 +124,12 @@ async def recursive_analyze(mirrorer, content_type, manifest):
 
     while dependencies:
         content_type, digest = dependencies.pop()
+
+        if digest not in mirrorer.blob_repos:
+            raise ManifestInvalid(reason=f"{digest} missing")
+
+        if repository not in mirrorer.blob_repos[digest]:
+            raise ManifestInvalid(reason=f"{digest} missing")
 
         path = await mirrorer.wait_for_blob(digest)
 

@@ -625,7 +625,7 @@ async def put_manifest(request):
 
     # This makes sure the manifest is somewhat valid
     direct_deps, dependencies = await recursive_analyze(
-        mirrorer, content_type, manifest
+        mirrorer, repository, content_type, manifest
     )
 
     hash = hashlib.sha256(manifest).hexdigest()
