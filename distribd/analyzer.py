@@ -6,6 +6,7 @@ import pathlib
 from aiofile import AIOFile
 from jsonschema import ValidationError, validate
 
+from .actions import RegistryActions
 from .exceptions import ManifestInvalid
 from .utils.dispatch import Dispatcher
 
@@ -114,16 +115,29 @@ def analyze(content_type, manifest):
 
 
 async def recursive_analyze(mirrorer, content_type, manifest):
-    dependencies = set(analyze(content_type, manifest))
+    analysis = []
+
+    dependencies = list(set(analyze(content_type, manifest)))
     seen = set()
+
+    direct_deps = list({digest for (content_type, digest) in dependencies})
 
     while dependencies:
         content_type, digest = dependencies.pop()
 
+        path = await mirrorer.wait_for_blob(digest)
+
+        info = {
+            "type": RegistryActions.BLOB_INFO,
+            "hash": digest,
+            "dependencies": [],
+            "content_type": content_type,
+        }
+
+        analysis.append(info)
+
         if content_type not in schemas:
             continue
-
-        path = await mirrorer.wait_for_blob(digest)
 
         async with AIOFile(path, "r") as afp:
             manifest = await afp.read()
@@ -134,9 +148,14 @@ async def recursive_analyze(mirrorer, content_type, manifest):
             raise ManifestInvalid(reason=f"{digest} invalid")
 
         for content_type, digest in results:
+            info["dependencies"].append(digest)
+
             if digest in seen:
                 continue
+
             dependencies.add((content_type, digest))
+
+    return direct_deps, analysis
 
 
 schemas = load_schemas()

@@ -616,10 +616,17 @@ async def put_manifest(request):
 
     request.app["token_checker"].authenticate(request, repository, ["push"])
 
+    content_type = request.headers.get("Content-Type", "")
+
+    if not content_type:
+        raise exceptions.ManifestInvalid(reason="no_content_type")
+
     manifest = await request.read()
 
     # This makes sure the manifest is somewhat valid
-    await recursive_analyze(mirrorer, request.headers.get("Content-Type", ""), manifest)
+    direct_deps, dependencies = await recursive_analyze(
+        mirrorer, content_type, manifest
+    )
 
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
@@ -639,7 +646,8 @@ async def put_manifest(request):
     identifier = request.app["identifier"]
 
     success = await send_action(
-        [
+        dependencies
+        + [
             {
                 "type": RegistryActions.MANIFEST_MOUNTED,
                 "hash": prefixed_hash,
@@ -649,6 +657,12 @@ async def put_manifest(request):
                 "type": RegistryActions.MANIFEST_STORED,
                 "hash": prefixed_hash,
                 "location": identifier,
+            },
+            {
+                "type": RegistryActions.MANIFEST_INFO,
+                "hash": prefixed_hash,
+                "dependencies": direct_deps,
+                "content_type": content_type,
             },
             {
                 "type": RegistryActions.HASH_TAGGED,
