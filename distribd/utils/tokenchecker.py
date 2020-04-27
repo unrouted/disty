@@ -50,6 +50,11 @@ class TokenChecker:
             logger.warning("Request denied due to invalid token: %s", str(e))
             raise exceptions.Denied()
 
+        if not actions and not repository:
+            # Token isn't supposed to have a repository/action scope
+            # So return here
+            return
+
         for access in decoded["access"]:
             if access.get("type") != "repository":
                 continue
