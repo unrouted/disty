@@ -39,7 +39,7 @@ class Mirrorer(Reducer):
                 config["mirroring"]["realm"].get(str),
                 config["mirroring"]["service"].get(str),
                 config["mirroring"]["username"].get(str),
-                config["mirroring"]["pasword"].get(str),
+                config["mirroring"]["password"].get(str),
             )
 
     async def close(self):
