@@ -24,6 +24,8 @@ class TokenChecker:
                 self._public_key = fp.read()
 
     def authenticate(self, request, repository=None, actions=None):
+        request["user"] = "anonymous"
+
         if not self._enabled:
             return True
 
@@ -51,6 +53,8 @@ class TokenChecker:
         except InvalidTokenError as e:
             logger.warning("Request denied due to invalid token: %s", str(e))
             raise exceptions.Denied()
+
+        request["user"] = decoded["sub"]
 
         if not actions and not repository:
             # Token isn't supposed to have a repository/action scope

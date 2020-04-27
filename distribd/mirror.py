@@ -158,6 +158,7 @@ class Mirrorer(Reducer):
                             "type": RegistryActions.BLOB_STORED,
                             "hash": hash,
                             "location": self.identifier,
+                            "user": "$internal",
                         }
                     ]
                 )
@@ -224,6 +225,7 @@ class Mirrorer(Reducer):
                             "type": RegistryActions.MANIFEST_STORED,
                             "hash": hash,
                             "location": self.identifier,
+                            "user": "$internal",
                         }
                     ]
                 )

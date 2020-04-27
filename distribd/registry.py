@@ -198,6 +198,7 @@ async def delete_manifest_by_hash(request):
                 "type": RegistryActions.MANIFEST_UNMOUNTED,
                 "hash": hash,
                 "repository": repository,
+                "user": request["user"],
             },
         ]
     )
@@ -294,6 +295,7 @@ async def delete_blob_by_hash(request):
                 "type": RegistryActions.BLOB_UNMOUNTED,
                 "hash": hash,
                 "repository": repository,
+                "user": request["user"],
             },
         ]
     )
@@ -332,6 +334,7 @@ async def start_upload(request):
                         "type": RegistryActions.BLOB_MOUNTED,
                         "hash": mount_digest,
                         "repository": repository,
+                        "user": request["user"],
                     },
                 ]
             )
@@ -403,6 +406,7 @@ async def start_upload(request):
                     "type": RegistryActions.BLOB_MOUNTED,
                     "hash": digest,
                     "repository": repository,
+                    "user": request["user"],
                 },
                 {
                     "type": RegistryActions.BLOB_STAT,
@@ -413,6 +417,7 @@ async def start_upload(request):
                     "type": RegistryActions.BLOB_STORED,
                     "hash": digest,
                     "location": identifier,
+                    "user": request["user"],
                 },
             ]
         )
@@ -550,6 +555,7 @@ async def upload_finish(request):
                 "type": RegistryActions.BLOB_MOUNTED,
                 "hash": digest,
                 "repository": repository,
+                "user": request["user"],
             },
             {
                 "type": RegistryActions.BLOB_STAT,
@@ -560,6 +566,7 @@ async def upload_finish(request):
                 "type": RegistryActions.BLOB_STORED,
                 "hash": digest,
                 "location": identifier,
+                "user": request["user"],
             },
         ]
     )
@@ -670,11 +677,13 @@ async def put_manifest(request):
                 "type": RegistryActions.MANIFEST_MOUNTED,
                 "hash": prefixed_hash,
                 "repository": repository,
+                "user": request["user"],
             },
             {
                 "type": RegistryActions.MANIFEST_STORED,
                 "hash": prefixed_hash,
                 "location": identifier,
+                "user": request["user"],
             },
             {
                 "type": RegistryActions.MANIFEST_STAT,
@@ -692,6 +701,7 @@ async def put_manifest(request):
                 "repository": repository,
                 "tag": tag,
                 "hash": prefixed_hash,
+                "user": request["user"],
             },
         ]
     )
