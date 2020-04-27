@@ -15,8 +15,8 @@ class TokenChecker:
         self._enabled = self._config["token_server"]["enabled"].get(bool)
 
         if self._enabled:
-            self._realm = self._config["token_server"]["realm"]
-            self._service = self._config["token_server"]["service"]
+            self._realm = self._config["token_server"]["realm"].get(str)
+            self._service = self._config["token_server"]["service"].get(str)
 
             self._public_key_path = self._config["token_server"]["public_key"].as_path()
             with open(self._public_key_path, "r") as fp:
