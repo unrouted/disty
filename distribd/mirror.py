@@ -90,8 +90,10 @@ class Mirrorer(Reducer):
                         chunk = await resp.content.read(1024 * 1024)
                     await fp.fsync()
 
-        if digest.hexdigest() != hash:
-            os.unlink(destination)
+        mirrored_hash = "sha256:" + digest.hexdigest()
+
+        if mirrored_hash != hash:
+            os.unlink(temporary_path)
             return False
 
         os.rename(temporary_path, destination)
@@ -126,7 +128,7 @@ class Mirrorer(Reducer):
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]
             url = f"http://{address}:{port}"
-            urls.append(f"{url}/v2/{repo}/blobs/sha256:{hash}")
+            urls.append(f"{url}/v2/{repo}/blobs/{hash}")
 
         return urls
 
@@ -191,7 +193,7 @@ class Mirrorer(Reducer):
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]
             url = f"http://{address}:{port}"
-            urls.append(f"{url}/v2/{repo}/manifests/sha256:{hash}")
+            urls.append(f"{url}/v2/{repo}/manifests/{hash}")
 
         return urls
 

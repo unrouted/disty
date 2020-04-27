@@ -81,10 +81,7 @@ async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
 
     return web.Response(
         status=200,
-        headers={
-            "Content-Length": str(size),
-            "Docker-Content-Digest": f"sha256:{hash}",
-        },
+        headers={"Content-Length": str(size), "Docker-Content-Digest": f"{hash}"},
     )
 
 
@@ -92,7 +89,7 @@ async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
 async def head_manifest_by_hash(request):
     images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["pull"])
 
@@ -137,7 +134,7 @@ async def _manifest_by_hash(images_directory, repository: str, hash: str):
 
     return web.FileResponse(
         headers={
-            "Docker-Content-Digest": f"sha256:{hash}",
+            "Docker-Content-Digest": f"{hash}",
             "Content-Type": manifest["mediaType"],
             "Content-Length": str(size),
         },
@@ -149,7 +146,7 @@ async def _manifest_by_hash(images_directory, repository: str, hash: str):
 async def get_manifest_by_hash(request):
     images_directory = request.app["images_directory"]
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["pull"])
 
@@ -186,7 +183,7 @@ async def get_manifest_by_tag(request):
 async def delete_manifest_by_hash(request):
     registry_state = request.app["registry_state"]
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["push"])
 
@@ -225,7 +222,7 @@ async def head_blob(request):
     registry_state = request.app["registry_state"]
 
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["pull"])
 
@@ -242,7 +239,7 @@ async def head_blob(request):
         status=200,
         headers={
             "Content-Length": f"{size}",
-            "Docker-Content-Digest": f"sha256:{hash}",
+            "Docker-Content-Digest": hash,
             "Content-Type": "application/octet-stream",
         },
     )
@@ -254,7 +251,7 @@ async def get_blob_by_hash(request):
     registry_state = request.app["registry_state"]
 
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["pull"])
 
@@ -269,7 +266,7 @@ async def get_blob_by_hash(request):
 
     return web.FileResponse(
         headers={
-            "Docker-Content-Digest": f"sha256:{hash}",
+            "Docker-Content-Digest": hash,
             "Content-Type": "application/octet-stream",
             "Content-Length": str(size),
         },
@@ -282,7 +279,7 @@ async def delete_blob_by_hash(request):
     registry_state = request.app["registry_state"]
 
     repository = request.match_info["repository"]
-    hash = request.match_info["hash"]
+    hash = "sha256:" + request.match_info["hash"]
 
     request.app["token_checker"].authenticate(request, repository, ["push"])
 
@@ -326,15 +323,14 @@ async def start_upload(request):
             )
 
         registry_state = request.app["registry_state"]
-        mount_alg, mount_hash = mount_digest.split(":", 1)
-        if registry_state.is_blob_available(mount_repository, mount_hash):
+        if registry_state.is_blob_available(mount_repository, mount_digest):
             send_action = request.app["send_action"]
 
             success = await send_action(
                 [
                     {
                         "type": RegistryActions.BLOB_MOUNTED,
-                        "hash": mount_hash,
+                        "hash": mount_digest,
                         "repository": repository,
                     },
                 ]
@@ -389,7 +385,7 @@ async def start_upload(request):
         if expected_digest != digest:
             raise exceptions.BlobUploadInvalid()
 
-        blob_path = get_blob_path(images_directory, hash)
+        blob_path = get_blob_path(images_directory, digest)
         blob_dir = blob_path.parent
         if not blob_dir.exists():
             os.makedirs(blob_dir)
@@ -403,12 +399,12 @@ async def start_upload(request):
             [
                 {
                     "type": RegistryActions.BLOB_MOUNTED,
-                    "hash": hash,
+                    "hash": digest,
                     "repository": repository,
                 },
                 {
                     "type": RegistryActions.BLOB_STORED,
-                    "hash": hash,
+                    "hash": digest,
                     "location": identifier,
                 },
             ]
@@ -529,7 +525,7 @@ async def upload_finish(request):
     if expected_digest != digest:
         raise exceptions.BlobUploadInvalid()
 
-    blob_path = get_blob_path(images_directory, hash)
+    blob_path = get_blob_path(images_directory, digest)
     blob_dir = blob_path.parent
     if not blob_dir.exists():
         os.makedirs(blob_dir)
@@ -543,10 +539,14 @@ async def upload_finish(request):
         [
             {
                 "type": RegistryActions.BLOB_MOUNTED,
-                "hash": hash,
+                "hash": digest,
                 "repository": repository,
             },
-            {"type": RegistryActions.BLOB_STORED, "hash": hash, "location": identifier},
+            {
+                "type": RegistryActions.BLOB_STORED,
+                "hash": digest,
+                "location": identifier,
+            },
         ]
     )
 
@@ -623,7 +623,7 @@ async def put_manifest(request):
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
 
-    manifest_path = get_manifest_path(images_directory, hash)
+    manifest_path = get_manifest_path(images_directory, prefixed_hash)
     manifests_dir = manifest_path.parent
 
     if not os.path.exists(manifests_dir):
@@ -641,19 +641,19 @@ async def put_manifest(request):
         [
             {
                 "type": RegistryActions.MANIFEST_MOUNTED,
-                "hash": hash,
+                "hash": prefixed_hash,
                 "repository": repository,
             },
             {
                 "type": RegistryActions.MANIFEST_STORED,
-                "hash": hash,
+                "hash": prefixed_hash,
                 "location": identifier,
             },
             {
                 "type": RegistryActions.HASH_TAGGED,
                 "repository": repository,
                 "tag": tag,
-                "hash": hash,
+                "hash": prefixed_hash,
             },
         ]
     )
