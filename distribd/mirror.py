@@ -12,12 +12,13 @@ from .actions import RegistryActions
 from .jobs import WorkerPool
 from .state import Reducer
 from .utils.registry import get_blob_path, get_manifest_path
+from .utils.tokengetter import TokenGetter
 
 logger = logging.getLogger(__name__)
 
 
 class Mirrorer(Reducer):
-    def __init__(self, peers, image_directory, identifier, send_action):
+    def __init__(self, config, peers, image_directory, identifier, send_action):
         self.peers = peers
         self.image_directory = image_directory
         self.identifier = identifier
@@ -28,10 +29,22 @@ class Mirrorer(Reducer):
         self.manifest_locations = {}
         self.manifest_repos = {}
 
+        self.session = aiohttp.ClientSession()
         self.pool = WorkerPool()
+
+        self.token_getter = None
+        if config["mirroring"]["realm"].exists():
+            self.token_getter = TokenGetter(
+                self.session,
+                config["mirroring"]["realm"].get(str),
+                config["mirroring"]["service"].get(str),
+                config["mirroring"]["username"].get(str),
+                config["mirroring"]["pasword"].get(str),
+            )
 
     async def close(self):
         await self.pool.close()
+        await self.session.close()
 
     async def _do_transfer(self, hash, urls, destination):
         if destination.exists():
@@ -54,8 +67,17 @@ class Mirrorer(Reducer):
 
         digest = hashlib.sha256()
 
+        headers = {}
+
+        # If auth is turned on we need to supply a JWT token
+        if self.token_getter:
+            token = await self.token_getter.get_token(
+                self.username, self.password, "repository", ["pull"]
+            )
+            self.headers["Authorization"] = f"Bearer {token}"
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+            async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     logger.error("Failed to retrieve: %s, status %s", url, resp.status)
                     return False

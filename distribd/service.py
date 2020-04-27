@@ -66,7 +66,9 @@ async def main(argv=None, config=None):
     registry_state = RegistryState()
     reducers.add_reducer(registry_state.dispatch_entries)
 
-    mirrorer = Mirrorer(raft.peers, images_directory, machine.identifier, raft.append)
+    mirrorer = Mirrorer(
+        config, raft.peers, images_directory, machine.identifier, raft.append
+    )
     reducers.add_reducer(mirrorer.dispatch_entries)
 
     try:
