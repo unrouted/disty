@@ -60,11 +60,11 @@ class Mirrorer(Reducer):
     async def _do_transfer(self, hash, repo, urls, destination):
         if destination.exists():
             logger.debug("%s already exists, not requesting", destination)
-            return
+            return True
 
         if not urls:
             logger.debug("No urls for hash %s yet", hash)
-            return
+            return False
 
         url = random.choice(urls)
         logger.critical("Starting download from %s to %s", url, destination)
