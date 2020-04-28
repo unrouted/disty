@@ -25,4 +25,4 @@ class TokenGetter:
             if resp.status != 200:
                 raise RuntimeError("Unable to get authentication token")
             payload = await resp.json()
-            return payload["token"]
+            return payload["access_token"]
