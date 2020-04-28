@@ -122,6 +122,8 @@ def analyze(content_type, manifest):
 async def recursive_analyze(mirrorer, repository, content_type, manifest):
     analysis = []
 
+    logger.debug("Processing: %r", manifest)
+
     dependencies = list(set(analyze(content_type, manifest)))
     seen = set()
 
