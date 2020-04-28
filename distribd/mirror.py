@@ -57,7 +57,7 @@ class Mirrorer(Reducer):
         await self.pool.close()
         await self.session.close()
 
-    async def _do_transfer(self, hash, urls, destination):
+    async def _do_transfer(self, hash, repo, urls, destination):
         if destination.exists():
             logger.debug("%s already exists, not requesting", destination)
             return
@@ -82,7 +82,7 @@ class Mirrorer(Reducer):
 
         # If auth is turned on we need to supply a JWT token
         if self.token_getter:
-            token = await self.token_getter.get_token("repository", ["pull"])
+            token = await self.token_getter.get_token(repo, ["pull"])
             headers["Authorization"] = f"Bearer {token}"
 
         async with aiohttp.ClientSession() as session:
@@ -142,7 +142,7 @@ class Mirrorer(Reducer):
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/blobs/{hash}")
 
-        return urls
+        return repo, urls
 
     async def do_download_blob(self, hash, retry_count=0):
         if not self.should_download_blob(hash):
@@ -150,7 +150,8 @@ class Mirrorer(Reducer):
 
         try:
             destination = get_blob_path(self.image_directory, hash)
-            if await self._do_transfer(hash, self.urls_for_blob(hash), destination):
+            repo, urls = self.urls_for_blob(hash)
+            if await self._do_transfer(hash, repo, urls, destination):
                 await self.send_action(
                     [
                         {
@@ -207,7 +208,7 @@ class Mirrorer(Reducer):
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/manifests/{hash}")
 
-        return urls
+        return repo, urls
 
     async def do_download_manifest(self, hash, retry_count=0):
         if not self.should_download_manifest(hash):
@@ -215,7 +216,8 @@ class Mirrorer(Reducer):
 
         try:
             destination = get_manifest_path(self.image_directory, hash)
-            if await self._do_transfer(hash, self.urls_for_manifest(hash), destination):
+            repo, urls = self.urls_for_manifest(hash)
+            if await self._do_transfer(hash, repo, urls, destination):
                 await self.send_action(
                     [
                         {
