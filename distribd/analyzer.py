@@ -66,8 +66,11 @@ def manifest_v1_json(manifest):
     """
     dependencies = set()
 
-    for layer in manifest["rootfs"]["diff_ids"]:
-        dependencies.add(("application/octet-stream", layer))
+    # The digests in diff_ids won't be found in the blob store, so don't
+    # consider them dependencies.
+
+    # for layer in manifest["rootfs"]["diff_ids"]:
+    #     dependencies.add(("application/octet-stream", layer))
 
     return dependencies
 
