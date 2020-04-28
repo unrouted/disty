@@ -83,7 +83,7 @@ class Mirrorer(Reducer):
         # If auth is turned on we need to supply a JWT token
         if self.token_getter:
             token = await self.token_getter.get_token("repository", ["pull"])
-            self.headers["Authorization"] = f"Bearer {token}"
+            headers["Authorization"] = f"Bearer {token}"
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
