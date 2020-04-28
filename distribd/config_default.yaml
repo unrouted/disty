@@ -17,6 +17,7 @@ token_server:
 
     realm: http://localhost:5001/auth
     service: My registry
+    issuer: My issuer
     public_key: token_server.pub
    
 seeding:

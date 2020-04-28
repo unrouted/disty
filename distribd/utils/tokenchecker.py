@@ -17,6 +17,7 @@ class TokenChecker:
         if self._enabled:
             self._realm = self._config["token_server"]["realm"].get(str)
             self._service = self._config["token_server"]["service"].get(str)
+            self._issuer = self._config["token_server"]["issuer"].get(str)
 
             self._public_key_path = self._config["token_server"]["public_key"].as_path()
             with open(self._public_key_path, "r") as fp:
@@ -39,12 +40,15 @@ class TokenChecker:
 
         bearer_token = auth_header.split(" ", 1)[1]
 
+        logger.debug("Token contents: %r", decode(bearer_token, verify=False))
+
         try:
             decoded = decode(
                 bearer_token,
                 self._public_key,
                 algorithms="ES256",
                 audience=self._service,
+                issuer=self._issuer,
             )
         except InvalidTokenError as e:
             logger.warning("Request denied due to invalid token: %s", str(e))

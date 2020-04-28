@@ -13,7 +13,7 @@ class TokenGetter:
         self.username = username
         self.password = password
 
-        self.url = URL(realm).update_query(service)
+        self.url = URL(realm).update_query(service=service)
         self.auth = aiohttp.BasicAuth(self.username, self.password)
 
     async def get_token(self, repository, actions):
