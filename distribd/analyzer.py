@@ -98,15 +98,19 @@ def load_schemas():
 
 
 def analyze(content_type, manifest):
+    logger.debug(f"MANIFEST: {content_type} start")
     try:
         parsed = json.loads(manifest)
     except json.decoder.JSONDecodeError:
+        logger.debug(f"MANIFEST: invalid json")
         raise ManifestInvalid()
 
     if content_type not in analyzers:
+        logger.debug(f"MANIFEST: no analyzer for {content_type}")
         return []
 
     if content_type not in schemas:
+        logger.debug(f"MANIFEST: no schema for {content_type}")
         raise ManifestInvalid(reason="no_schema_for_this_type")
 
     schema = schemas[content_type]
@@ -114,7 +118,10 @@ def analyze(content_type, manifest):
     try:
         validate(instance=parsed, schema=schema)
     except ValidationError:
+        logger.debug(f"MANIFEST: schema check fail")
         raise ManifestInvalid(reason="schema_check_fail")
+
+    logger.debug(f"MANIFEST: invoking dep extractor")
 
     return analyzers[content_type](parsed)
 
@@ -133,9 +140,11 @@ async def recursive_analyze(mirrorer, repository, content_type, manifest):
         content_type, digest = dependencies.pop()
 
         if digest not in mirrorer.blob_repos:
+            logger.debug(f"MANIFEST: {digest} missing")
             raise ManifestInvalid(reason=f"{digest} missing")
 
         if repository not in mirrorer.blob_repos[digest]:
+            logger.debug(f"MANIFEST: {digest} missing from repo")
             raise ManifestInvalid(reason=f"{digest} missing")
 
         path = await mirrorer.wait_for_blob(digest)
@@ -158,6 +167,7 @@ async def recursive_analyze(mirrorer, repository, content_type, manifest):
         try:
             results = analyze(content_type, manifest)
         except ManifestInvalid:
+            logger.debug(f"MANIFEST: {digest} invalid")
             raise ManifestInvalid(reason=f"{digest} invalid")
 
         for content_type, digest in results:

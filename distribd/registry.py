@@ -638,9 +638,13 @@ async def put_manifest(request):
     content_size = len(manifest)
 
     # This makes sure the manifest is somewhat valid
-    direct_deps, dependencies = await recursive_analyze(
-        mirrorer, repository, content_type, manifest
-    )
+    try:
+        direct_deps, dependencies = await recursive_analyze(
+            mirrorer, repository, content_type, manifest
+        )
+    except Exception:
+        logger.exception("Error while validating manifest")
+        raise
 
     hash = hashlib.sha256(manifest).hexdigest()
     prefixed_hash = f"sha256:{hash}"
