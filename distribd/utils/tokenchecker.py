@@ -40,8 +40,6 @@ class TokenChecker:
 
         bearer_token = auth_header.split(" ", 1)[1]
 
-        logger.debug("Token contents: %r", decode(bearer_token, verify=False))
-
         try:
             decoded = decode(
                 bearer_token,

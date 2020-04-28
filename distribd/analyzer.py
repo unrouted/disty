@@ -64,7 +64,12 @@ def manifest_v1_json(manifest):
 
     https://github.com/moby/moby/blob/master/image/spec/v1.md#image-json-description
     """
-    raise ManifestInvalid(reason="legacy_format_not_supported")
+    dependencies = set()
+
+    for layer in manifest["rootfs"]["diff_ids"]:
+        dependencies.add(("application/octet-stream", layer))
+
+    return dependencies
 
 
 @analyzers.register("application/vnd.docker.plugin.v1+json")
