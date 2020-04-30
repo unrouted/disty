@@ -28,7 +28,7 @@ async def main(argv=None, config=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", dest="node.identifier")
     parser.add_argument("--raft-address", dest="raft.address")
-    parser.add_argument("--registry-address", dest="registry.address")
+    parser.add_argument("--registry-address", dest="registry.default.address")
     parser.add_argument("--prometheus-address", dest="prometheus.address")
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
