@@ -137,9 +137,9 @@ class Seeder:
             raft = self.current_state.setdefault("raft", {})
             raft.update(discovery_info["raft"])
 
-        if "registry" in discovery_info:
+        if "registry.default" in discovery_info:
             registry = self.current_state.setdefault("registry", {})
-            registry.update(discovery_info["registry"])
+            registry.update(discovery_info["registry.default"])
 
     def step(self, machine: Machine, msg: Msg):
         if msg.type == Message.StateChanged:

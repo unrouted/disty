@@ -4,7 +4,7 @@ import logging
 import sys
 
 import coloredlogs
-from confuse import Configuration
+import confuse
 import verboselogs
 
 from .machine import Machine
@@ -33,7 +33,7 @@ async def main(argv=None, config=None):
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     if not config:
-        config = Configuration("distribd", __name__)
+        config = confuse.Configuration("distribd", __name__)
 
     config.set_args(args, dots=True)
 
@@ -71,22 +71,28 @@ async def main(argv=None, config=None):
     )
     reducers.add_reducer(mirrorer.dispatch_entries)
 
-    try:
-        await asyncio.gather(
-            raft.run_forever(),
+    services = [
+        raft.run_forever(),
+        run_prometheus(
+            raft, config, machine.identifier, registry_state, images_directory,
+        ),
+    ]
+
+    for listener in config["registry"]:
+        services.append(
             run_registry(
                 raft,
-                config,
+                listener,
+                config["registry"][listener],
                 machine.identifier,
                 registry_state,
-                raft.append,
                 images_directory,
                 mirrorer,
-            ),
-            run_prometheus(
-                raft, config, machine.identifier, registry_state, images_directory,
-            ),
+            )
         )
+
+    try:
+        await asyncio.gather(*services)
 
     except asyncio.CancelledError:
         pass

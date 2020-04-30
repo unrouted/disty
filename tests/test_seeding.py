@@ -14,7 +14,7 @@ def test_exchange_receive_initial():
     s.process_state_change(
         {
             "raft": {"address": "127.0.0.1", "port": 8080},
-            "registry": {"address": "127.0.0.1", "port": 9080},
+            "registry.default": {"address": "127.0.0.1", "port": 9080},
         }
     )
 
@@ -49,7 +49,7 @@ def test_exchange_receive_ancestor():
     s.process_state_change(
         {
             "raft": {"address": "127.0.0.1", "port": 8080},
-            "registry": {"address": "127.0.0.1", "port": 9080},
+            "registry.default": {"address": "127.0.0.1", "port": 9080},
         }
     )
 

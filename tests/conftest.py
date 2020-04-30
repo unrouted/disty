@@ -42,13 +42,13 @@ def cluster_config(tmp_path):
         config["node"]["identifier"].set(node)
         config["raft"]["address"].set("127.0.0.1")
         config["raft"]["port"].set(0)
-        config["registry"]["address"].set("127.0.0.1")
-        config["registry"]["port"].set(0)
+        config["registry"]["default"]["address"].set("127.0.0.1")
+        config["registry"]["default"]["port"].set(0)
+        config["registry"]["default"]["token_server"]["enabled"].set(False)
+
         config["prometheus"]["address"].set("127.0.0.1")
         config["prometheus"]["port"].set(0)
         config["storage"].set(str(dir))
-
-        config["token_server"]["enabled"].set(False)
 
         config["peers"].set(["node1", "node2", "node3"])
 

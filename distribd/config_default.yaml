@@ -3,22 +3,24 @@ raft:
     port: 8080
 
 registry:
-    address: 0.0.0.0
-    port: 9080
+    default:
+        address: 0.0.0.0
+        port: 9080
+
+        token_server:
+            enabled: false
+
+            realm: http://localhost:5001/auth
+            service: My registry
+            issuer: My issuer
+            public_key: token_server.pub
+
 
 prometheus:
     address: 0.0.0.0
     port: 7080
 
 storage: var
-
-token_server:
-    enabled: false
-
-    realm: http://localhost:5001/auth
-    service: My registry
-    issuer: My issuer
-    public_key: token_server.pub
    
 seeding:
     urls:

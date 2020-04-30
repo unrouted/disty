@@ -11,6 +11,7 @@ from yarl import URL
 from . import exceptions
 from .actions import RegistryActions
 from .analyzer import recursive_analyze
+from .raft import Raft
 from .utils.registry import get_blob_path, get_manifest_path
 from .utils.tokenchecker import TokenChecker
 from .utils.web import run_server
@@ -719,21 +720,20 @@ async def put_manifest(request):
 
 
 async def run_registry(
-    raft, config, identifier, registry_state, send_action, images_directory, mirrorer
+    raft: Raft, name, config, identifier, registry_state, images_directory, mirrorer
 ):
     token_checker = TokenChecker(config)
 
     return await run_server(
         raft,
-        "registry",
-        config["registry"],
+        f"registry.{name}",
+        config,
         routes,
         identifier=identifier,
         registry_state=registry_state,
-        send_action=send_action,
+        send_action=raft.append,
         images_directory=images_directory,
         sessions={},
         token_checker=token_checker,
-        config=config,
         mirrorer=mirrorer,
     )

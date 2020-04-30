@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class TokenChecker:
-    def __init__(self, config: confuse.Configuration):
+    def __init__(self, config: confuse.ConfigView):
         self._config = config
         self._enabled = self._config["token_server"]["enabled"].get(bool)
 
