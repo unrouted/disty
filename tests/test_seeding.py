@@ -7,8 +7,8 @@ def test_exchange_receive_initial():
     c["node"]["identifier"].set("node1")
     c["raft"]["address"].set("127.0.0.1")
     c["raft"]["port"].set(8080)
-    c["registry"]["address"].set("127.0.0.1")
-    c["registry"]["port"].set(9080)
+    c["registry"]["default"]["address"].set("127.0.0.1")
+    c["registry"]["default"]["port"].set(9080)
 
     s = Seeder(c, 1, None)
     s.process_state_change(
@@ -42,8 +42,8 @@ def test_exchange_receive_ancestor():
     c["node"]["identifier"].set("node1")
     c["raft"]["address"].set("127.0.0.1")
     c["raft"]["port"].set(8080)
-    c["registry"]["address"].set("127.0.0.1")
-    c["registry"]["port"].set(9080)
+    c["registry"]["default"]["address"].set("127.0.0.1")
+    c["registry"]["default"]["port"].set(9080)
 
     s = Seeder(c, 1, None)
     s.process_state_change(
