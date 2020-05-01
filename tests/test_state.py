@@ -103,6 +103,15 @@ def test_manifest_available():
                     "hash": "abcdefgh",
                 },
             ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "abcdefgh",
+                    "content_type": "application/json",
+                    "dependencies": [],
+                },
+            ],
         ]
     )
 
@@ -119,6 +128,15 @@ def test_manifest_not_available_after_delete():
                     "type": RegistryActions.MANIFEST_MOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "abcdefgh",
+                    "content_type": "application/json",
+                    "dependencies": [],
                 },
             ],
             [
@@ -150,6 +168,15 @@ def test_manifest_available_after_delete_and_restore():
             [
                 1,
                 {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "abcdefgh",
+                    "content_type": "application/json",
+                    "dependencies": [],
+                },
+            ],
+            [
+                1,
+                {
                     "type": RegistryActions.MANIFEST_UNMOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
@@ -161,6 +188,15 @@ def test_manifest_available_after_delete_and_restore():
                     "type": RegistryActions.MANIFEST_MOUNTED,
                     "repository": "alpine",
                     "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "abcdefgh",
+                    "content_type": "application/json",
+                    "dependencies": [],
                 },
             ],
         ]

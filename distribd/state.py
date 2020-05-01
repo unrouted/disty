@@ -19,6 +19,7 @@ class RegistryState(Reducer):
     def __init__(self):
         self.state = {}
         self.manifests = {}
+        self.manifest_info = {}
         self.blobs = {}
         self.tags_for_hash = {}
 
@@ -33,6 +34,9 @@ class RegistryState(Reducer):
 
     def is_manifest_available(self, repository, hash):
         if hash not in self.manifests:
+            return False
+
+        if hash not in self.manifest_info:
             return False
 
         if repository not in self.manifests[hash]:
@@ -78,4 +82,8 @@ class RegistryState(Reducer):
                     continue
                 self.state.get(repository, {}).pop(tag, None)
 
-        logger.critical("STATE %r", self.state)
+        elif entry["type"] == RegistryActions.MANIFEST_INFO:
+            self.manifest_info[entry["hash"]] = {
+                "content_type": entry["content_type"],
+                "dependencies": entry["dependencies"],
+            }

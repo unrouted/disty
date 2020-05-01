@@ -1,5 +1,4 @@
 import hashlib
-import json
 import logging
 import os
 import uuid
@@ -73,7 +72,9 @@ async def list_images_in_repository(request):
     return web.json_response({"name": repository, "tags": tags}, headers=headers)
 
 
-async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
+async def _manifest_head_by_hash(
+    images_directory, repository: str, hash: str, content_type: str
+):
     manifest_path = get_manifest_path(images_directory, hash)
     if not manifest_path.is_file():
         raise exceptions.ManifestUnknown(hash=hash)
@@ -82,7 +83,11 @@ async def _manifest_head_by_hash(images_directory, repository: str, hash: str):
 
     return web.Response(
         status=200,
-        headers={"Content-Length": str(size), "Docker-Content-Digest": f"{hash}"},
+        headers={
+            "Content-Length": str(size),
+            "Docker-Content-Digest": f"{hash}",
+            "Content-Type": content_type,
+        },
     )
 
 
@@ -98,7 +103,10 @@ async def head_manifest_by_hash(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    return await _manifest_head_by_hash(images_directory, repository, hash)
+    content_type = registry_state.manifest_info[hash]["content_type"]
+    return await _manifest_head_by_hash(
+        images_directory, repository, hash, content_type
+    )
 
 
 @routes.head("/v2/{repository:[^{}]+}/manifests/{tag}")
@@ -120,23 +128,25 @@ async def head_manifest_by_tag(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    return await _manifest_head_by_hash(images_directory, repository, hash)
+    content_type = registry_state.manifest_info[hash]["content_type"]
+    return await _manifest_head_by_hash(
+        images_directory, repository, hash, content_type
+    )
 
 
-async def _manifest_by_hash(images_directory, repository: str, hash: str):
+async def _manifest_by_hash(
+    images_directory, repository: str, hash: str, content_type: str
+):
     manifest_path = get_manifest_path(images_directory, hash)
     if not manifest_path.is_file():
         raise exceptions.ManifestUnknown(hash=hash)
-
-    async with AIOFile(manifest_path, "r") as fp:
-        manifest = json.loads(await fp.read())
 
     size = os.path.getsize(manifest_path)
 
     return web.FileResponse(
         headers={
             "Docker-Content-Digest": f"{hash}",
-            "Content-Type": manifest["mediaType"],
+            "Content-Type": content_type,
             "Content-Length": str(size),
         },
         path=manifest_path,
@@ -155,7 +165,8 @@ async def get_manifest_by_hash(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    return await _manifest_by_hash(images_directory, repository, hash)
+    content_type = registry_state.manifest_info[hash]["content_type"]
+    return await _manifest_by_hash(images_directory, repository, hash, content_type)
 
 
 @routes.get("/v2/{repository:[^{}]+}/manifests/{tag}")
@@ -177,7 +188,8 @@ async def get_manifest_by_tag(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    return await _manifest_by_hash(images_directory, repository, hash)
+    content_type = registry_state.manifest_info[hash]["content_type"]
+    return await _manifest_by_hash(images_directory, repository, hash, content_type)
 
 
 @routes.delete("/v2/{repository:[^{}]+}/manifests/sha256:{hash}")
