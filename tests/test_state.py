@@ -232,6 +232,38 @@ def test_manifest_available_after_delete_and_restore():
     assert registry_state.is_manifest_available("alpine", "abcdefgh")
 
 
+def test_get_tags_tag_not_available():
+    registry_state = RegistryState()
+    with pytest.raises(KeyError):
+        registry_state.get_tags("alpine")
+
+
+def test_get_tags_tag_available():
+    registry_state = RegistryState()
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.HASH_TAGGED,
+                    "repository": "alpine",
+                    "tag": "3.11",
+                    "hash": "abcdefgh",
+                },
+            ],
+        ]
+    )
+    assert registry_state.get_tags("alpine") == ["3.11"]
+
+
 def test_tag_not_available():
     registry_state = RegistryState()
     with pytest.raises(KeyError):

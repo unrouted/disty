@@ -70,23 +70,22 @@ class RegistryState(Reducer):
 
     def get_tags(self, repository):
         def _filter(node):
-            print(node)
             n = self.graph.nodes[node]
-            print(n)
             if n[ATTR_TYPE] != TYPE_TAG:
-                print("NOT TAG")
                 return False
             if n[ATTR_REPOSITORY] != repository:
-                print("NOT REPO")
                 return False
             return True
 
         tags = subgraph_view(self.graph, _filter)
-        return [self.graph[tag]["tag"] for tag in tags]
+        resolved_tags = [tags.nodes[tag][ATTR_TAG] for tag in tags.nodes]
+        if len(resolved_tags) == 0:
+            raise KeyError()
+        return resolved_tags
 
     def get_tag(self, repository, tag):
         key = f"tag:{repository}:{tag}"
-        if not key in self.graph:
+        if key not in self.graph:
             raise KeyError()
         return next(self.graph.neighbors(key))
 
@@ -101,11 +100,10 @@ class RegistryState(Reducer):
             if key in self.graph.nodes:
                 self.graph.remove_node(key)
 
-            self.graph.add_node(key, **{
-                ATTR_TAG: tag,
-                ATTR_REPOSITORY: repository,
-                ATTR_TYPE: TYPE_TAG,
-            })
+            self.graph.add_node(
+                key,
+                **{ATTR_TAG: tag, ATTR_REPOSITORY: repository, ATTR_TYPE: TYPE_TAG},
+            )
             self.graph.add_edge(key, entry[ATTR_HASH])
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
@@ -141,9 +139,7 @@ class RegistryState(Reducer):
 
         elif entry["type"] == RegistryActions.MANIFEST_UNMOUNTED:
             manifest = self.graph.nodes[entry[ATTR_HASH]]
-            manifest[ATTR_REPOSITORIES].discard(
-                entry[ATTR_REPOSITORY]
-            )
+            manifest[ATTR_REPOSITORIES].discard(entry[ATTR_REPOSITORY])
 
             for tag in list(self.graph.predecessors(entry[ATTR_HASH])):
                 if self.graph.nodes[tag][ATTR_REPOSITORY] == entry[ATTR_REPOSITORY]:
