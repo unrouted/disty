@@ -223,6 +223,7 @@ class Machine:
         if self.state != NodeState.LEADER:
             raise exceptions.NotALeader()
         self.log.append((self.term, entry))
+        self.maybe_commit()
 
     def _reset(self, term):
         if term != self.term:
@@ -252,6 +253,11 @@ class Machine:
         logger.debug("Became pre-candidate %s", self.identifier)
         self.state = NodeState.PRE_CANDIDATE
         self.obedient = False
+
+        if self.quorum == 1:
+            self._become_candidate()
+            return
+
         self.vote_count = 1
         self._reset_election_tick()
 
@@ -265,6 +271,10 @@ class Machine:
         self._reset(self.term + 1)
         self.vote_count = 1
         self.voted_for = self.identifier
+
+        if self.quorum == 1:
+            self._become_leader()
+            return
 
         self._reset_election_tick()
 

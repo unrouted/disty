@@ -46,6 +46,9 @@ class Reducers:
         self.applied_index = machine.commit_index
 
     async def wait_for_commit(self, term, index):
+        if index <= self.applied_index:
+            return self.machine.log[index][0] == term
+
         logger.critical("Waiting for commit %s %s", term, index)
         ev = asyncio.Event()
         self._waiters.append((index, ev))
