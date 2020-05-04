@@ -68,6 +68,15 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_orphaned_objects(self):
+        orphaned = set()
+        for v in self.graph:
+            if self.graph.nodes[v][ATTR_TYPE] == TYPE_TAG:
+                continue
+            if len(self.graph.in_edges(v)) == 0:
+                orphaned.add(v)
+        return orphaned
+
     def get_tags(self, repository):
         def _filter(node):
             n = self.graph.nodes[node]

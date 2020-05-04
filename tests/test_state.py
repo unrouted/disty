@@ -232,6 +232,81 @@ def test_manifest_available_after_delete_and_restore():
     assert registry_state.is_manifest_available("alpine", "abcdefgh")
 
 
+def test_get_orphaned_objects():
+    """
+    A blob layer is published, then a manifest points at that is published. That manifest is tagged.
+    Later a new manifest and tag are pushed. The blob layer is not orphaned, and the old tag is just
+    overwritten. In this exam[le, this leaves layer2-a as something that can be garbage collected.
+    """
+    registry_state = RegistryState()
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "base",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "layer2-a",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "layer2-a",
+                    "content_type": "application/json",
+                    "dependencies": ["base"],
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.HASH_TAGGED,
+                    "repository": "alpine",
+                    "tag": "3.11",
+                    "hash": "layer2-a",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "layer2-b",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "layer2-b",
+                    "content_type": "application/json",
+                    "dependencies": ["base"],
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.HASH_TAGGED,
+                    "repository": "alpine",
+                    "tag": "3.11",
+                    "hash": "layer2-b",
+                },
+            ],
+        ]
+    )
+
+    assert registry_state.get_orphaned_objects() == {"layer2-a"}
+
+
 def test_get_tags_tag_not_available():
     registry_state = RegistryState()
     with pytest.raises(KeyError):
