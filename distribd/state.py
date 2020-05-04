@@ -1,5 +1,7 @@
 import logging
 
+from networkx import DiGraph
+
 from .actions import RegistryActions
 
 logger = logging.getLogger(__name__)
@@ -20,14 +22,15 @@ class RegistryState(Reducer):
         self.state = {}
         self.manifests = {}
         self.manifest_info = {}
-        self.blobs = {}
         self.tags_for_hash = {}
 
+        self.graph = DiGraph()
+
     def is_blob_available(self, repository, hash):
-        if hash not in self.blobs:
+        if hash not in self.graph.nodes:
             return False
 
-        if repository not in self.blobs[hash]:
+        if repository not in self.graph.nodes[hash]["repositories"]:
             return False
 
         return True
@@ -62,12 +65,23 @@ class RegistryState(Reducer):
             tags_for_hash.add((entry["repository"], entry["tag"]))
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
-            blob = self.blobs.setdefault(entry["hash"], set())
-            blob.add(entry["repository"])
+            if entry["hash"] not in self.graph.nodes:
+                self.graph.add_node(entry["hash"])
+
+            self.graph.nodes[entry["hash"]].setdefault("repositories", set()).add(
+                entry["repository"]
+            )
 
         elif entry["type"] == RegistryActions.BLOB_UNMOUNTED:
-            blob = self.blobs.setdefault(entry["hash"], set())
-            blob.discard(entry["repository"])
+            self.graph.nodes[entry["hash"]]["repositories"].discard(entry["repository"])
+
+        elif entry["type"] == RegistryActions.BLOB_INFO:
+            for dependency in entry["dependencies"]:
+                self.graph.add_edge(entry["hash"], dependency)
+            self.graph.nodes[entry["hash"]]["content_type"] = entry["content_type"]
+
+        elif entry["type"] == RegistryActions.BLOB_STAT:
+            self.graph.nodes[entry["hash"]]["size"] = entry["size"]
 
         elif entry["type"] == RegistryActions.MANIFEST_MOUNTED:
             manifest = self.manifests.setdefault(entry["hash"], set())

@@ -52,6 +52,33 @@ def test_blob_not_available_after_delete():
     assert not registry_state.is_blob_available("alpine", "abcdefgh")
 
 
+def test_blob_dependencies():
+    registry_state = RegistryState()
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "abcdefgh",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_INFO,
+                    "hash": "abcdefgh",
+                    "dependencies": ["sha256:abcdefg"],
+                    "content_type": "application/json",
+                },
+            ],
+        ]
+    )
+
+    assert set(registry_state.graph.successors("abcdefgh")) == {"sha256:abcdefg"}
+
+
 def test_blob_available_after_delete_and_restore():
     registry_state = RegistryState()
     registry_state.dispatch_entries(
