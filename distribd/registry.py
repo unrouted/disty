@@ -11,6 +11,7 @@ from . import exceptions
 from .actions import RegistryActions
 from .analyzer import recursive_analyze
 from .raft import Raft
+from .state import ATTR_CONTENT_TYPE
 from .utils.registry import get_blob_path, get_manifest_path
 from .utils.tokenchecker import TokenChecker
 from .utils.web import run_server
@@ -103,7 +104,7 @@ async def head_manifest_by_hash(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    content_type = registry_state.manifest_info[hash]["content_type"]
+    content_type = registry_state[hash][ATTR_CONTENT_TYPE]
     return await _manifest_head_by_hash(
         images_directory, repository, hash, content_type
     )
@@ -128,7 +129,7 @@ async def head_manifest_by_tag(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    content_type = registry_state.manifest_info[hash]["content_type"]
+    content_type = registry_state[hash][ATTR_CONTENT_TYPE]
     return await _manifest_head_by_hash(
         images_directory, repository, hash, content_type
     )
@@ -165,7 +166,7 @@ async def get_manifest_by_hash(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    content_type = registry_state.manifest_info[hash]["content_type"]
+    content_type = registry_state[hash][ATTR_CONTENT_TYPE]
     return await _manifest_by_hash(images_directory, repository, hash, content_type)
 
 
@@ -188,7 +189,7 @@ async def get_manifest_by_tag(request):
     if not registry_state.is_manifest_available(repository, hash):
         raise exceptions.ManifestUnknown(hash=hash)
 
-    content_type = registry_state.manifest_info[hash]["content_type"]
+    content_type = registry_state[hash][ATTR_CONTENT_TYPE]
     return await _manifest_by_hash(images_directory, repository, hash, content_type)
 
 
