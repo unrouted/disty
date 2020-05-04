@@ -1,6 +1,6 @@
 import logging
 
-from networkx import DiGraph
+from networkx import DiGraph, subgraph_view
 
 from .actions import RegistryActions
 
@@ -32,10 +32,6 @@ class Reducer:
 
 class RegistryState(Reducer):
     def __init__(self):
-        self.state = {}
-        self.manifests = {}
-        self.tags_for_hash = {}
-
         self.graph = DiGraph()
 
     def __getitem__(self, key):
@@ -73,21 +69,44 @@ class RegistryState(Reducer):
         return True
 
     def get_tags(self, repository):
-        return list(self.state[repository].keys())
+        def _filter(node):
+            print(node)
+            n = self.graph.nodes[node]
+            print(n)
+            if n[ATTR_TYPE] != TYPE_TAG:
+                print("NOT TAG")
+                return False
+            if n[ATTR_REPOSITORY] != repository:
+                print("NOT REPO")
+                return False
+            return True
+
+        tags = subgraph_view(self.graph, _filter)
+        return [self.graph[tag]["tag"] for tag in tags]
 
     def get_tag(self, repository, tag):
-        logger.debug("%s %s %s", self.state, repository, tag)
-        return self.state.get(repository, {})[tag]
+        key = f"tag:{repository}:{tag}"
+        if not key in self.graph:
+            raise KeyError()
+        return next(self.graph.neighbors(key))
 
     def dispatch(self, entry):
         logger.critical("Applying %s", entry)
 
         if entry["type"] == RegistryActions.HASH_TAGGED:
-            repository = self.state.setdefault(entry[ATTR_REPOSITORY], {})
-            repository[entry[ATTR_TAG]] = entry[ATTR_HASH]
+            tag = entry[ATTR_TAG]
+            repository = entry[ATTR_REPOSITORY]
+            key = f"tag:{repository}:{tag}"
 
-            tags_for_hash = self.tags_for_hash.setdefault(entry[ATTR_HASH], set())
-            tags_for_hash.add((entry[ATTR_REPOSITORY], entry[ATTR_TAG]))
+            if key in self.graph.nodes:
+                self.graph.remove_node(key)
+
+            self.graph.add_node(key, **{
+                ATTR_TAG: tag,
+                ATTR_REPOSITORY: repository,
+                ATTR_TYPE: TYPE_TAG,
+            })
+            self.graph.add_edge(key, entry[ATTR_HASH])
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
             if entry[ATTR_HASH] not in self.graph.nodes:
@@ -121,15 +140,14 @@ class RegistryState(Reducer):
             )
 
         elif entry["type"] == RegistryActions.MANIFEST_UNMOUNTED:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].discard(
+            manifest = self.graph.nodes[entry[ATTR_HASH]]
+            manifest[ATTR_REPOSITORIES].discard(
                 entry[ATTR_REPOSITORY]
             )
 
-            # Legacy
-            for repository, tag in set(self.tags_for_hash.get(entry[ATTR_HASH], [])):
-                if repository != entry[ATTR_REPOSITORY]:
-                    continue
-                self.state.get(repository, {}).pop(tag, None)
+            for tag in list(self.graph.predecessors(entry[ATTR_HASH])):
+                if self.graph.nodes[tag][ATTR_REPOSITORY] == entry[ATTR_REPOSITORY]:
+                    self.graph.remove_node(tag)
 
         elif entry["type"] == RegistryActions.MANIFEST_INFO:
             for dependency in entry[ATTR_DEPENDENCIES]:
