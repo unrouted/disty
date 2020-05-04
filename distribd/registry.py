@@ -503,14 +503,14 @@ async def upload_chunk_by_patch(request):
             chunk = await request.content.read(1024 * 1024)
         await fp.fsync()
 
-    info = os.stat(upload_path)
+    size = os.stat(upload_path).st_size - 1
 
     return web.Response(
         status=202,
         headers={
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
             "Blob-Upload-Session-ID": session_id,
-            "Range": f"0-{info.st_size}",
+            "Range": f"0-{size}",
         },
     )
 
