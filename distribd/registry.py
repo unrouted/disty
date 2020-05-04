@@ -446,8 +446,7 @@ async def start_upload(request):
             },
         )
 
-    return web.json_response(
-        {},
+    return web.Response(
         status=202,
         headers={
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
@@ -506,8 +505,7 @@ async def upload_chunk_by_patch(request):
 
     info = os.stat(upload_path)
 
-    return web.json_response(
-        {},
+    return web.Response(
         status=202,
         headers={
             "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
@@ -587,11 +585,11 @@ async def upload_finish(request):
     if not success:
         raise exceptions.BlobUploadInvalid()
 
-    return web.json_response(
-        {},
+    return web.Response(
         status=201,
         headers={
             "Location": f"/v2/{repository}/blobs/{digest}",
+            "Content-Length": "0",
             "Docker-Content-Digest": digest,
         },
     )
