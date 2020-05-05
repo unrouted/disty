@@ -77,6 +77,16 @@ class RegistryState(Reducer):
                 orphaned.add(v)
         return orphaned
 
+    def get_unlinkable_objects(self):
+        deletable = set()
+        for v in self.graph:
+            if self.graph.nodes[v][ATTR_TYPE] == TYPE_TAG:
+                continue
+            node = self.graph.nodes[v]
+            if len(node[ATTR_REPOSITORIES]) == 0:
+                deletable.add(v)
+        return deletable
+
     def get_tags(self, repository):
         def _filter(node):
             n = self.graph.nodes[node]

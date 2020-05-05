@@ -307,6 +307,58 @@ def test_get_orphaned_objects():
     assert registry_state.get_orphaned_objects() == {"layer2-a"}
 
 
+def test_get_unlinkable_objects():
+    """When an object is no longer listed in any repositories we are able to remove it from disk."""
+    registry_state = RegistryState()
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "base",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_MOUNTED,
+                    "repository": "alpine",
+                    "hash": "layer2-a",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_INFO,
+                    "hash": "layer2-a",
+                    "content_type": "application/json",
+                    "dependencies": ["base"],
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_UNMOUNTED,
+                    "repository": "alpine",
+                    "hash": "base",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_UNMOUNTED,
+                    "repository": "alpine",
+                    "hash": "layer2-a",
+                },
+            ],
+        ]
+    )
+
+    assert registry_state.get_unlinkable_objects() == {"base", "layer2-a"}
+
+
 def test_get_tags_tag_not_available():
     registry_state = RegistryState()
     with pytest.raises(KeyError):
