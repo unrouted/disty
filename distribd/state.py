@@ -14,6 +14,8 @@ ATTR_REPOSITORY = "repository"
 ATTR_TAG = "tag"
 ATTR_REPOSITORIES = "repositories"
 ATTR_TYPE = "type"
+ATTR_LOCATIONS = "locations"
+ATTR_LOCATION = "location"
 
 TYPE_MANIFEST = "manifest"
 TYPE_BLOB = "blob"
@@ -127,9 +129,16 @@ class RegistryState(Reducer):
 
         elif entry["type"] == RegistryActions.BLOB_MOUNTED:
             if entry[ATTR_HASH] not in self.graph.nodes:
-                self.graph.add_node(entry[ATTR_HASH], **{ATTR_TYPE: TYPE_BLOB})
+                self.graph.add_node(
+                    entry[ATTR_HASH],
+                    **{
+                        ATTR_TYPE: TYPE_BLOB,
+                        ATTR_REPOSITORIES: set(),
+                        ATTR_LOCATIONS: set(),
+                    },
+                )
 
-            self.graph.nodes[entry[ATTR_HASH]].setdefault(ATTR_REPOSITORIES, set()).add(
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].add(
                 entry[ATTR_REPOSITORY]
             )
 
@@ -148,11 +157,26 @@ class RegistryState(Reducer):
         elif entry["type"] == RegistryActions.BLOB_STAT:
             self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
 
+        elif entry["type"] == RegistryActions.BLOB_STORED:
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
+
+        elif entry["type"] == RegistryActions.BLOB_UNSTORED:
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].discard(
+                entry[ATTR_LOCATION]
+            )
+
         elif entry["type"] == RegistryActions.MANIFEST_MOUNTED:
             if entry[ATTR_HASH] not in self.graph.nodes:
-                self.graph.add_node(entry[ATTR_HASH], **{ATTR_TYPE: TYPE_MANIFEST})
+                self.graph.add_node(
+                    entry[ATTR_HASH],
+                    **{
+                        ATTR_TYPE: TYPE_MANIFEST,
+                        ATTR_REPOSITORIES: set(),
+                        ATTR_LOCATIONS: set(),
+                    },
+                )
 
-            self.graph.nodes[entry[ATTR_HASH]].setdefault(ATTR_REPOSITORIES, set()).add(
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].add(
                 entry[ATTR_REPOSITORY]
             )
 
@@ -173,3 +197,11 @@ class RegistryState(Reducer):
 
         elif entry["type"] == RegistryActions.MANIFEST_INFO:
             self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
+
+        elif entry["type"] == RegistryActions.MANIFEST_STORED:
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
+
+        elif entry["type"] == RegistryActions.MANIFEST_UNSTORED:
+            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].discard(
+                entry[ATTR_LOCATION]
+            )

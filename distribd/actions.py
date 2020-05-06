@@ -7,7 +7,7 @@ class RegistryActions(str, enum.Enum):
     BLOB_STORED = "blob-stored"
 
     # A given sha256 blob hash was deleted and is safe to delete from disk
-    BLOB_DELETED = "blob-deleted"
+    BLOB_UNSTORED = "blob-unstored"
 
     # Associate a blob hash with a repository
     BLOB_MOUNTED = "blob-mounted"
@@ -25,7 +25,7 @@ class RegistryActions(str, enum.Enum):
     MANIFEST_STORED = "manifest-stored"
 
     # A given sha256 hash was deleted from the cluster and is safe to garbage collect
-    MANIFEST_DELETED = "manifest-deleted"
+    MANIFEST_UNSTORED = "manifest-unstored"
 
     # Associate a manifest hash with a repository.
     MANIFEST_MOUNTED = "manifest-mounted"
