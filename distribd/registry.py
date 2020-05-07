@@ -5,6 +5,7 @@ import uuid
 
 from aiofile import AIOFile, Writer
 from aiohttp import web
+import ujson
 from yarl import URL
 
 from . import exceptions
@@ -70,7 +71,9 @@ async def list_images_in_repository(request):
         url = url.update_query({"last": tags[-1]})
         headers["Link"] = f'{url}; rel="next"'
 
-    return web.json_response({"name": repository, "tags": tags}, headers=headers)
+    return web.json_response(
+        {"name": repository, "tags": tags}, headers=headers, dumps=ujson.dumps
+    )
 
 
 async def _manifest_head_by_hash(

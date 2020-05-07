@@ -1,6 +1,7 @@
 from aiohttp import web
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from prometheus_client.core import CollectorRegistry, GaugeMetricFamily
+import ujson
 
 from .utils.web import run_server
 
@@ -74,7 +75,7 @@ async def metrics(request):
 
 @routes.get("/healthz")
 async def ok(request):
-    return web.json_response({"ok": True})
+    return web.json_response({"ok": True}, dumps=ujson.dumps)
 
 
 async def run_prometheus(raft, config, identifier, registry_state, images_directory):

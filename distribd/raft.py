@@ -5,6 +5,7 @@ import random
 import aiohttp
 from aiohttp import web
 from aiohttp.abc import AbstractAccessLogger
+import ujson
 from yarl import URL
 
 from . import exceptions
@@ -165,7 +166,7 @@ class Raft:
 class HttpRaft(Raft):
     def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
         super().__init__(config, machine, storage, reducers)
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(json_serialize=ujson.dumps)
         self.peers = Seeder(config, self.storage.session, self.spread)
 
     def url_for_peer(self, peer):
@@ -210,7 +211,7 @@ class HttpRaft(Raft):
             pass
 
     async def spread(self, gossip):
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(json_serialize=ujson.dumps) as session:
             url = URL(random.choice(self.config["seeding"]["urls"].get(list)))
             try:
                 async with session.post(url / "gossip", json=gossip) as resp:
@@ -223,19 +224,19 @@ class HttpRaft(Raft):
     async def _receive_message(self, request):
         payload = await request.json()
         await self.queue.put((payload, None))
-        return web.json_response({})
+        return web.json_response({}, dumps=ujson.dumps)
 
     async def _receive_append(self, request):
         entries = await request.json()
         if self.machine.state != NodeState.LEADER:
             raise exceptions.LeaderUnavailable()
         index, term = await self._append_local(entries)
-        return web.json_response({"index": index, "term": term})
+        return web.json_response({"index": index, "term": term}, dumps=ujson.dumps)
 
     async def _receive_gossip(self, request):
         gossip = await request.json()
         reply = self.peers.exchange_gossip(gossip)
-        return web.json_response(reply)
+        return web.json_response(reply, dumps=ujson.dumps)
 
     async def _receive_status(self, request):
         stable = self.machine.log.last_index == self.reducers.applied_index
@@ -256,7 +257,7 @@ class HttpRaft(Raft):
             "consensus": self.machine.leader_active,
         }
 
-        return web.json_response(payload)
+        return web.json_response(payload, dumps=ujson.dumps)
 
     async def _run_listener(self):
         routes = web.RouteTableDef()

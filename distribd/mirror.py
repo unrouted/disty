@@ -7,6 +7,7 @@ import uuid
 
 from aiofile import AIOFile, Writer
 import aiohttp
+import ujson
 
 from .actions import RegistryActions
 from .jobs import WorkerPool
@@ -25,7 +26,7 @@ class Mirrorer:
         self.state = state
         self.send_action = send_action
 
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(json_serialize=ujson.dumps)
         self.pool = WorkerPool()
 
         self.token_getter = None
@@ -81,19 +82,18 @@ class Mirrorer:
             token = await self.token_getter.get_token(repo, ["pull"])
             headers["Authorization"] = f"Bearer {token}"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    logger.error("Failed to retrieve: %s, status %s", url, resp.status)
-                    return False
-                async with AIOFile(temporary_path, "wb") as fp:
-                    writer = Writer(fp)
+        async with self.session.get(url, headers=headers) as resp:
+            if resp.status != 200:
+                logger.error("Failed to retrieve: %s, status %s", url, resp.status)
+                return False
+            async with AIOFile(temporary_path, "wb") as fp:
+                writer = Writer(fp)
+                chunk = await resp.content.read(1024 * 1024)
+                while chunk:
+                    await writer(chunk)
+                    digest.update(chunk)
                     chunk = await resp.content.read(1024 * 1024)
-                    while chunk:
-                        await writer(chunk)
-                        digest.update(chunk)
-                        chunk = await resp.content.read(1024 * 1024)
-                    await fp.fsync()
+                await fp.fsync()
 
         mirrored_hash = "sha256:" + digest.hexdigest()
 
