@@ -9,7 +9,7 @@ ENV PIP_DEFAULT_TIMEOUT=100 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev
+RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev make
 RUN python3 -m pip install poetry
 
 RUN python3 -m venv /app

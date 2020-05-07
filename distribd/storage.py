@@ -70,7 +70,6 @@ class Storage:
         self.snapshot_term
 
     async def write_journal(self, machine: Machine):
-        print("write_journal")
         if machine.log.truncate_index is not None:
             await self.rollback(machine.log.truncate_index)
 
@@ -82,7 +81,6 @@ class Storage:
                 self.last_index,
             )
             term, entry = machine.log[self.last_index + 1]
-            print(term, entry)
             await self.commit(term, entry)
 
     @property

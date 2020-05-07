@@ -15,6 +15,7 @@ class Tick:
         self._when = 0
         self._handle = None
         self._callback = callback
+        self.loop = asyncio.get_event_loop()
 
     def reschedule(self, when):
         """
@@ -30,8 +31,7 @@ class Tick:
         self._when = when
 
         if when > 0:
-            loop = asyncio.get_event_loop()
-            self._handle = loop.call_at(when / self.SCALING, self._callback)
+            self._handle = self.loop.call_at(when, self._callback)
 
     def cancel(self):
         """

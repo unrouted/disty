@@ -8,7 +8,7 @@ make sure to build good integration tests as well.
 from distribd.machine import Machine, Message, Msg, NodeState
 
 
-def test_become_pre_candidate():
+def test_become_pre_candidate(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -23,7 +23,7 @@ def test_become_pre_candidate():
     assert m.outbox[1].type == Message.PreVote
 
 
-def test_pre_candidate_timeout():
+def test_pre_candidate_timeout(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -41,7 +41,7 @@ def test_pre_candidate_timeout():
     assert m.state == NodeState.FOLLOWER
 
 
-def test_become_candidate():
+def test_become_candidate(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -59,25 +59,23 @@ def test_become_candidate():
     assert m.outbox[1].type == Message.Vote
 
 
-def test_candidate_timeout():
+def test_candidate_timeout(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
 
-    m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
 
     # One vote is enough to win a prevote and make us a candidate
     m.step(m.outbox.pop(0).reply(1, reject=False))
     assert m.state == NodeState.CANDIDATE
 
-    m.tick = 0
     m.step(Msg("node1", "node1", Message.Tick, 0))
 
     assert m.state == NodeState.FOLLOWER
 
 
-def test_become_leader():
+def test_become_leader(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -124,7 +122,7 @@ def test_become_leader():
     assert m.peers["node3"].match_index == 0
 
 
-def test_leader_handle_append_entries_reply_success():
+def test_leader_handle_append_entries_reply_success(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -163,7 +161,7 @@ def test_leader_handle_append_entries_reply_success():
     assert m.peers["node2"].match_index == 4
 
 
-def test_append_entries_against_empty():
+def test_append_entries_against_empty(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -184,7 +182,7 @@ def test_append_entries_against_empty():
     )
 
     # Should reset election timeout
-    assert not m.tick_expired
+    assert m.tick > 0
 
     assert m.state == NodeState.FOLLOWER
     assert m.obedient is True
@@ -195,7 +193,7 @@ def test_append_entries_against_empty():
     assert m.outbox[0].type == Message.AppendEntriesReply
 
 
-def test_answer_pre_vote():
+def test_answer_pre_vote(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -223,7 +221,7 @@ def test_answer_pre_vote():
     assert m.voted_for is None
 
 
-def test_answer_vote():
+def test_answer_vote(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -254,7 +252,7 @@ def test_answer_vote():
     assert m.outbox[-1].reject is False
 
     # Election timer reset after vote
-    assert not m.tick_expired
+    assert m.tick > 0
 
     # Pin to node until next reset
     assert m.voted_for == "node2"
@@ -263,7 +261,7 @@ def test_answer_vote():
     assert m.term == 2
 
 
-def test_append_entries_revoke_previous_log_entry():
+def test_append_entries_revoke_previous_log_entry(loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -275,7 +273,6 @@ def test_append_entries_revoke_previous_log_entry():
     # Committed when became leader
     m.log.append((2, {}))
 
-    print(m.log._log)
     m.step(
         Msg(
             "node2",

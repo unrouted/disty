@@ -104,7 +104,6 @@ class Mirrorer:
         os.rename(temporary_path, destination)
 
         for fut in self._futures.get(hash, []):
-            print("Future.set_result", hash)
             fut.set_result(destination)
 
         return True

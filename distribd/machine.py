@@ -4,11 +4,11 @@ A raft state macine.
 This is the raft algorithm without any disk or network i/o.
 """
 
+import asyncio
 import enum
 import logging
 import math
 import random
-import time
 
 from . import exceptions
 
@@ -43,8 +43,9 @@ class NodeState(enum.IntEnum):
     LEADER = 4
 
 
-ELECTION_TICK_LOW = 1000
-ELECTION_TICK_HIGH = 2000
+SCALE = 1000
+ELECTION_TICK_LOW = 150
+ELECTION_TICK_HIGH = 300
 HEARTBEAT_TICK = ELECTION_TICK_LOW / 10
 
 
@@ -166,6 +167,8 @@ class Machine:
         # volatile state
         self.commit_index = 0
 
+        self.loop = asyncio.get_event_loop()
+
     def start(self):
         self._become_follower(self.term)
 
@@ -194,10 +197,6 @@ class Machine:
     @property
     def quorum(self):
         return math.floor(self.cluster_size / 2) + 1
-
-    @property
-    def tick_expired(self):
-        return self.tick < self.current_tick()
 
     @property
     def leader_active(self):
@@ -233,14 +232,14 @@ class Machine:
         self.leader = None
 
     def current_tick(self):
-        return time.monotonic_ns()
+        return self.loop.time()
 
     def _reset_election_tick(self):
-        random_tick = random.randrange(ELECTION_TICK_LOW, ELECTION_TICK_HIGH) * 1000000
+        random_tick = random.randrange(ELECTION_TICK_LOW, ELECTION_TICK_HIGH) / SCALE
         self.tick = self.current_tick() + random_tick
 
     def _reset_heartbeat_tick(self):
-        self.tick = self.current_tick() + (HEARTBEAT_TICK * 1000000)
+        self.tick = self.current_tick() + (HEARTBEAT_TICK / SCALE)
 
     def _become_follower(self, term, leader=None):
         logger.debug("Became follower %s %s", self.identifier, leader)
@@ -482,8 +481,7 @@ class Machine:
 
     def step_follower(self, message):
         if message.type == Message.Tick:
-            if self.tick_expired:
-                self._become_pre_candidate()
+            self._become_pre_candidate()
 
     def step_pre_candidate(self, message):
         if message.type == Message.PreVoteReply:
@@ -495,8 +493,7 @@ class Machine:
                 return
 
         elif message.type == Message.Tick:
-            if self.tick_expired:
-                self._become_follower(self.term)
+            self._become_follower(self.term)
 
     def step_candidate(self, message):
         if message.type == Message.VoteReply:
@@ -508,8 +505,7 @@ class Machine:
                 return
 
         elif message.type == Message.Tick:
-            if self.tick_expired:
-                self._become_follower(self.term)
+            self._become_follower(self.term)
 
     def step_leader(self, message):
         if message.type == Message.AddEntries:
@@ -532,10 +528,9 @@ class Machine:
             self.maybe_commit()
 
         elif message.type == Message.Tick:
-            if self.tick_expired:
-                for peer in self.peers.values():
-                    self.send_heartbeat(peer)
-                self._reset_heartbeat_tick()
+            for peer in self.peers.values():
+                self.send_heartbeat(peer)
+            self._reset_heartbeat_tick()
 
     def broadcast_entries(self):
         for peer in self.peers.values():

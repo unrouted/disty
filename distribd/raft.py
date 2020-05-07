@@ -94,7 +94,6 @@ class Raft:
 
     async def step(self, raw_msg):
         msg = Msg.from_dict(raw_msg)
-
         self.machine.step(msg)
 
         await self.storage.step(self.machine)
