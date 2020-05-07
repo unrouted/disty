@@ -59,17 +59,21 @@ async def main(argv=None, config=None):
 
     machine.start()
 
-    reducers = Reducers(machine)
+    registry_state = RegistryState()
+    reducers = Reducers(machine, registry_state)
 
     raft = HttpRaft(config, machine, storage, reducers)
 
-    registry_state = RegistryState()
-    reducers.add_reducer(registry_state.dispatch_entries)
-
     mirrorer = Mirrorer(
-        config, raft.peers, images_directory, machine.identifier, raft.append
+        config,
+        raft.peers,
+        images_directory,
+        machine.identifier,
+        registry_state,
+        raft.append,
     )
-    reducers.add_reducer(mirrorer.dispatch_entries)
+
+    reducers.add_side_effects(mirrorer.dispatch_entries)
 
     services = [
         raft.run_forever(),

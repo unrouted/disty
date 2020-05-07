@@ -8,6 +8,7 @@ from jsonschema import ValidationError, validate
 
 from .actions import RegistryActions
 from .exceptions import ManifestInvalid
+from .state import ATTR_REPOSITORIES
 from .utils.dispatch import Dispatcher
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,8 @@ def analyze(content_type, manifest):
 
 
 async def recursive_analyze(mirrorer, repository, content_type, manifest):
+    state = mirrorer.state
+
     analysis = []
 
     logger.debug("Processing: %r", manifest)
@@ -142,11 +145,11 @@ async def recursive_analyze(mirrorer, repository, content_type, manifest):
     while dependencies:
         content_type, digest = dependencies.pop()
 
-        if digest not in mirrorer.blob_repos:
+        if digest not in state.graph.nodes:
             logger.debug(f"MANIFEST: {digest} missing")
             raise ManifestInvalid(reason=f"{digest} missing")
 
-        if repository not in mirrorer.blob_repos[digest]:
+        if repository not in state.graph.nodes[digest][ATTR_REPOSITORIES]:
             logger.debug(f"MANIFEST: {digest} missing from repo")
             raise ManifestInvalid(reason=f"{digest} missing")
 

@@ -10,24 +10,20 @@ import aiohttp
 
 from .actions import RegistryActions
 from .jobs import WorkerPool
-from .state import Reducer
+from .state import ATTR_LOCATIONS, ATTR_REPOSITORIES
 from .utils.registry import get_blob_path, get_manifest_path
 from .utils.tokengetter import TokenGetter
 
 logger = logging.getLogger(__name__)
 
 
-class Mirrorer(Reducer):
-    def __init__(self, config, peers, image_directory, identifier, send_action):
+class Mirrorer:
+    def __init__(self, config, peers, image_directory, identifier, state, send_action):
         self.peers = peers
         self.image_directory = image_directory
         self.identifier = identifier
+        self.state = state
         self.send_action = send_action
-
-        self.blob_locations = {}
-        self.blob_repos = {}
-        self.manifest_locations = {}
-        self.manifest_repos = {}
 
         self.session = aiohttp.ClientSession()
         self.pool = WorkerPool()
@@ -45,7 +41,7 @@ class Mirrorer(Reducer):
         self._futures = {}
 
     async def wait_for_blob(self, digest):
-        if self.identifier in self.blob_locations.get(digest, []):
+        if self.identifier in self.state.graph.nodes[digest][ATTR_LOCATIONS]:
             return get_blob_path(self.image_directory, digest)
 
         fut = asyncio.Future()
@@ -108,35 +104,22 @@ class Mirrorer(Reducer):
         os.rename(temporary_path, destination)
 
         for fut in self._futures.get(hash, []):
+            print("Future.set_result", hash)
             fut.set_result(destination)
 
         return True
 
-    def should_download_blob(self, hash):
-        if hash not in self.blob_repos:
-            return False
-
-        if hash not in self.blob_locations:
-            return False
-
-        locations = self.blob_locations[hash]
-
-        if len(locations) == 0:
-            return False
-
-        if self.identifier in locations:
-            return False
-
-        return True
-
     def urls_for_blob(self, hash):
-        repo = next(iter(self.blob_repos[hash]))
+        node = self.state.graph.nodes[hash]
+
+        repo = next(iter(node[ATTR_REPOSITORIES]))
 
         urls = []
 
-        for location in self.blob_locations[hash]:
+        for location in node[ATTR_LOCATIONS]:
             if location not in self.peers:
                 continue
+
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]
             url = f"http://{address}:{port}"
@@ -145,7 +128,7 @@ class Mirrorer(Reducer):
         return repo, urls
 
     async def do_download_blob(self, hash, retry_count=0):
-        if not self.should_download_blob(hash):
+        if not self.download_needed(hash):
             return
 
         try:
@@ -179,31 +162,17 @@ class Mirrorer(Reducer):
             ),
         )
 
-    def should_download_manifest(self, hash):
-        if hash not in self.manifest_repos:
-            return False
-
-        if hash not in self.manifest_locations:
-            return False
-
-        locations = self.manifest_locations[hash]
-
-        if len(locations) == 0:
-            return False
-
-        if self.identifier in locations:
-            return False
-
-        return True
-
     def urls_for_manifest(self, hash):
-        repo = next(iter(self.manifest_repos[hash]))
+        node = self.state.graph.nodes[hash]
+
+        repo = next(iter(node[ATTR_REPOSITORIES]))
 
         urls = []
 
-        for location in self.manifest_locations[hash]:
+        for location in node[ATTR_LOCATIONS]:
             if location not in self.peers:
                 continue
+
             address = self.peers[location]["registry"]["address"]
             port = self.peers[location]["registry"]["port"]
             url = f"http://{address}:{port}"
@@ -212,7 +181,7 @@ class Mirrorer(Reducer):
         return repo, urls
 
     async def do_download_manifest(self, hash, retry_count=0):
-        if not self.should_download_manifest(hash):
+        if not self.download_needed(hash):
             return
 
         try:
@@ -243,31 +212,47 @@ class Mirrorer(Reducer):
             ),
         )
 
-    def dispatch(self, entry):
-        if entry["type"] == RegistryActions.BLOB_STORED:
-            blob = self.blob_locations.setdefault(entry["hash"], set())
-            blob.add(entry["location"])
+    def download_needed(self, hash):
+        if hash not in self.state.graph.nodes:
+            # It was deleted or never existed in the first place
+            return False
 
-            if self.should_download_blob(entry["hash"]):
-                self.pool.spawn(self.do_download_blob(entry["hash"]))
+        node = self.state.graph.nodes[hash]
 
-        elif entry["type"] == RegistryActions.BLOB_MOUNTED:
-            blob = self.blob_repos.setdefault(entry["hash"], set())
-            blob.add(entry["repository"])
+        if len(node[ATTR_REPOSITORIES]) == 0:
+            # It's pending deletion
+            return False
 
-            if self.should_download_blob(entry["hash"]):
-                self.pool.spawn(self.do_download_blob(entry["hash"]))
+        if len(node[ATTR_LOCATIONS]) == 0:
+            # It's not available for download anywhere
+            return False
 
-        elif entry["type"] == RegistryActions.MANIFEST_STORED:
-            manifest = self.manifest_locations.setdefault(entry["hash"], set())
-            manifest.add(entry["location"])
+        if self.identifier in node[ATTR_LOCATIONS]:
+            # Already downloaded it
+            return False
 
-            if self.should_download_manifest(entry["hash"]):
-                self.pool.spawn(self.do_download_manifest(entry["hash"]))
+        return True
 
-        elif entry["type"] == RegistryActions.MANIFEST_MOUNTED:
-            manifest = self.manifest_repos.setdefault(entry["hash"], set())
-            manifest.add(entry["repository"])
+    def dispatch_entries(self, state, entries):
+        manifests = set()
+        blobs = set()
 
-            if self.should_download_manifest(entry["hash"]):
-                self.pool.spawn(self.do_download_manifest(entry["hash"]))
+        for term, entry in entries:
+            if "type" not in entry:
+                continue
+
+            if entry["type"] == RegistryActions.BLOB_STORED:
+                hash = entry["hash"]
+                if self.download_needed(hash):
+                    blobs.add(hash)
+
+            elif entry["type"] == RegistryActions.MANIFEST_STORED:
+                hash = entry["hash"]
+                if self.download_needed(hash):
+                    manifests.add(hash)
+
+        for blob in blobs:
+            self.pool.spawn(self.do_download_blob(blob))
+
+        for manifest in manifests:
+            self.pool.spawn(self.do_download_manifest(manifest))
