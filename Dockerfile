@@ -24,7 +24,7 @@ RUN cd /src && poetry build && /app/bin/pip install dist/*.whl
 
 FROM base as final
 
-RUN apk add --no-cache libffi openssl python3
+RUN apk add --no-cache libffi libstdc++ openssl python3
 COPY --from=builder /app /app
 
 CMD ["/app/bin/python", "-m", "distribd", "8080"]
