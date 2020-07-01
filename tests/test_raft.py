@@ -66,6 +66,10 @@ examples = [
 
 @pytest.fixture
 async def fake_cluster(cluster_config, loop):
+    from distribd import machine
+
+    machine.SCALE = 1000
+
     servers = []
 
     async def start(node, journal):

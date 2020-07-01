@@ -15,6 +15,7 @@ from .reducers import Reducers
 from .registry import run_registry
 from .state import RegistryState
 from .storage import Storage
+from .webhook import WebhookManager
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ async def main(argv=None, config=None):
         raft.append,
     )
 
+    wh_manager = WebhookManager()
+
     reducers.add_side_effects(mirrorer.dispatch_entries)
 
     services = [
@@ -92,6 +95,7 @@ async def main(argv=None, config=None):
                 registry_state,
                 images_directory,
                 mirrorer,
+                wh_manager,
             )
         )
 
@@ -102,4 +106,6 @@ async def main(argv=None, config=None):
         pass
 
     finally:
-        await asyncio.gather(raft.close(), storage.close(), mirrorer.close())
+        await asyncio.gather(
+            raft.close(), storage.close(), mirrorer.close(), wh_manager.close()
+        )

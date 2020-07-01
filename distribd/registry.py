@@ -724,6 +724,35 @@ async def put_manifest(request):
     if not success:
         raise exceptions.ManifestInvalid()
 
+    request.app["wh_manager"].send(
+        {
+            "id": str(uuid.uuid4()),
+            "timestamp": "2016-03-09T14:44:26.402973972-08:00",
+            "action": "push",
+            "target": {
+                "mediaType": content_type,
+                "size": 708,
+                "digest": prefixed_hash,
+                "length": 708,
+                "repository": repository,
+                "url": f"/v2/{repository}/manifests/{prefixed_hash}",
+                "tag": tag,
+            },
+            "request": {
+                "id": str(uuid.uuid4()),
+                # "addr": "192.168.64.11:42961",
+                # "host": "192.168.100.227:5000",
+                "method": "PUT",
+                # "useragent": "curl/7.38.0",
+            },
+            "actor": {},
+            # "source": {
+            #    "addr": "xtal.local:5000",
+            #    "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
+            # },
+        }
+    )
+
     return web.Response(
         status=201,
         headers={
@@ -734,7 +763,14 @@ async def put_manifest(request):
 
 
 async def run_registry(
-    raft: Raft, name, config, identifier, registry_state, images_directory, mirrorer
+    raft: Raft,
+    name,
+    config,
+    identifier,
+    registry_state,
+    images_directory,
+    mirrorer,
+    wh_manager,
 ):
     token_checker = TokenChecker(config)
 
@@ -750,4 +786,5 @@ async def run_registry(
         sessions={},
         token_checker=token_checker,
         mirrorer=mirrorer,
+        wh_manager=wh_manager,
     )

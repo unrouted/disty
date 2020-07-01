@@ -47,7 +47,7 @@ class NodeState(enum.IntEnum):
 SCALE = 10
 ELECTION_TICK_LOW = 150
 ELECTION_TICK_HIGH = 300
-HEARTBEAT_TICK = ELECTION_TICK_LOW / 20
+HEARTBEAT_TICK = (ELECTION_TICK_LOW / 20) / 1000
 
 
 class Msg:
@@ -240,7 +240,7 @@ class Machine:
         self.tick = self.current_tick() + random_tick
 
     def _reset_heartbeat_tick(self):
-        self.tick = self.current_tick() + (HEARTBEAT_TICK / SCALE)
+        self.tick = self.current_tick() + HEARTBEAT_TICK
 
     def _become_follower(self, term, leader=None):
         logger.debug("Became follower %s %s", self.identifier, leader)
