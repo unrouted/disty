@@ -1,7 +1,5 @@
 import asyncio
-import itertools
 import logging
-import os
 import re
 
 import aiohttp
@@ -13,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class WebhookManager:
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+
         self.pool = WorkerPool()
         self.session = aiohttp.ClientSession(json_serialize=ujson.dumps)
 
@@ -23,13 +23,12 @@ class WebhookManager:
     def load_targets(self):
         self.webhooks.clear()
 
-        for i in itertools.count():
-            url = os.environ.get(f"WEBHOOK_{i}_URL", None)
-            if url is None:
-                break
+        if "webhooks" not in self.config:
+            return
 
-            regex = re.compile(os.environ.get(f"WEBHOOK_{i}_REGEX", ".*"))
-
+        for webhook in self.config["webhooks"].get(list):
+            url = webhook["url"]
+            regex = re.compile(webhook.get("matcher", ".*"))
             self.webhooks.append({"url": url, "matcher": regex})
 
     async def _send_webhook(self, url, event):
@@ -51,7 +50,7 @@ class WebhookManager:
     def send(self, event):
         for webhook in self.webhooks:
             value = ":".join((event["target"]["repository"], event["target"]["tag"]))
-            if not webhook["matcher"].matches(value):
+            if webhook["matcher"].search(value) is None:
                 continue
             self.pool.spawn(self._send_webhook(webhook["url"], event))
 

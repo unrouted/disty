@@ -74,7 +74,7 @@ async def main(argv=None, config=None):
         raft.append,
     )
 
-    wh_manager = WebhookManager()
+    wh_manager = WebhookManager(config)
 
     reducers.add_side_effects(mirrorer.dispatch_entries)
 
