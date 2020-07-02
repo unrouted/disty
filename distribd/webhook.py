@@ -45,7 +45,7 @@ class WebhookManager:
 
         logger.info("Scheduling retry for webhook %s", url)
         loop = asyncio.get_event_loop()
-        loop.call_later(30, lambda: self.pool.spawn(self._send_webhook, url, event))
+        loop.call_later(30, lambda: self.pool.spawn(self._send_webhook(url, event)))
 
     def send(self, event):
         for webhook in self.webhooks:
