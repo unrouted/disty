@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import pathlib
 
-from aiofile import AIOFile, Writer
+from aiofile import async_open
 
 from .machine import Machine
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class Storage:
-    def __init__(self, path):
+    def __init__(self, path: pathlib.Path):
         self._path = path
         self._term_path = path.parent / "term"
         self._session_path = path.parent / "session"
@@ -29,8 +30,7 @@ class Storage:
         self._commit_lock = asyncio.Lock()
 
         # aiofile requests that these are created within an async context
-        self._fp: AIOFile = None
-        self._writer: Writer = None
+        self._fp = None
 
         self.log = []
 
@@ -56,10 +56,9 @@ class Storage:
             if term <= self.current_term:
                 return
 
-            async with AIOFile(self._term_path, "w") as fp:
-                w = Writer(fp)
-                await w(json.dumps(term))
-                await fp.fsync()
+            async with async_open(self._term_path, "w") as fp:
+                await fp.write(json.dumps(term))
+                await fp.file.fsync()
 
             self.current_term = term
 
@@ -126,12 +125,13 @@ class Storage:
     async def read_session(self):
         if not os.path.exists(self._session_path):
             return
-        async with AIOFile(self._session_path, "r") as afp:
+        async with async_open(self._session_path, "r") as afp:
             self.session = json.loads(await afp.read())
 
     async def write_session(self):
-        async with AIOFile(self._session_path, "w") as afp:
+        async with async_open(self._session_path, "w") as afp:
             await afp.write(json.dumps(self.session))
+            await afp.file.fsync()
 
     async def open(self):
         self.read_term()
@@ -144,10 +144,9 @@ class Storage:
         self.session += 1
         await self.write_session()
 
-        self._fp = AIOFile(self._path, "a+")
-        await self._fp.open()
-
-        self._writer = Writer(self._fp)
+        self._path.touch()
+        self._fp = async_open(self._path, "a+")
+        await self._fp.file.open()
 
     async def close(self):
         if self._fp:
@@ -168,11 +167,10 @@ class Storage:
             while self.last_index > last_index:
                 del self.log[-1]
 
-            async with AIOFile(self._path, "w") as fp:
-                writer = Writer(fp)
+            async with async_open(self._path, "w") as fp:
                 for row in self.log:
-                    await writer(json.dumps(row) + "\n")
-                await fp.fsync()
+                    await fp.write(json.dumps(row) + "\n")
+                await fp.file.fsync()
 
             await self.open()
 
@@ -185,8 +183,8 @@ class Storage:
         record = [term, entry]
 
         async with self._commit_lock:
-            await self._writer(json.dumps(record) + "\n")
-            await self._fp.fsync()
+            await self._fp.write(json.dumps(record) + "\n")
+            await self._fp.file.fsync()
 
             self.log.append(record)
 
