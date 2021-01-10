@@ -8,7 +8,7 @@ license = "Apache-2.0"
 [tool.poetry.dependencies]
 python = "^3.7"
 aiohttp = "^3.6.2"
-aiofile = "^1.5.2"
+aiofile = "^3.3.0"
 coloredlogs = "^14.0"
 verboselogs = "^1.7"
 prometheus_client = "^0.7.1"
