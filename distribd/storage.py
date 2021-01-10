@@ -97,7 +97,7 @@ class Storage:
             return
         with open(self._term_path, "r") as fp:
             self.current_term = json.load(fp)
-            logger.debug(f"Restored persisted term: %s", self.current_term)
+            logger.debug("Restored persisted term: %s", self.current_term)
 
     async def read_log(self):
         if not os.path.exists(self._path):

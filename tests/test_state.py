@@ -236,7 +236,7 @@ def test_get_orphaned_objects():
     """
     A blob layer is published, then a manifest points at that is published. That manifest is tagged.
     Later a new manifest and tag are pushed. The blob layer is not orphaned, and the old tag is just
-    overwritten. In this exam[le, this leaves layer2-a as something that can be garbage collected.
+    overwritten. In this example, this leaves layer2-a as something that can be garbage collected.
     """
     registry_state = RegistryState()
     registry_state.dispatch_entries(
@@ -323,9 +323,25 @@ def test_get_unlinkable_objects():
             [
                 1,
                 {
+                    "type": RegistryActions.BLOB_STORED,
+                    "hash": "base",
+                    "location": "node1",
+                },
+            ],
+            [
+                1,
+                {
                     "type": RegistryActions.MANIFEST_MOUNTED,
                     "repository": "alpine",
                     "hash": "layer2-a",
+                },
+            ],
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_STORED,
+                    "hash": "layer2-a",
+                    "location": "node1",
                 },
             ],
             [
@@ -356,7 +372,37 @@ def test_get_unlinkable_objects():
         ]
     )
 
-    assert registry_state.get_unlinkable_objects() == {"base", "layer2-a"}
+    assert registry_state.get_orphaned_objects() == {"layer2-a"}
+
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.MANIFEST_UNSTORED,
+                    "hash": "layer2-a",
+                    "location": "node1",
+                },
+            ]
+        ]
+    )
+
+    assert registry_state.get_orphaned_objects() == {"base"}
+
+    registry_state.dispatch_entries(
+        [
+            [
+                1,
+                {
+                    "type": RegistryActions.BLOB_UNSTORED,
+                    "hash": "base",
+                    "location": "node1",
+                },
+            ]
+        ]
+    )
+
+    assert registry_state.get_orphaned_objects() == set()
 
 
 def test_get_tags_tag_not_available():

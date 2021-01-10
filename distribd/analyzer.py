@@ -106,7 +106,7 @@ def analyze(content_type, manifest):
     try:
         parsed = json.loads(manifest)
     except json.decoder.JSONDecodeError:
-        logger.debug(f"MANIFEST: invalid json")
+        logger.debug("MANIFEST: invalid json")
         raise ManifestInvalid()
 
     if content_type not in analyzers:
@@ -122,10 +122,10 @@ def analyze(content_type, manifest):
     try:
         validate(instance=parsed, schema=schema)
     except ValidationError:
-        logger.debug(f"MANIFEST: schema check fail")
+        logger.debug("MANIFEST: schema check fail")
         raise ManifestInvalid(reason="schema_check_fail")
 
-    logger.debug(f"MANIFEST: invoking dep extractor")
+    logger.debug("MANIFEST: invoking dep extractor")
 
     return analyzers[content_type](parsed)
 

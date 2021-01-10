@@ -71,6 +71,12 @@ class RegistryState(Reducer):
         return True
 
     def get_orphaned_objects(self):
+        """
+        Returns all nodes that have no incoming edges and are not a tag.
+
+        These nodes should be deleted by a mirror, and when this has
+        happened they should report that with a BLOB_UNMOUNTED or MANIFEST_UNMOUNTED.
+        """
         orphaned = set()
         for v in self.graph:
             if self.graph.nodes[v][ATTR_TYPE] == TYPE_TAG:
@@ -78,16 +84,6 @@ class RegistryState(Reducer):
             if len(self.graph.in_edges(v)) == 0:
                 orphaned.add(v)
         return orphaned
-
-    def get_unlinkable_objects(self):
-        deletable = set()
-        for v in self.graph:
-            if self.graph.nodes[v][ATTR_TYPE] == TYPE_TAG:
-                continue
-            node = self.graph.nodes[v]
-            if len(node[ATTR_REPOSITORIES]) == 0:
-                deletable.add(v)
-        return deletable
 
     def get_tags(self, repository):
         def _filter(node):
