@@ -2,10 +2,13 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
+import pathlib
 
 import aiohttp
 from distribd.machine import NodeState
 from distribd.service import main
+from distribd.utils.registry import get_blob_path, get_manifest_path
 import pytest
 
 logger = logging.getLogger(__name__)
@@ -343,7 +346,7 @@ async def test_put_blob_and_get_status(fake_cluster):
 
 async def test_put_blob_and_delete(fake_cluster):
     port = fake_cluster["node1"]["registry"]["default"]["port"].get(int)
-    digest = "bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
+    hash = "sha256:bd2079738bf102a1b4e223346f69650f1dcbe685994da65bf92d5207eb44e1cc"
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -353,13 +356,33 @@ async def test_put_blob_and_delete(fake_cluster):
             location = resp.headers["Location"]
 
         async with session.put(
-            f"http://localhost:{port}{location}?digest=sha256:{digest}", data=b"9080"
+            f"http://localhost:{port}{location}?digest={hash}", data=b"9080"
         ) as resp:
             assert resp.status == 201
             location = f"http://localhost:{port}" + resp.headers["Location"]
 
         async with session.head(location) as resp:
             assert resp.status == 200
+
+        for i in range(10):
+            for node in ("node1", "node2", "node3"):
+                storage = pathlib.Path(str(fake_cluster[node]["storage"]))
+                path = get_blob_path(storage, hash)
+                if not path.exists():
+                    logger.debug("File not mirrored")
+                    await asyncio.sleep(1)
+                    continue
+
+                # Make sure objects appear old so we can test garbage collection
+                stat = path.stat()
+                os.utime(
+                    path,
+                    times=(stat.st_mtime - 24 * 60 * 60, stat.st_atime - 24 * 60 * 60,),
+                )
+
+            break
+        else:
+            assert False, "Blob not created in time"
 
         async with session.delete(location) as resp:
             assert resp.status == 202
@@ -369,6 +392,18 @@ async def test_put_blob_and_delete(fake_cluster):
 
         async with session.delete(location) as resp:
             assert resp.status == 404
+
+        for i in range(10):
+            for node in ("node1", "node2", "node3"):
+                storage = pathlib.Path(str(fake_cluster[node]["storage"]))
+                path = get_blob_path(storage, hash)
+                if path.exists():
+                    logger.debug("File not garbage collected")
+                    await asyncio.sleep(1)
+                    continue
+            break
+        else:
+            assert False, "Blob not garbage collected after deletion"
 
 
 async def test_list_tags(fake_cluster):
@@ -445,14 +480,26 @@ async def test_delete_manifest(fake_cluster):
     async with aiohttp.ClientSession() as session:
         async with session.put(url, json=manifest) as resp:
             assert resp.status == 201
-            hash = resp.headers["Docker-Content-Digest"].split(":", 1)[1]
+            hash = resp.headers["Docker-Content-Digest"]
 
-        await assert_manifest(fake_cluster, hash, manifest)
+        await assert_manifest(fake_cluster, hash.split(":", 1)[1], manifest)
 
-        manifest_url = f"http://localhost:{port}/v2/alpine/manifests/sha256:{hash}"
+        manifest_url = f"http://localhost:{port}/v2/alpine/manifests/{hash}"
 
         async with session.head(manifest_url) as resp:
             assert resp.status == 200
+
+        for node in ("node1", "node2", "node3"):
+            storage = pathlib.Path(str(fake_cluster[node]["storage"]))
+            path = get_manifest_path(storage, hash)
+            assert path.exists()
+
+            # Make sure objects appear old so we can test garbage collection
+            stat = path.stat()
+            os.utime(
+                path,
+                times=(stat.st_mtime - 24 * 60 * 60, stat.st_atime - 24 * 60 * 60,),
+            )
 
         async with session.delete(manifest_url) as resp:
             assert resp.status == 202
@@ -462,6 +509,18 @@ async def test_delete_manifest(fake_cluster):
 
         async with session.delete(manifest_url) as resp:
             assert resp.status == 404
+
+        for i in range(10):
+            for node in ("node1", "node2", "node3"):
+                storage = pathlib.Path(str(fake_cluster[node]["storage"]))
+                path = get_manifest_path(storage, hash)
+                if path.exists():
+                    logger.debug("File not garbage collected")
+                    await asyncio.sleep(1)
+                    continue
+            break
+        else:
+            assert False, "Manifest not garbaged collected after deletion"
 
 
 async def test_full_manifest_round_trip(fake_cluster):

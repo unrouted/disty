@@ -7,6 +7,7 @@ import coloredlogs
 import confuse
 import verboselogs
 
+from .garbage import GarbageCollector
 from .machine import Machine
 from .mirror import Mirrorer
 from .prometheus import run_prometheus
@@ -74,9 +75,14 @@ async def main(argv=None, config=None):
         raft.append,
     )
 
+    garbage_collector = GarbageCollector(
+        images_directory, machine.identifier, registry_state, raft.append,
+    )
+
     wh_manager = WebhookManager(config)
 
     reducers.add_side_effects(mirrorer.dispatch_entries)
+    reducers.add_side_effects(garbage_collector.dispatch_entries)
 
     services = [
         raft.run_forever(),

@@ -157,6 +157,8 @@ class RegistryState(Reducer):
             self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
 
         elif entry["type"] == RegistryActions.BLOB_UNSTORED:
+            if entry[ATTR_HASH] not in self.graph.nodes:
+                return
             node = self.graph.nodes[entry[ATTR_HASH]]
             node[ATTR_LOCATIONS].discard(entry[ATTR_LOCATION])
             if len(node[ATTR_LOCATIONS]) == 0:
@@ -199,6 +201,8 @@ class RegistryState(Reducer):
             self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
 
         elif entry["type"] == RegistryActions.MANIFEST_UNSTORED:
+            if entry[ATTR_HASH] not in self.graph.nodes:
+                return
             node = self.graph.nodes[entry[ATTR_HASH]]
             node[ATTR_LOCATIONS].discard(entry[ATTR_LOCATION])
             if len(node[ATTR_LOCATIONS]) == 0:
