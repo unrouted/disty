@@ -1,0 +1,31 @@
+[package]
+name = "distribd-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "distribd_rust"
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = "thin"
+overflow-checks = true
+
+[features]
+extension-module = ["pyo3/extension-module"]
+default = ["extension-module"]
+
+[dependencies]
+pyo3 = "0.15.1"
+pyo3-asyncio = { version = "0.15", features = ["tokio-runtime"] }
+tokio = "1.4"
+rocket = "0.5.0-rc.1"
+serde = "*"
+data-encoding = "*"
+ring = "*"
+serde_json = "*"
+uuid = { version = "*", features=["v4"] }
+
+[build-dependencies]
+pyo3-build-config = "*"

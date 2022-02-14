@@ -105,6 +105,13 @@ async def main(argv=None, config=None):
             )
         )
 
+    from distribd.distribd_rust import start_registry_service
+    start_registry_service(
+        # send_action=raft.action,
+        repository_path=str(images_directory),
+        # state=registry_state,
+    )
+
     try:
         await asyncio.gather(*services)
 

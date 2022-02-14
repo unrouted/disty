@@ -18,7 +18,6 @@ yarl = "^1.4.2"
 pyjwt = {version = "^1.7.1", extras = ["crypto"]}
 confuse = "^1.1.0"
 networkx = "^2.4"
-uvloop = "^0.14.0"
 ujson = "^2.0.3"
 
 [tool.poetry.dev-dependencies]
