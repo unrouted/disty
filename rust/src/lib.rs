@@ -9,10 +9,11 @@ mod types;
 use pyo3::prelude::*;
 
 #[pyfunction]
-fn start_registry_service(repository_path: String) -> () {
+fn start_registry_service(registry_state: PyObject) -> () {
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(
         rocket::build()
+            .manage(crate::types::RegistryState::new(registry_state))
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );

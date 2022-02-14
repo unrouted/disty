@@ -3,6 +3,7 @@ use crate::responses;
 use crate::responses::ManifestCreated;
 use crate::responses::UploadAccepted;
 use crate::types::Digest;
+use crate::types::RegistryState;
 use crate::types::Repositories;
 use crate::types::RepositoryName;
 use ring::digest;
@@ -87,16 +88,56 @@ fn get_upload(_repository: String, _upload_id: String) -> Status {
     Status::NotAcceptable
 }
 
-#[get("/<_repository>/blobs/<digest>")]
-async fn get_blob(_repository: RepositoryName, digest: Digest) -> responses::Blob {
+#[get("/<repository>/blobs/<digest>")]
+async fn get_blob(
+    repository: RepositoryName,
+    digest: Digest,
+    state: &State<RegistryState>,
+) -> responses::GetBlobResponses {
+    let state: &RegistryState = state.inner();
+
+    /*
+    images_directory = request.app["images_directory"]
+    registry_state = request.app["registry_state"]
+
+    repository = request.match_info["repository"]
+    hash = "sha256:" + request.match_info["hash"]
+
+    request.app["token_checker"].authenticate(request, repository, ["pull"])
+    */
+
+    if !state.is_blob_available(&repository, &digest) {
+        return responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {});
+    }
+
+    /*
+    if not registry_state.is_blob_available(repository, hash):
+    raise exceptions.BlobUnknown(hash=hash)
+
+    hash_path = get_blob_path(images_directory, hash)
+    if not hash_path.is_file():
+    raise exceptions.BlobUnknown(hash=hash)
+
+    size = os.path.getsize(hash_path)
+
+    return web.FileResponse(
+        headers={
+            "Docker-Content-Digest": hash,
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(size),
+        },
+        path=hash_path,
+    )
+    */
+
     let filename = format!("blobs/{digest}", digest = digest);
     let file = File::open(filename).await.unwrap();
 
-    responses::Blob {
+    responses::GetBlobResponses::Blob(responses::Blob {
         content_type: "application/vnd.docker.distribution.manifest.v2+json".to_string(),
         digest,
         file,
-    }
+    })
 }
 
 #[put("/<repository>/manifests/<tag>", data = "<body>")]
