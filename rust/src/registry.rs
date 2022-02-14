@@ -6,6 +6,7 @@ use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::Repositories;
 use crate::types::RepositoryName;
+use crate::utils::{get_blob_path, get_manifest_path};
 use ring::digest;
 use rocket::data::ByteUnit;
 use rocket::data::Data;
@@ -16,7 +17,6 @@ use std::sync::{Arc, Mutex};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use uuid::Uuid;
-
 pub(crate) struct RegistryDir(String);
 
 #[post("/<repository>/blobs/uploads")]
@@ -96,48 +96,27 @@ async fn get_blob(
 ) -> responses::GetBlobResponses {
     let state: &RegistryState = state.inner();
 
-    /*
-    images_directory = request.app["images_directory"]
-    registry_state = request.app["registry_state"]
-
-    repository = request.match_info["repository"]
-    hash = "sha256:" + request.match_info["hash"]
-
-    request.app["token_checker"].authenticate(request, repository, ["pull"])
-    */
+    if !state.check_token(&repository, &"pull".to_string()) {
+        return responses::GetBlobResponses::AccessDenied(responses::AccessDenied {});
+    }
 
     if !state.is_blob_available(&repository, &digest) {
         return responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {});
     }
 
-    /*
-    if not registry_state.is_blob_available(repository, hash):
-    raise exceptions.BlobUnknown(hash=hash)
+    let path = get_blob_path(&state.repository_path, &digest);
+    if !path.is_file() {
+        return responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {});
+    }
 
-    hash_path = get_blob_path(images_directory, hash)
-    if not hash_path.is_file():
-    raise exceptions.BlobUnknown(hash=hash)
-
-    size = os.path.getsize(hash_path)
-
-    return web.FileResponse(
-        headers={
-            "Docker-Content-Digest": hash,
-            "Content-Type": "application/octet-stream",
-            "Content-Length": str(size),
-        },
-        path=hash_path,
-    )
-    */
-
-    let filename = format!("blobs/{digest}", digest = digest);
-    let file = File::open(filename).await.unwrap();
-
-    responses::GetBlobResponses::Blob(responses::Blob {
-        content_type: "application/vnd.docker.distribution.manifest.v2+json".to_string(),
-        digest,
-        file,
-    })
+    match File::open(path).await {
+        Ok(file) => responses::GetBlobResponses::Blob(responses::Blob {
+            content_type: "application/octet-steam".to_string(),
+            digest,
+            file,
+        }),
+        _ => return responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {}),
+    }
 }
 
 #[put("/<repository>/manifests/<tag>", data = "<body>")]
@@ -170,15 +149,38 @@ async fn put_manifest(repository: RepositoryName, tag: String, body: Data<'_>) -
     ManifestCreated { repository, digest }
 }
 
-#[get("/<_repository>/manifests/<digest>")]
-async fn get_manifest(_repository: RepositoryName, digest: Digest) -> responses::Manifest {
-    let filename = format!("manifests/{digest}", digest = digest);
-    let file = File::open(filename).await.unwrap();
+#[get("/<repository>/manifests/<digest>")]
+async fn get_manifest(
+    repository: RepositoryName,
+    digest: Digest,
+    state: &State<RegistryState>,
+) -> responses::GetManifestResponses {
+    let state: &RegistryState = state.inner();
 
-    responses::Manifest {
-        content_type: "application/vnd.docker.distribution.manifest.v2+json".to_string(),
-        digest,
-        file,
+    if !state.check_token(&repository, &"pull".to_string()) {
+        return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
+    }
+
+    if !state.is_manifest_available(&repository, &digest) {
+        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+    }
+
+    let path = get_manifest_path(&state.repository_path, &digest);
+    if !path.is_file() {
+        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+    }
+
+    match File::open(path).await {
+        Ok(file) => responses::GetManifestResponses::Manifest(responses::Manifest {
+            content_type: "application/vnd.docker.distribution.manifest.v2+json".to_string(),
+            digest,
+            file,
+        }),
+        _ => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     }
 }
 

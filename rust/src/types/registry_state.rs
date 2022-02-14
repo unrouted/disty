@@ -4,12 +4,20 @@ use pyo3::prelude::*;
 use super::RegistryAction;
 
 pub struct RegistryState {
+    pub repository_path: String,
     state: PyObject,
 }
 
 impl RegistryState {
-    pub fn new(state: PyObject) -> RegistryState {
-        RegistryState { state: state }
+    pub fn new(state: PyObject, repository_path: String) -> RegistryState {
+        RegistryState {
+            state: state,
+            repository_path: repository_path,
+        }
+    }
+
+    pub fn check_token(&self, repository: &RepositoryName, permission: &String) -> bool {
+        true
     }
 
     pub fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
