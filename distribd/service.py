@@ -106,11 +106,12 @@ async def main(argv=None, config=None):
         )
 
     from distribd.distribd_rust import start_registry_service
-    start_registry_service(
+    if not start_registry_service(
         registry_state,
         str(images_directory),
         # send_action=raft.action,
-    )
+    ):
+        return
 
     try:
         await asyncio.gather(*services)

@@ -6,11 +6,30 @@ mod registry;
 mod responses;
 mod types;
 mod utils;
+mod views;
 
 use pyo3::prelude::*;
 
+fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
+    let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
+    if !path.exists() {
+        return match std::fs::create_dir_all(path) {
+            Ok(_) => true,
+            _ => false,
+        };
+    }
+    return true;
+}
+
 #[pyfunction]
-fn start_registry_service(registry_state: PyObject, repository_path: String) -> () {
+fn start_registry_service(registry_state: PyObject, repository_path: String) -> bool {
+    if !create_dir(&repository_path, "uploads")
+        || !create_dir(&repository_path, "uploads")
+        || !create_dir(&repository_path, "uploads")
+    {
+        return false;
+    }
+
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(
         rocket::build()
@@ -21,6 +40,8 @@ fn start_registry_service(registry_state: PyObject, repository_path: String) -> 
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );
+
+    return true;
 }
 
 #[pymodule]

@@ -4,7 +4,6 @@ use crate::responses::ManifestCreated;
 use crate::responses::UploadAccepted;
 use crate::types::Digest;
 use crate::types::RegistryState;
-use crate::types::Repositories;
 use crate::types::RepositoryName;
 use crate::utils::{get_blob_path, get_manifest_path};
 use ring::digest;
@@ -13,7 +12,6 @@ use rocket::data::Data;
 use rocket::tokio::fs::File;
 use rocket::State;
 use rocket::{http::Status, Route};
-use std::sync::{Arc, Mutex};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use uuid::Uuid;
@@ -55,27 +53,6 @@ async fn patch_upload(
         repository,
         uuid: upload_id,
     }
-}
-
-#[put("/<_repository>/blobs/uploads/<upload_id>?<digest>")]
-async fn put_upload(
-    _repository: String,
-    upload_id: String,
-    digest: Digest,
-    _range: Option<ContentRange>,
-) -> Status {
-    // FIXME: Assert push permission
-
-    assert!(digest.algo == "sha256");
-
-    // FIXME: Assert digest is correct
-
-    let filename = format!("upload/{upload_id}", upload_id = upload_id);
-    let dest = format!("blobs/{digest}", digest = digest);
-
-    std::fs::rename(filename, dest).unwrap();
-
-    Status::Ok
 }
 
 #[delete("/<_repository>/blobs/uploads/<_upload_id>")]
@@ -189,7 +166,7 @@ pub fn routes() -> Vec<Route> {
         // Uploads
         post_upload,
         patch_upload,
-        put_upload,
+        crate::views::blobs::put::put,
         delete_upload,
         get_upload,
         // Blobs
