@@ -3,6 +3,7 @@ use crate::types::RegistryAction;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
+use crate::utils::get_upload_path;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -73,10 +74,7 @@ pub(crate) async fn put(
         return Responses::UploadInvalid {};
     }
 
-    /*
-    uploads = images_directory / "uploads"
-    */
-    let filename = format!("upload/{upload_id}", upload_id = upload_id);
+    let filename = get_upload_path(&state.repository_path, &upload_id);
 
     if !crate::views::utils::upload_part(&filename, body).await {
         return Responses::UploadInvalid {};

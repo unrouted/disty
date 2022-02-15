@@ -2,14 +2,12 @@ mod access_denied;
 mod blob;
 mod blob_not_found;
 mod manifest;
-mod manifest_created;
 mod manifest_not_found;
 
 pub(crate) use self::access_denied::AccessDenied;
 pub(crate) use self::blob::Blob;
 pub(crate) use self::blob_not_found::BlobNotFound;
 pub(crate) use self::manifest::Manifest;
-pub(crate) use self::manifest_created::ManifestCreated;
 pub(crate) use self::manifest_not_found::ManifestNotFound;
 
 #[derive(Responder)]

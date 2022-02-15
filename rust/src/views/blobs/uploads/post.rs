@@ -10,6 +10,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use uuid::Uuid;
+use crate::utils::get_upload_path;
 
 pub(crate) enum Responses {
     AccessDenied {},
@@ -122,10 +123,7 @@ pub(crate) async fn post(
 
     match digest {
         Some(digest) => {
-            /*
-            uploads = images_directory / "uploads"
-            */
-            let filename = format!("upload/{upload_id}", upload_id = upload_id);
+            let filename = get_upload_path(&state.repository_path, &upload_id);
 
             if !crate::views::utils::upload_part(&filename, body).await {
                 return Responses::UploadInvalid {};

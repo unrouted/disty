@@ -5,7 +5,7 @@ use rocket::tokio::fs::File;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
 
-pub(crate) async fn upload_part(filename: &String, body: Data<'_>) -> bool {
+pub(crate) async fn upload_part(filename: &std::path::PathBuf, body: Data<'_>) -> bool {
     let result = OpenOptions::new()
         .append(true)
         .create(true)
@@ -30,8 +30,8 @@ pub(crate) async fn upload_part(filename: &String, body: Data<'_>) -> bool {
     }
 }
 
-pub(crate) async fn validate_hash(filename: &String, expected_hash: &Digest) -> bool {
-    let actual_digest = match File::open(&filename).await {
+pub(crate) async fn get_hash(filename: &std::path::PathBuf) -> Option<Digest> {
+    match File::open(&filename).await {
         Ok(file) => {
             let mut buffer = [0; 1024];
             let mut reader = tokio::io::BufReader::new(file);
@@ -42,18 +42,23 @@ pub(crate) async fn validate_hash(filename: &String, expected_hash: &Digest) -> 
                     Ok(0) => break,
                     Ok(size) => size,
                     _ => {
-                        return false;
+                        return None;
                     }
                 };
                 hasher.update(&buffer[..len]);
             }
 
-            Digest::from_sha256(&hasher.finish())
+            Some(Digest::from_sha256(&hasher.finish()))
         }
         _ => {
-            return false;
+            return None;
         }
-    };
+    }
+}
 
-    &actual_digest == expected_hash
+pub(crate) async fn validate_hash(filename: &std::path::PathBuf, expected_hash: &Digest) -> bool {
+     match get_hash(&filename).await {
+        Some(actual_digest) => &actual_digest == expected_hash,
+        None => false,
+    }
 }

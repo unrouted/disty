@@ -107,31 +107,7 @@ pub enum RegistryAction {
         digest: Digest,
         repository: RepositoryName,
         tag: String,
-    },
-
-    // A blob upload was initiated
-    BlobUploadStarted {
-        session_id: String,
-        repository: RepositoryName,
-    },
-
-    BlobUploadPart {
-        session_id: String,
-        start: u64,
-        finish: u64,
-    },
-
-    BlobUploadLocation {
-        session_id: String,
-        location: String,
-    },
-
-    BlobUploadDelete {
-        session_id: String,
-    },
-
-    BlobUploadFinish {
-        session_id: String,
+        user: String,
     },
 }
 

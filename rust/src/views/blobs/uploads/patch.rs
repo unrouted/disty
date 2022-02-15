@@ -1,6 +1,7 @@
 use crate::headers::ContentRange;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
+use crate::utils::get_upload_path;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -73,10 +74,7 @@ pub(crate) async fn patch(
         return Responses::UploadInvalid {};
     }
 
-    /*
-    uploads = images_directory / "uploads"
-    */
-    let filename = format!("upload/{upload_id}", upload_id = upload_id);
+    let filename = get_upload_path(&state.repository_path, &upload_id);
 
     match range {
         Some(_range) => {
@@ -106,7 +104,7 @@ pub(crate) async fn patch(
         return Responses::UploadInvalid {};
     }
 
-    let size = match tokio::fs::metadata(&filename).await {
+    let size = match tokio::fs::metadata(filename).await {
         Ok(result) => result.len(),
         Err(_) => {
             return Responses::UploadInvalid {};
