@@ -1,4 +1,3 @@
-use crate::types::RepositoryName;
 use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Response};

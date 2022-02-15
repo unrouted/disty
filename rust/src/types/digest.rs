@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use data_encoding::HEXLOWER;
+use pyo3::prelude::*;
 use ring::digest;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +30,18 @@ impl Digest {
             .join(&self.hash[2..4])
             .join(&self.hash[4..6])
             .join(&self.hash[6..])
+    }
+}
+
+impl IntoPy<PyObject> for Digest {
+    fn into_py(self, py: Python) -> PyObject {
+        self.to_string().into_py(py)
+    }
+}
+
+impl ToPyObject for Digest {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.to_string().into_py(py)
     }
 }
 

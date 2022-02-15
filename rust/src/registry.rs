@@ -15,7 +15,6 @@ use rocket::{http::Status, Route};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use uuid::Uuid;
-pub(crate) struct RegistryDir(String);
 
 #[post("/<repository>/blobs/uploads")]
 async fn post_upload(repository: RepositoryName) -> UploadAccepted {
@@ -96,8 +95,8 @@ async fn get_blob(
     }
 }
 
-#[put("/<repository>/manifests/<tag>", data = "<body>")]
-async fn put_manifest(repository: RepositoryName, tag: String, body: Data<'_>) -> ManifestCreated {
+#[put("/<repository>/manifests/<_tag>", data = "<body>")]
+async fn put_manifest(repository: RepositoryName, _tag: String, body: Data<'_>) -> ManifestCreated {
     let result = body
         .open(ByteUnit::Megabyte(500))
         .into_bytes()

@@ -1,8 +1,6 @@
 use crate::types::{Digest, RepositoryName};
 use pyo3::prelude::*;
 
-use super::RegistryAction;
-
 pub struct RegistryState {
     pub repository_path: String,
     state: PyObject,
@@ -16,7 +14,7 @@ impl RegistryState {
         }
     }
 
-    pub fn check_token(&self, repository: &RepositoryName, permission: &String) -> bool {
+    pub fn check_token(&self, _repository: &RepositoryName, _permission: &String) -> bool {
         true
     }
 

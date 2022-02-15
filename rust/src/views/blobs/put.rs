@@ -1,4 +1,3 @@
-use crate::headers::ContentRange;
 use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;

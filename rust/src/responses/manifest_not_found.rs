@@ -1,8 +1,6 @@
-use crate::types::Digest;
 use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
-use rocket::tokio::fs::File;
 
 pub(crate) struct ManifestNotFound {}
 
