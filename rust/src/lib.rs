@@ -19,7 +19,11 @@ fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
 }
 
 #[pyfunction]
-fn start_registry_service(registry_state: PyObject, repository_path: String) -> bool {
+fn start_registry_service(
+    registry_state: PyObject,
+    send_action: PyObject,
+    repository_path: String,
+) -> bool {
     if !create_dir(&repository_path, "uploads")
         || !create_dir(&repository_path, "manifests")
         || !create_dir(&repository_path, "blobs")
@@ -32,6 +36,7 @@ fn start_registry_service(registry_state: PyObject, repository_path: String) -> 
         rocket::build()
             .manage(crate::types::RegistryState::new(
                 registry_state,
+                send_action,
                 repository_path,
             ))
             .mount("/v2/", crate::registry::routes())

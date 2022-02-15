@@ -103,7 +103,7 @@ pub(crate) async fn put(
         }
     }
 
-    let _actions = vec![
+    let actions = vec![
         RegistryAction::BlobMounted {
             digest: digest.clone(),
             repository: repository.clone(),
@@ -120,12 +120,7 @@ pub(crate) async fn put(
         },
     ];
 
-    /*
-    success = await send_action(
-    )
-    */
-
-    if false {
+    if !state.send_actions(actions).await {
         return Responses::UploadInvalid {};
     }
 

@@ -108,8 +108,8 @@ async def main(argv=None, config=None):
     from distribd.distribd_rust import start_registry_service
     if not start_registry_service(
         registry_state,
+        raft.append,
         str(images_directory),
-        # send_action=raft.action,
     ):
         return
 

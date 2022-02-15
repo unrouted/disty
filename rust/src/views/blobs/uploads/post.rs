@@ -61,7 +61,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "Location",
                     format!("/v2/{}/blobs/uploads/{}", repository, uuid),
                 );
-                let range = Header::new("Range", "0-0");
+                let range = Header::new("Range", format!("0-{size}"));
                 let length = Header::new("Content-Length", "0");
                 let upload_uuid = Header::new("Docker-Upload-UUID", uuid);
 
@@ -105,11 +105,7 @@ pub(crate) async fn post(
                     user: "FIXME".to_string(),
                 }];
 
-                /*
-                FIXME: Commit actions
-                */
-
-                if false {
+                if !state.send_actions(actions).await {
                     return Responses::UploadInvalid {};
                 }
 
@@ -156,7 +152,7 @@ pub(crate) async fn post(
                 }
             }
 
-            let _actions = vec![
+            let actions = vec![
                 RegistryAction::BlobMounted {
                     digest: digest.clone(),
                     repository: repository.clone(),
@@ -173,12 +169,7 @@ pub(crate) async fn post(
                 },
             ];
 
-            /*
-            success = await send_action(
-            )
-            */
-
-            if false {
+            if !state.send_actions(actions).await {
                 return Responses::UploadInvalid {};
             }
         }
