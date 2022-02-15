@@ -34,6 +34,6 @@ pub(crate) async fn get(
             digest,
             file,
         }),
-        _ => return responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {}),
+        _ => responses::GetBlobResponses::BlobNotFound(responses::BlobNotFound {}),
     }
 }

@@ -8,6 +8,6 @@ pub(crate) async fn post(repository: RepositoryName) -> UploadAccepted {
 
     UploadAccepted {
         repository,
-        uuid: uuid,
+        uuid,
     }
 }

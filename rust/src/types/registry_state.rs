@@ -9,8 +9,8 @@ pub struct RegistryState {
 impl RegistryState {
     pub fn new(state: PyObject, repository_path: String) -> RegistryState {
         RegistryState {
-            state: state,
-            repository_path: repository_path,
+            state,
+            repository_path,
         }
     }
 

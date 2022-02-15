@@ -146,8 +146,8 @@ impl IntoPy<PyObject> for RegistryAction {
                 let dict = PyDict::new(py);
                 dict.set_item("type", "blob-stored").unwrap();
                 dict.set_item("hash", digest).unwrap();
-                dict.set_item("location", location.to_string()).unwrap();
-                dict.set_item("user", user.to_string()).unwrap();
+                dict.set_item("location", location).unwrap();
+                dict.set_item("user", user).unwrap();
                 dict.into()
             }
             // A given sha256 blob hash was deleted and is safe to delete from disk
@@ -160,8 +160,8 @@ impl IntoPy<PyObject> for RegistryAction {
                 let dict = PyDict::new(py);
                 dict.set_item("type", "blob-unstored").unwrap();
                 dict.set_item("hash", digest).unwrap();
-                dict.set_item("location", location.to_string()).unwrap();
-                dict.set_item("user", user.to_string()).unwrap();
+                dict.set_item("location", location).unwrap();
+                dict.set_item("user", user).unwrap();
                 dict.into()
             }
 
@@ -176,7 +176,7 @@ impl IntoPy<PyObject> for RegistryAction {
                 dict.set_item("type", "blob-mounted").unwrap();
                 dict.set_item("hash", digest).unwrap();
                 dict.set_item("repository", repository.to_string()).unwrap();
-                dict.set_item("user", user.to_string()).unwrap();
+                dict.set_item("user", user).unwrap();
                 dict.into()
             }
             // Deassociate a blob hash with a repository
@@ -190,7 +190,7 @@ impl IntoPy<PyObject> for RegistryAction {
                 dict.set_item("type", "blob-ummounted").unwrap();
                 dict.set_item("hash", digest).unwrap();
                 dict.set_item("repository", repository.to_string()).unwrap();
-                dict.set_item("user", user.to_string()).unwrap();
+                dict.set_item("user", user).unwrap();
                 dict.into()
             }
             // Associate a blob with metadata about it (like its depgraph)

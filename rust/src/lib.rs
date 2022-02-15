@@ -18,7 +18,7 @@ fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
             _ => false,
         };
     }
-    return true;
+    true
 }
 
 #[pyfunction]
@@ -41,7 +41,7 @@ fn start_registry_service(registry_state: PyObject, repository_path: String) -> 
             .launch(),
     );
 
-    return true;
+    true
 }
 
 #[pymodule]

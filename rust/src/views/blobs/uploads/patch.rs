@@ -75,7 +75,7 @@ pub(crate) async fn patch(
     let filename = format!("upload/{upload_id}", upload_id = upload_id);
 
     match range {
-        Some(range) => {
+        Some(_range) => {
             /*
             size = 0
             if os.path.exists(upload_path):

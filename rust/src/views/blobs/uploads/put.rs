@@ -103,7 +103,7 @@ pub(crate) async fn put(
         }
     }
 
-    let actions = vec![
+    let _actions = vec![
         RegistryAction::BlobMounted {
             digest: digest.clone(),
             repository: repository.clone(),
@@ -152,6 +152,6 @@ pub(crate) async fn put(
 
     Responses::Ok {
         repository,
-        digest: digest,
+        digest,
     }
 }

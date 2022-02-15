@@ -34,7 +34,7 @@ pub(crate) async fn get(
             file,
         }),
         _ => {
-            return responses::GetManifestResponses::ManifestNotFound(
+            responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
             )
         }
