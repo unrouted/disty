@@ -121,34 +121,13 @@ pub(crate) async fn put(
     ];
 
     /*
-    send_action = request.app["send_action"]
-    identifier = request.app["identifier"]
-
     success = await send_action(
-        [
-            {
-                "type": RegistryActions.BLOB_MOUNTED,
-                "hash": digest,
-                "repository": repository,
-                "user": request["user"],
-            },
-            {
-                "type": RegistryActions.BLOB_STAT,
-                "hash": digest,
-                "size": session["size"],
-            },
-            {
-                "type": RegistryActions.BLOB_STORED,
-                "hash": digest,
-                "location": identifier,
-                "user": request["user"],
-            },
-        ]
     )
+    */
 
-    if not success:
-        raise exceptions.BlobUploadInvalid()
-     */
+    if false {
+        return Responses::UploadInvalid {};
+    }
 
     Responses::Ok { repository, digest }
 }
