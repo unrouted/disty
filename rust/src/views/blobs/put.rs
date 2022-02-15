@@ -78,8 +78,9 @@ pub(crate) async fn put(
     */
     let filename = format!("upload/{upload_id}", upload_id = upload_id);
 
-    // FIXME: Throw DigestInvalid if upload fails
-    crate::views::utils::upload_part(&filename, body).await;
+    if !crate::views::utils::upload_part(&filename, body).await {
+        return Responses::UploadInvalid {};
+    }
 
     // Validate upload
     if !crate::views::utils::validate_hash(&filename, &digest).await {
