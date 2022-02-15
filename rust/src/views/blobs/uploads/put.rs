@@ -150,8 +150,5 @@ pub(crate) async fn put(
         raise exceptions.BlobUploadInvalid()
      */
 
-    Responses::Ok {
-        repository,
-        digest,
-    }
+    Responses::Ok { repository, digest }
 }

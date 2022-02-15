@@ -7,9 +7,12 @@ use rocket::data::Data;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
-
 #[put("/<repository>/manifests/<_tag>", data = "<body>")]
-pub(crate) async fn put(repository: RepositoryName, _tag: String, body: Data<'_>) -> ManifestCreated {
+pub(crate) async fn put(
+    repository: RepositoryName,
+    _tag: String,
+    body: Data<'_>,
+) -> ManifestCreated {
     let result = body
         .open(ByteUnit::Megabyte(500))
         .into_bytes()

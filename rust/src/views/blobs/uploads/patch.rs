@@ -1,3 +1,4 @@
+use crate::headers::ContentRange;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use rocket::data::Data;
@@ -6,7 +7,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
-use crate::headers::ContentRange;
 
 pub(crate) enum Responses {
     AccessDenied {},
@@ -23,7 +23,11 @@ impl<'r> Responder<'r, 'static> for Responses {
         match self {
             Responses::AccessDenied {} => Response::build().status(Status::Forbidden).ok(),
             Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
-            Responses::Ok { repository, upload_id, size } => {
+            Responses::Ok {
+                repository,
+                upload_id,
+                size,
+            } => {
                 /*
                 204 No Content
                 Location: /v2/<name>/blobs/uploads/<uuid>
@@ -80,10 +84,10 @@ pub(crate) async fn patch(
             size = 0
             if os.path.exists(upload_path):
             size = os.path.getsize(upload_path)
-            
+
             content_range = request.headers["Content-Range"]
             left, right = content_range.split("-")
-            
+
             if int(left) != size:
             raise web.HTTPRequestRangeNotSatisfiable(
                 headers={

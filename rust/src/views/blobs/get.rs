@@ -2,10 +2,9 @@ use crate::responses;
 use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
-use crate::utils::{get_blob_path};
+use crate::utils::get_blob_path;
 use rocket::tokio::fs::File;
 use rocket::State;
-
 
 #[get("/<repository>/blobs/<digest>")]
 pub(crate) async fn get(

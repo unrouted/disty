@@ -13,10 +13,7 @@ use pyo3::prelude::*;
 fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
     if !path.exists() {
-        return match std::fs::create_dir_all(path) {
-            Ok(_) => true,
-            _ => false,
-        };
+        return matches!(std::fs::create_dir_all(path), Ok(()));
     }
     true
 }

@@ -2,7 +2,7 @@ use crate::responses;
 use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
-use crate::utils::{get_manifest_path};
+use crate::utils::get_manifest_path;
 use rocket::tokio::fs::File;
 use rocket::State;
 
@@ -33,10 +33,6 @@ pub(crate) async fn get(
             digest,
             file,
         }),
-        _ => {
-            responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            )
-        }
+        _ => responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {}),
     }
 }
