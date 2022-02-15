@@ -51,7 +51,7 @@ pub enum RegistryAction {
     //BLOB_STAT = "blob-stat"
     BlobStat {
         digest: Digest,
-        size: usize,
+        size: u64,
     },
 
     // A given sha256 hash was stored on a node
@@ -98,7 +98,7 @@ pub enum RegistryAction {
     //MANIFEST_STAT = "manifest-stat"
     ManifestStat {
         digest: Digest,
-        size: usize,
+        size: u64,
     },
 
     // A given sha256 manifest hash was tagged with a repository and a tag
@@ -117,8 +117,8 @@ pub enum RegistryAction {
 
     BlobUploadPart {
         session_id: String,
-        start: usize,
-        finish: usize,
+        start: u64,
+        finish: u64,
     },
 
     BlobUploadLocation {
@@ -258,7 +258,7 @@ impl IntoPy<PyObject> for RegistryAction {
             //MANIFEST_STAT = "manifest-stat"
             ManifestStat {
                 digest: Digest,
-                size: usize,
+                size: u64,
             },
 
             // A given sha256 manifest hash was tagged with a repository and a tag
@@ -267,31 +267,6 @@ impl IntoPy<PyObject> for RegistryAction {
                 digest: Digest,
                 repository: RepositoryName,
                 tag: String,
-            },
-
-            // A blob upload was initiated
-            BlobUploadStarted {
-                session_id: String,
-                repository: RepositoryName,
-            },
-
-            BlobUploadPart {
-                session_id: String,
-                start: usize,
-                finish: usize,
-            },
-
-            BlobUploadLocation {
-                session_id: String,
-                location: String,
-            },
-
-            BlobUploadDelete {
-                session_id: String,
-            },
-
-            BlobUploadFinish {
-                session_id: String,
             },*/
             _ => PyDict::new(py).into(),
         }

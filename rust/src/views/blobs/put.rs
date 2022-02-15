@@ -1,17 +1,14 @@
 use crate::types::Digest;
+use crate::types::RegistryAction;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
-use rocket::data::ByteUnit;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
-use rocket::tokio::fs::File;
 use rocket::State;
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncReadExt;
 
 pub(crate) enum Responses {
     AccessDenied {},
@@ -67,6 +64,7 @@ pub(crate) async fn put(
         return Responses::AccessDenied {};
     }
 
+    // FIXME: Check if upload_id is actually permitted
     if false {
         return Responses::UploadInvalid {};
     }
@@ -75,63 +73,27 @@ pub(crate) async fn put(
         return Responses::UploadInvalid {};
     }
 
-    let filename = format!("upload/{upload_id}", upload_id = upload_id);
     /*
     uploads = images_directory / "uploads"
-    if not uploads.exists():
-        os.makedirs(uploads)
-        upload_path = uploads / session_id
     */
+    let filename = format!("upload/{upload_id}", upload_id = upload_id);
 
-    let dest = get_blob_path(&state.repository_path, &digest);
-
-    // Actually upload a chunk of file
-    let mut options = OpenOptions::new();
-    let mut file = options
-        .append(true)
-        .create(true)
-        .open(&filename)
-        .await
-        .unwrap();
-
-    let _result = body
-        .open(ByteUnit::Megabyte(500))
-        .stream_to(&mut tokio::io::BufWriter::new(&mut file))
-        .await;
+    // FIXME: Throw DigestInvalid if upload fails
+    crate::views::utils::upload_part(&filename, body).await;
 
     // Validate upload
-    let actual_digest = match File::open(&dest).await {
-        Ok(file) => {
-            let mut buffer = [0; 1024];
-            let mut reader = tokio::io::BufReader::new(file);
-            let mut hasher = ring::digest::Context::new(&ring::digest::SHA256);
-
-            loop {
-                let len = reader.read(&mut buffer).await.expect("Failed to read");
-                if len == 0 {
-                    break;
-                }
-
-                hasher.update(&buffer[..len]);
-            }
-
-            Digest::from_sha256(&hasher.finish())
-        }
-        _ => {
-            return Responses::UploadInvalid {};
-        }
-    };
-
-    if actual_digest != digest {
+    if !crate::views::utils::validate_hash(&filename, &digest).await {
         return Responses::DigestInvalid {};
     }
 
-    /*
-    blob_path = get_blob_path(images_directory, digest)
-    blob_dir = blob_path.parent
-    if not blob_dir.exists():
-    os.makedirs(blob_dir)
-    */
+    let dest = get_blob_path(&state.repository_path, &digest);
+
+    let stat = match tokio::fs::metadata(&filename).await {
+        Ok(result) => result,
+        Err(_) => {
+            return Responses::UploadInvalid {};
+        }
+    };
 
     match std::fs::rename(filename, dest) {
         Ok(_) => {}
@@ -139,6 +101,23 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     }
+
+    let actions = vec![
+        RegistryAction::BlobMounted {
+            digest: digest.clone(),
+            repository: repository.clone(),
+            user: "FIXME".to_string(),
+        },
+        RegistryAction::BlobStat {
+            digest: digest.clone(),
+            size: stat.len(),
+        },
+        RegistryAction::BlobStored {
+            digest: digest.clone(),
+            location: "FIXME".to_string(),
+            user: "FIXME".to_string(),
+        },
+    ];
 
     /*
     send_action = request.app["send_action"]
@@ -172,6 +151,6 @@ pub(crate) async fn put(
 
     Responses::Ok {
         repository,
-        digest: actual_digest,
+        digest: digest,
     }
 }

@@ -24,8 +24,8 @@ fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
 #[pyfunction]
 fn start_registry_service(registry_state: PyObject, repository_path: String) -> bool {
     if !create_dir(&repository_path, "uploads")
-        || !create_dir(&repository_path, "uploads")
-        || !create_dir(&repository_path, "uploads")
+        || !create_dir(&repository_path, "manifests")
+        || !create_dir(&repository_path, "blobs")
     {
         return false;
     }
