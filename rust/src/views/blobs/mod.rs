@@ -1,1 +1,2 @@
-pub(crate) mod put;
+pub(crate) mod get;
+pub(crate) mod uploads;
