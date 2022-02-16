@@ -93,12 +93,11 @@ pub(crate) async fn patch(
     upload_id: String,
     range: Option<ContentRange>,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }

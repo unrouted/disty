@@ -58,11 +58,10 @@ pub(crate) async fn get(
     repository: RepositoryName,
     upload_id: String,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"pull".to_string()) {
         return Responses::AccessDenied {};
     }

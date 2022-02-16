@@ -377,6 +377,7 @@ dependencies = [
  "data-encoding",
  "jsonschema-valid",
  "jwt-simple",
+ "log",
  "pyo3",
  "pyo3-asyncio",
  "pyo3-build-config",

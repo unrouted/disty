@@ -12,11 +12,10 @@ pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> responses::GetBlobResponses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"pull".to_string()) {
         return responses::GetBlobResponses::AccessDenied(responses::AccessDenied {});
     }

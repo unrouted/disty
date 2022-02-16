@@ -93,7 +93,8 @@ impl Token {
         }
 
         for access in self.access.iter() {
-            if &access.repository == repository && access.permissions.contains(&permission.clone()) {
+            if &access.repository == repository && access.permissions.contains(&permission.clone())
+            {
                 return true;
             }
         }
@@ -146,7 +147,15 @@ impl<'r> FromRequest<'r> for Token {
             _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
         };
 
-        let claims = match key.verify_token::<NoCustomClaims>(&token_bytes, None) {
+        let mut options = VerificationOptions::default();
+        // accept tokens even if they have expired up to 15 minutes after the deadline
+        options.time_tolerance = Some(Duration::from_mins(15));
+        // reject tokens if they were issued more than 1 hour ago
+        options.max_validity = Some(Duration::from_hours(1));
+        // reject tokens if they don't include an issuer from that list
+        options.allowed_issuers = Some(HashSet::from_strings(&[config.issuer.clone().unwrap()]));
+
+        let claims = match key.verify_token::<NoCustomClaims>(&token_bytes, Some(options)) {
             Ok(claims) => claims,
             _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
         };

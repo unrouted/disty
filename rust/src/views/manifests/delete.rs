@@ -33,11 +33,10 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
@@ -59,16 +58,15 @@ pub(crate) async fn delete(
     Responses::Ok {}
 }
 
-#[delete("/<repository>/manifests/<tag>")]
+#[delete("/<repository>/manifests/<tag>", rank = 2)]
 pub(crate) async fn delete_by_tag(
     repository: RepositoryName,
     tag: String,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }

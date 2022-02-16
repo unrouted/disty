@@ -35,11 +35,10 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }

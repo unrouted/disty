@@ -193,58 +193,101 @@ impl IntoPy<PyObject> for RegistryAction {
                 dict.into()
             }
 
-            /*
-            // A given sha256 hash was stored on a node
-            //MANIFEST_STORED = "manifest-stored"
-            ManifestStored {
-                digest: Digest,
-                location: String,
-            },
-
-            // A given sha256 hash was deleted from the cluster and is safe to garbage collect
+            RegistryAction::ManifestStored {
+                digest,
+                location,
+                user,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-stored").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("location", location).unwrap();
+                dict.set_item("user", user).unwrap();
+                dict.into()
+            }
+            // A given sha256 manifest hash was deleted and is safe to delete from disk
             //MANIFEST_UNSTORED = "manifest-unstored"
-            ManifestUnstored {
-                digest: Digest,
-                location: String,
-            },
-
-            // Associate a manifest hash with a repository.
+            RegistryAction::ManifestUnstored {
+                digest,
+                location,
+                user,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-unstored").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("location", location).unwrap();
+                dict.set_item("user", user).unwrap();
+                dict.into()
+            }
+            
+            // Associate a manifest hash with a repository
             //MANIFEST_MOUNTED = "manifest-mounted"
-            ManifestMounted {
-                digest: Digest,
-                repository: RepositoryName,
-            },
-
-            // Associate a manifest hash with a repository.
+            RegistryAction::ManifestMounted {
+                digest,
+                repository,
+                user,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-mounted").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("repository", repository.to_string()).unwrap();
+                dict.set_item("user", user).unwrap();
+                dict.into()
+            }
+            // Deassociate a manifest hash with a repository
             //MANIFEST_UNMOUNTED = "manifest-unmounted"
-            ManifestUnmounted {
-                digest: Digest,
-                repository: RepositoryName,
-            },
-
+            RegistryAction::ManifestUnmounted {
+                digest,
+                repository,
+                user,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-ummounted").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("repository", repository.to_string()).unwrap();
+                dict.set_item("user", user).unwrap();
+                dict.into()
+            }
             // Associate a manifest with metadata about it (like its depgraph)
             //MANIFEST_INFO = "manifest-info"
-            ManifestInfo {
-                digest: Digest,
-                dependencies: Vec<Digest>,
-                content_type: String,
-            },
-
-            // How big is our manifest store
+            RegistryAction::ManifestInfo {
+                digest,
+                dependencies,
+                content_type,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-info").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("dependencies", dependencies).unwrap();
+                dict.set_item("content_type", content_type).unwrap();
+                dict.into()
+            }
+            // How big is our manifest store?
             //MANIFEST_STAT = "manifest-stat"
-            ManifestStat {
-                digest: Digest,
-                size: u64,
-            },
+            RegistryAction::ManifestStat { digest, size } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "manifest-stat").unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("size", size).unwrap();
+                dict.into()
+            }
 
             // A given sha256 manifest hash was tagged with a repository and a tag
             //HASH_TAGGED = "hash-tagged"
-            HashTagged {
-                digest: Digest,
-                repository: RepositoryName,
-                tag: String,
-            },*/
-            _ => PyDict::new(py).into(),
+            RegistryAction::HashTagged {
+                digest,
+                repository,
+                tag,
+                user,
+            } => {
+                let dict = PyDict::new(py);
+                dict.set_item("type", "hash-tagged").unwrap();
+                dict.set_item("repository", repository.to_string()).unwrap();
+                dict.set_item("hash", digest).unwrap();
+                dict.set_item("tag", tag).unwrap();
+                dict.set_item("user", user).unwrap();
+                dict.into()
+            }
         }
     }
 }

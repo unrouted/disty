@@ -36,7 +36,6 @@
             },
             "required": [
                 "mediaType",
-                "size",
                 "digest"
             ]
         },
@@ -65,7 +64,6 @@
                 },
                 "required": [
                     "mediaType",
-                    "size",
                     "digest"
                 ]
             }

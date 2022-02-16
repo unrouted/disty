@@ -4,13 +4,15 @@ use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use pyo3::prelude::*;
-use pyo3_asyncio::tokio::into_future;
+use pyo3_asyncio::into_future_with_loop;
 
 pub struct RegistryState {
     pub repository_path: String,
+    pub machine_identifier: String,
     send_action: PyObject,
     state: PyObject,
     webhook_send: tokio::sync::mpsc::Sender<Event>,
+    event_loop: PyObject,
 }
 
 impl RegistryState {
@@ -19,12 +21,16 @@ impl RegistryState {
         send_action: PyObject,
         repository_path: String,
         webhook_send: tokio::sync::mpsc::Sender<Event>,
+        machine_identifier: String,
+        event_loop: PyObject,
     ) -> RegistryState {
         RegistryState {
             state,
             send_action,
             repository_path,
             webhook_send,
+            machine_identifier,
+            event_loop,
         }
     }
 
@@ -36,8 +42,14 @@ impl RegistryState {
     }
 
     pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
-        let result =
-            Python::with_gil(|py| into_future(self.send_action.call1(py, (actions,))?.as_ref(py)));
+        let result = Python::with_gil(|py| {
+            let event_loop = self.event_loop.as_ref(py);
+
+            into_future_with_loop(
+                event_loop,
+                self.send_action.call1(py, (actions,))?.as_ref(py),
+            )
+        });
 
         match result {
             Ok(result) => match result.await {

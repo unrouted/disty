@@ -112,14 +112,15 @@ async def main(argv=None, config=None):
     except confuse.exceptions.NotFoundError:
         webhooks = []
 
-    if config["token_server"]["enabled"].get(bool):
+    token_server = config["registry"]["default"]["token_server"]
+    if token_server["enabled"].get(bool):
         token_config = {
             "enabled": True,
-            "realm": config["token_server"]["realm"].get(str),
-            "service": config["token_server"]["service"].get(str),
-            "issuer": config["token_server"]["issuer"].get(str),
+            "realm": token_server["realm"].get(str),
+            "service": token_server["service"].get(str),
+            "issuer": token_server["issuer"].get(str),
         }
-        public_key_path = config["token_server"]["public_key"].as_path()
+        public_key_path = token_server["public_key"].as_path()
         with open(public_key_path, "r") as fp:
             token_config["public_key"] = fp.read()
 
@@ -134,6 +135,8 @@ async def main(argv=None, config=None):
         str(images_directory),
         webhooks,
         token_config,
+        machine.identifier,
+        asyncio.get_running_loop()
     ):
         return
 

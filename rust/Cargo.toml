@@ -30,6 +30,7 @@ uuid = { version = "*", features=["v4"] }
 jwt-simple = { git = "https://github.com/jedisct1/rust-jwt-simple" }
 regex = "1.5.4"
 jsonschema-valid = "0.4.0"
+log = "0.4.14"
 
 [build-dependencies]
 pyo3-build-config = "*"

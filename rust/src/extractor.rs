@@ -220,17 +220,25 @@ impl Extractor {
         repository: &RepositoryName,
         digest: &Digest,
         content_type: &String,
-        data: &String,
+        path: &std::path::PathBuf
     ) -> Result<Vec<RegistryAction>, ExtractError> {
         let mut analysis: Vec<RegistryAction> = Vec::new();
         let mut pending: HashSet<Extraction> = HashSet::new();
         let mut seen: HashSet<Digest> = HashSet::new();
 
-        if !self.validate(content_type, data) {
+        let data = match tokio::fs::read_to_string(&path).await {
+            Ok(data) => data,
+            _ => return Err(ExtractError::UnknownError {})
+        };
+
+        println!("{data}");
+
+        if !self.validate(content_type, &data) {
+            println!("Not a valid manifest");
             return Err(ExtractError::UnknownError {});
         }
 
-        let dependencies = self.extract_one(content_type, data);
+        let dependencies = self.extract_one(content_type, &data);
         match dependencies {
             Ok(dependencies) => {
                 analysis.push(RegistryAction::ManifestInfo {

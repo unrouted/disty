@@ -81,6 +81,20 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_manifest(self, repository, hash):
+        manifest = self.graph.nodes[hash]
+
+        if manifest[ATTR_TYPE] != TYPE_MANIFEST:
+            raise KeyError("No such hash")
+
+        if repository not in self.graph.nodes[hash][ATTR_REPOSITORIES]:
+            raise KeyError("No such hash")
+
+        manifest = dict(manifest)
+        manifest["dependencies"] = []
+
+        return manifest
+
     def get_orphaned_objects(self):
         """
         Returns all nodes that have no incoming edges and are not a tag.
@@ -205,7 +219,7 @@ class RegistryState(Reducer):
                 ATTR_CONTENT_TYPE
             ]
 
-        elif entry["type"] == RegistryActions.MANIFEST_INFO:
+        elif entry["type"] == RegistryActions.MANIFEST_STAT:
             self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
 
         elif entry["type"] == RegistryActions.MANIFEST_STORED:

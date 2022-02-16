@@ -85,12 +85,11 @@ pub(crate) async fn post(
     from: Option<RepositoryName>,
     digest: Option<Digest>,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }

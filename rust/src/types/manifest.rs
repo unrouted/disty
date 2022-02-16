@@ -15,11 +15,7 @@ impl FromPyObject<'_> for Manifest {
         let size: u64 = dict.get_item("size").unwrap().extract().unwrap();
         let content_type: String = dict.get_item("content_type").unwrap().extract().unwrap();
 
-        let pydeps = dict.get_item("dependencies").unwrap();
-        let mut dependencies = Vec::new();
-        for dep in pydeps.iter() {
-            dependencies.push(dep.extract().unwrap());
-        }
+        let dependencies = Vec::new();
 
         Ok(Manifest {
             size: Some(size),

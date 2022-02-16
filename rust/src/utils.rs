@@ -10,6 +10,9 @@ pub fn get_blob_path(images_directory: &String, digest: &Digest) -> std::path::P
     path.push(&digest_string[0..2]);
     path.push(&digest_string[2..4]);
     path.push(&digest_string[4..6]);
+
+    std::fs::create_dir_all(path.clone()).unwrap();
+
     path.push(&digest_string[6..]);
 
     path
@@ -23,6 +26,9 @@ pub fn get_manifest_path(images_directory: &String, digest: &Digest) -> std::pat
     path.push(&digest_string[0..2]);
     path.push(&digest_string[2..4]);
     path.push(&digest_string[4..6]);
+
+    std::fs::create_dir_all(path.clone()).unwrap();
+
     path.push(&digest_string[6..]);
 
     path

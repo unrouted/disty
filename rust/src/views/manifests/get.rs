@@ -6,16 +6,17 @@ use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use rocket::tokio::fs::File;
 use rocket::State;
+use log::{debug};
+
 #[get("/<repository>/manifests/<digest>")]
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> responses::GetManifestResponses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"pull".to_string()) {
         return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
     }
@@ -27,6 +28,8 @@ pub(crate) async fn get(
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
         _ => {
+            debug!("Failed to return manifest from graph for {digest} (via {repository}");
+
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
             )
@@ -57,23 +60,24 @@ pub(crate) async fn get(
     }
 }
 
-#[get("/<repository>/manifests/<tag>")]
+#[get("/<repository>/manifests/<tag>", rank = 2)]
 pub(crate) async fn get_by_tag(
     repository: RepositoryName,
     tag: String,
     state: &State<RegistryState>,
-    token: &State<Token>,
+    token: Token,
 ) -> responses::GetManifestResponses {
     let state: &RegistryState = state.inner();
 
-    let token: &Token = token.inner();
     if !token.has_permission(&repository, &"push".to_string()) {
+        debug!("User does not have permission");
         return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
     }
 
     let digest = match state.get_tag(&repository, &tag) {
         Some(tag) => tag,
         None => {
+            debug!("No such tag");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
             )
@@ -81,12 +85,14 @@ pub(crate) async fn get_by_tag(
     };
 
     if !state.is_manifest_available(&repository, &digest) {
+        debug!("Manifest not known to graph");
         return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
     }
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
         _ => {
+            debug!("Could not retrieve manifest info from graph");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
             )
@@ -96,6 +102,7 @@ pub(crate) async fn get_by_tag(
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
         _ => {
+            debug!("Could not extract content type from graph");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
             )
@@ -104,6 +111,7 @@ pub(crate) async fn get_by_tag(
 
     let path = get_manifest_path(&state.repository_path, &digest);
     if !path.is_file() {
+        debug!("Expected manifest file does not exist");
         return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
     }
 
@@ -113,6 +121,9 @@ pub(crate) async fn get_by_tag(
             digest,
             file,
         }),
-        _ => responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {}),
+        _ => {
+            debug!("Could not open file");
+            responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        },
     }
 }

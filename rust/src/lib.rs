@@ -30,6 +30,8 @@ fn start_registry_service(
     repository_path: String,
     webhooks: Vec<WebhookConfig>,
     token_config: TokenConfig,
+    machine_identifier: String,
+    event_loop: PyObject,
 ) -> bool {
     if !create_dir(&repository_path, "uploads")
         || !create_dir(&repository_path, "manifests")
@@ -49,6 +51,8 @@ fn start_registry_service(
                 send_action,
                 repository_path,
                 webhook_send,
+                machine_identifier,
+                event_loop,
             ))
             .manage(extractor)
             .manage(token_config)
