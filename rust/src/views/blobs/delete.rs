@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -34,10 +35,12 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
@@ -48,7 +51,7 @@ pub(crate) async fn delete(
     let actions = vec![RegistryAction::BlobUnmounted {
         digest,
         repository,
-        user: "FIXME".to_string(),
+        user: token.sub.clone(),
     }];
 
     if !state.send_actions(actions).await {

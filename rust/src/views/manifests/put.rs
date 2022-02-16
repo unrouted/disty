@@ -1,5 +1,6 @@
 use crate::extractor::Extractor;
 use crate::headers::ContentType;
+use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -13,7 +14,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
-
 pub(crate) enum Responses {
     AccessDenied {},
     UploadInvalid {},
@@ -60,12 +60,14 @@ pub(crate) async fn put(
     state: &State<RegistryState>,
     extractor: &State<Extractor>,
     content_type: ContentType,
+    token: &State<Token>,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
     let extractor: &Extractor = extractor.inner();
 
-    if !state.check_token(&repository, &"push".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
@@ -102,12 +104,12 @@ pub(crate) async fn put(
         RegistryAction::ManifestMounted {
             digest: digest.clone(),
             repository: repository.clone(),
-            user: "FIXME".to_string(),
+            user: token.sub.clone(),
         },
         RegistryAction::ManifestStored {
             digest: digest.clone(),
             location: "FIXME".to_string(),
-            user: "FIXME".to_string(),
+            user: token.sub.clone(),
         },
         RegistryAction::ManifestStat {
             digest: digest.clone(),
@@ -116,7 +118,7 @@ pub(crate) async fn put(
     ];
 
     let extracted = match extracted {
-        Ok( extracted_actions) => extracted_actions,
+        Ok(extracted_actions) => extracted_actions,
         _ => {
             return Responses::UploadInvalid {};
         }
@@ -126,7 +128,7 @@ pub(crate) async fn put(
         repository: repository.clone(),
         digest: digest.clone(),
         tag: tag.clone(),
-        user: "FIXME".to_string(),
+        user: token.sub.clone(),
     }]);
 
     let dest = get_manifest_path(&state.repository_path, &digest);

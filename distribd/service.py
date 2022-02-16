@@ -112,11 +112,28 @@ async def main(argv=None, config=None):
     except confuse.exceptions.NotFoundError:
         webhooks = []
 
+    if config["token_server"]["enabled"].get(bool):
+        token_config = {
+            "enabled": True,
+            "realm": config["token_server"]["realm"].get(str),
+            "service": config["token_server"]["service"].get(str),
+            "issuer": config["token_server"]["issuer"].get(str),
+        }
+        public_key_path = config["token_server"]["public_key"].as_path()
+        with open(public_key_path, "r") as fp:
+            token_config["public_key"] = fp.read()
+
+    else:
+        token_config = {
+            "enabled": False
+        }
+
     if not start_registry_service(
         registry_state,
         raft.append,
         str(images_directory),
         webhooks,
+        token_config,
     ):
         return
 

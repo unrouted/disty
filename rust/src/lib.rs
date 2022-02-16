@@ -5,12 +5,14 @@ mod extractor;
 mod headers;
 mod registry;
 mod responses;
+mod token;
 mod types;
 mod utils;
 mod views;
 mod webhook;
 
 use pyo3::prelude::*;
+use token::TokenConfig;
 use webhook::{start_webhook_worker, WebhookConfig};
 
 fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
@@ -27,6 +29,7 @@ fn start_registry_service(
     send_action: PyObject,
     repository_path: String,
     webhooks: Vec<WebhookConfig>,
+    token_config: TokenConfig,
 ) -> bool {
     if !create_dir(&repository_path, "uploads")
         || !create_dir(&repository_path, "manifests")
@@ -48,6 +51,7 @@ fn start_registry_service(
                 webhook_send,
             ))
             .manage(extractor)
+            .manage(token_config)
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );

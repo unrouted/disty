@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -11,7 +12,6 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use uuid::Uuid;
-
 pub(crate) enum Responses {
     AccessDenied {},
     UploadInvalid {},
@@ -85,11 +85,13 @@ pub(crate) async fn post(
     from: Option<RepositoryName>,
     digest: Option<Digest>,
     state: &State<RegistryState>,
+    token: &State<Token>,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"push".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
@@ -99,7 +101,7 @@ pub(crate) async fn post(
                 return Responses::UploadInvalid {};
             }
 
-            if !state.check_token(&from, &"pull".to_string()) {
+            if !token.has_permission(&from, &"pull".to_string()) {
                 return Responses::UploadInvalid {};
             }
 
@@ -107,7 +109,7 @@ pub(crate) async fn post(
                 let actions = vec![RegistryAction::BlobMounted {
                     digest: mount.clone(),
                     repository: from.clone(),
-                    user: "FIXME".to_string(),
+                    user: token.sub.clone(),
                 }];
 
                 if !state.send_actions(actions).await {
@@ -158,7 +160,7 @@ pub(crate) async fn post(
                 RegistryAction::BlobMounted {
                     digest: digest.clone(),
                     repository: repository.clone(),
-                    user: "FIXME".to_string(),
+                    user: token.sub.clone(),
                 },
                 RegistryAction::BlobStat {
                     digest: digest.clone(),
@@ -167,7 +169,7 @@ pub(crate) async fn post(
                 RegistryAction::BlobStored {
                     digest: digest.clone(),
                     location: "FIXME".to_string(),
-                    user: "FIXME".to_string(),
+                    user: token.sub.clone(),
                 },
             ];
 

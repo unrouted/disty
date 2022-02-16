@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::responses;
 use crate::types::Digest;
 use crate::types::RegistryState;
@@ -5,16 +6,17 @@ use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use rocket::tokio::fs::File;
 use rocket::State;
-
 #[get("/<repository>/manifests/<digest>")]
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> responses::GetManifestResponses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"pull".to_string()) {
         return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
     }
 
@@ -60,10 +62,12 @@ pub(crate) async fn get_by_tag(
     repository: RepositoryName,
     tag: String,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> responses::GetManifestResponses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
     }
 

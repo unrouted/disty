@@ -35,10 +35,6 @@ impl RegistryState {
         }
     }
 
-    pub fn check_token(&self, _repository: &RepositoryName, _permission: &String) -> bool {
-        true
-    }
-
     pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
         let result =
             Python::with_gil(|py| into_future(self.send_action.call1(py, (actions,))?.as_ref(py)));

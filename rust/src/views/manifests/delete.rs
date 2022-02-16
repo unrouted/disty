@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -7,7 +8,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
-
 pub(crate) enum Responses {
     AccessDenied {},
     NotFound {},
@@ -33,10 +33,12 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
@@ -47,7 +49,7 @@ pub(crate) async fn delete(
     let actions = vec![RegistryAction::ManifestUnmounted {
         digest,
         repository,
-        user: "FIXME".to_string(),
+        user: token.sub.clone(),
     }];
 
     if !state.send_actions(actions).await {
@@ -62,10 +64,12 @@ pub(crate) async fn delete_by_tag(
     repository: RepositoryName,
     tag: String,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
@@ -81,7 +85,7 @@ pub(crate) async fn delete_by_tag(
     let actions = vec![RegistryAction::ManifestUnmounted {
         digest,
         repository,
-        user: "FIXME".to_string(),
+        user: token.sub.clone(),
     }];
 
     if !state.send_actions(actions).await {

@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::responses;
 use crate::types::Digest;
 use crate::types::RegistryState;
@@ -11,10 +12,12 @@ pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> responses::GetBlobResponses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"pull".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"pull".to_string()) {
         return responses::GetBlobResponses::AccessDenied(responses::AccessDenied {});
     }
 

@@ -1,3 +1,4 @@
+use crate::headers::Token;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_upload_path;
@@ -37,10 +38,12 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     upload_id: String,
     state: &State<RegistryState>,
+    token: &State<Token>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"push".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 

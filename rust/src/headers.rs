@@ -1,5 +1,9 @@
+use crate::token::TokenConfig;
+use crate::types::RepositoryName;
+use jwt_simple::prelude::*;
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome, Request};
+use std::collections::HashSet;
 
 pub(crate) struct ContentRange {
     pub start: u64,
@@ -68,5 +72,96 @@ impl<'r> FromRequest<'r> for ContentType {
             }),
             None => Outcome::Failure((Status::Unauthorized, ContentTypeError::Missing)),
         }
+    }
+}
+
+pub(crate) struct Access {
+    pub repository: RepositoryName,
+    pub permissions: HashSet<String>,
+}
+
+pub(crate) struct Token {
+    pub access: Vec<Access>,
+    pub sub: String,
+    admin: bool,
+}
+
+impl Token {
+    pub fn has_permission(&self, repository: &RepositoryName, permission: &String) -> bool {
+        if self.admin {
+            return true;
+        }
+
+        for access in self.access.iter() {
+            if &access.repository == repository && access.permissions.contains(&permission.clone()) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum TokenError {
+    Missing,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for Token {
+    type Error = TokenError;
+
+    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let config = match req.rocket().state::<TokenConfig>() {
+            Some(value) => value,
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        if !config.enabled {
+            return Outcome::Success(Token {
+                access: vec![],
+                sub: "anonymous".to_string(),
+                admin: true,
+            });
+        }
+
+        let header = match req.headers().get_one("authorization") {
+            Some(header) => header.to_string(),
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        let (token_type, token_bytes) = match header.split_once(" ") {
+            Some(value) => value,
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        if token_type.to_lowercase() != "bearer" {
+            return Outcome::Failure((Status::Unauthorized, TokenError::Missing));
+        }
+
+        let key_string = std::fs::read_to_string(config.public_key.as_ref().unwrap()).unwrap();
+
+        let key = match ES256PublicKey::from_pem(&key_string) {
+            Ok(key) => key,
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        let claims = match key.verify_token::<NoCustomClaims>(&token_bytes, None) {
+            Ok(claims) => claims,
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        println!("{claims:?}");
+
+        let subject = match claims.subject {
+            Some(subject) => subject,
+            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+        };
+
+        Outcome::Success(Token {
+            access: vec![],
+            sub: subject,
+            admin: false,
+        })
     }
 }

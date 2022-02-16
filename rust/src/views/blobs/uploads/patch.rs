@@ -1,4 +1,5 @@
 use crate::headers::ContentRange;
+use crate::headers::Token;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_upload_path;
@@ -8,7 +9,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
-
 pub(crate) enum Responses {
     AccessDenied {},
     UploadInvalid {},
@@ -93,11 +93,13 @@ pub(crate) async fn patch(
     upload_id: String,
     range: Option<ContentRange>,
     state: &State<RegistryState>,
+    token: &State<Token>,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
-    if !state.check_token(&repository, &"push".to_string()) {
+    let token: &Token = token.inner();
+    if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }
 
