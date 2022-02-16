@@ -1,5 +1,6 @@
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
+use crate::webhook::Event;
 use pyo3::prelude::*;
 use pyo3_asyncio::tokio::into_future;
 
@@ -7,14 +8,28 @@ pub struct RegistryState {
     pub repository_path: String,
     send_action: PyObject,
     state: PyObject,
+    webhook_send: tokio::sync::mpsc::Sender<Event>,
 }
 
 impl RegistryState {
-    pub fn new(state: PyObject, send_action: PyObject, repository_path: String) -> RegistryState {
+    pub fn new(
+        state: PyObject,
+        send_action: PyObject,
+        repository_path: String,
+        webhook_send: tokio::sync::mpsc::Sender<Event>,
+    ) -> RegistryState {
         RegistryState {
             state,
             send_action,
             repository_path,
+            webhook_send,
+        }
+    }
+
+    pub async fn send_webhook(&self, event: Event) -> bool {
+        match self.webhook_send.send(event).await {
+            Ok(_) => true,
+            _ => false,
         }
     }
 

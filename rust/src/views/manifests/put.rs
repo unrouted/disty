@@ -4,6 +4,7 @@ use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use crate::views::utils::get_hash;
+use crate::webhook::Event;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -134,45 +135,23 @@ pub(crate) async fn put(
         RegistryAction::HashTagged {
             repository: repository.clone(),
             digest: digest.clone(),
-            tag: tag,
+            tag: tag.clone(),
             user: "FIXME".to_string(),
         },
-        ];
+    ];
 
-        if !state.send_actions(actions).await {
-            return Responses::UploadInvalid {};
-        }
+    if !state.send_actions(actions).await {
+        return Responses::UploadInvalid {};
+    }
 
-    /*
-    request.app["wh_manager"].send(
-        {
-            "id": str(uuid.uuid4()),
-            "timestamp": "2016-03-09T14:44:26.402973972-08:00",
-            "action": "push",
-            "target": {
-                "mediaType": content_type,
-                "size": 708,
-                "digest": prefixed_hash,
-                "length": 708,
-            "repository": repository,
-            "url": f"/v2/{repository}/manifests/{prefixed_hash}",
-            "tag": tag,
-        },
-        "request": {
-            "id": str(uuid.uuid4()),
-            # "addr": "192.168.64.11:42961",
-            # "host": "192.168.100.227:5000",
-            "method": "PUT",
-            # "useragent": "curl/7.38.0",
-        },
-        "actor": {},
-        # "source": {
-            #    "addr": "xtal.local:5000",
-            #    "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
-            # },
-        }
-    )
-    */
+    state
+        .send_webhook(Event {
+            repository: repository.clone(),
+            digest: digest.clone(),
+            tag: tag,
+            content_type: "".to_string(),
+        })
+        .await;
 
     Responses::Ok { repository, digest }
 }

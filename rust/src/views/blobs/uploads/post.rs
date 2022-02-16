@@ -3,6 +3,7 @@ use crate::types::RegistryAction;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
+use crate::utils::get_upload_path;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -10,7 +11,6 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use uuid::Uuid;
-use crate::utils::get_upload_path;
 
 pub(crate) enum Responses {
     AccessDenied {},

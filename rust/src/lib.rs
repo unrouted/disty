@@ -7,8 +7,10 @@ mod responses;
 mod types;
 mod utils;
 mod views;
+mod webhook;
 
 use pyo3::prelude::*;
+use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -31,6 +33,8 @@ fn start_registry_service(
         return false;
     }
 
+    let webhook_send = start_webhook_worker();
+
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(
         rocket::build()
@@ -38,6 +42,7 @@ fn start_registry_service(
                 registry_state,
                 send_action,
                 repository_path,
+                webhook_send,
             ))
             .mount("/v2/", crate::registry::routes())
             .launch(),
