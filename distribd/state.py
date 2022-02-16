@@ -53,6 +53,17 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_blob(self, repository, hash):
+        blob = self.graph.nodes[hash]
+
+        if blob[ATTR_TYPE] != TYPE_BLOB:
+            raise KeyError("No such hash")
+
+        if repository not in self.graph.nodes[hash][ATTR_REPOSITORIES]:
+            raise KeyError("No such hash")
+
+        return blob
+
     def is_manifest_available(self, repository, hash):
         if hash not in self.graph.nodes:
             return False

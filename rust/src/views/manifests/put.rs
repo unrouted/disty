@@ -11,6 +11,7 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
+use crate::extractor::Extractor;
 
 pub(crate) enum Responses {
     AccessDenied {},
@@ -56,9 +57,11 @@ pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
     state: &State<RegistryState>,
+    extractor: &State<Extractor>,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
+    let extractor: &Extractor = extractor.inner();
 
     if !state.check_token(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
@@ -66,24 +69,7 @@ pub(crate) async fn put(
 
     let upload_path = crate::utils::get_temp_path(&state.repository_path);
 
-    /*
-    content_type = request.headers.get("Content-Type", "")
-    if not content_type:
-        raise exceptions.ManifestInvalid(reason="no_content_type")
-
-    content_size = len(manifest)
-    */
-
-    /*
-    # This makes sure the manifest is somewhat valid
-    try:
-        direct_deps, dependencies = await recursive_analyze(
-            mirrorer, repository, content_type, manifest
-        )
-    except Exception:
-        logger.exception("Error while validating manifest")
-        raise
-    */
+    let content_type = "".to_string();
 
     if !crate::views::utils::upload_part(&upload_path, body).await {
         return Responses::UploadInvalid {};
@@ -102,6 +88,14 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     };
+    let extracted = extractor.extract(state, &repository, &digest, &content_type, &"".to_string()).await;
+
+    let mut actions = match extracted {
+        Ok(extracted_actions) => extracted_actions,
+        _ => {
+            return Responses::UploadInvalid {};
+        }
+    };
 
     let dest = get_manifest_path(&state.repository_path, &digest);
 
@@ -112,7 +106,7 @@ pub(crate) async fn put(
         }
     }
 
-    let actions = vec![
+    let mut extra_actions = vec![
         RegistryAction::ManifestMounted {
             digest: digest.clone(),
             repository: repository.clone(),
@@ -139,6 +133,8 @@ pub(crate) async fn put(
             user: "FIXME".to_string(),
         },
     ];
+
+    actions.append(&mut extra_actions);
 
     if !state.send_actions(actions).await {
         return Responses::UploadInvalid {};

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use data_encoding::HEXLOWER;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use ring::digest;
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,16 @@ impl IntoPy<PyObject> for Digest {
 impl ToPyObject for Digest {
     fn to_object(&self, py: Python) -> PyObject {
         self.to_string().into_py(py)
+    }
+}
+
+impl FromPyObject<'_> for Digest {
+    fn extract(digest: &'_ PyAny) -> PyResult<Self> {
+        let digest_string: String = digest.extract()?;
+        match Digest::from_str(&digest_string) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(PyValueError::new_err("argument is wrong")),
+        }
     }
 }
 

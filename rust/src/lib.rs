@@ -8,6 +8,7 @@ mod types;
 mod utils;
 mod views;
 mod webhook;
+mod extractor;
 
 use pyo3::prelude::*;
 use webhook::{start_webhook_worker, WebhookConfig};
@@ -35,6 +36,7 @@ fn start_registry_service(
     }
 
     let webhook_send = start_webhook_worker(webhooks);
+    let extractor = crate::extractor::Extractor::new();
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(
@@ -45,6 +47,7 @@ fn start_registry_service(
                 repository_path,
                 webhook_send,
             ))
+            .manage(extractor)
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );
