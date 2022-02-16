@@ -219,7 +219,7 @@ impl IntoPy<PyObject> for RegistryAction {
                 dict.set_item("user", user).unwrap();
                 dict.into()
             }
-            
+
             // Associate a manifest hash with a repository
             //MANIFEST_MOUNTED = "manifest-mounted"
             RegistryAction::ManifestMounted {

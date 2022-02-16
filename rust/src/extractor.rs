@@ -220,7 +220,7 @@ impl Extractor {
         repository: &RepositoryName,
         digest: &Digest,
         content_type: &String,
-        path: &std::path::PathBuf
+        path: &std::path::PathBuf,
     ) -> Result<Vec<RegistryAction>, ExtractError> {
         let mut analysis: Vec<RegistryAction> = Vec::new();
         let mut pending: HashSet<Extraction> = HashSet::new();
@@ -228,7 +228,7 @@ impl Extractor {
 
         let data = match tokio::fs::read_to_string(&path).await {
             Ok(data) => data,
-            _ => return Err(ExtractError::UnknownError {})
+            _ => return Err(ExtractError::UnknownError {}),
         };
 
         println!("{data}");

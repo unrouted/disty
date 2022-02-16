@@ -4,9 +4,9 @@ use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
+use log::debug;
 use rocket::tokio::fs::File;
 use rocket::State;
-use log::{debug};
 
 #[get("/<repository>/manifests/<digest>")]
 pub(crate) async fn get(
@@ -32,7 +32,7 @@ pub(crate) async fn get(
 
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
-            )
+            );
         }
     };
 
@@ -80,7 +80,7 @@ pub(crate) async fn get_by_tag(
             debug!("No such tag");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
-            )
+            );
         }
     };
 
@@ -95,7 +95,7 @@ pub(crate) async fn get_by_tag(
             debug!("Could not retrieve manifest info from graph");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
-            )
+            );
         }
     };
 
@@ -105,7 +105,7 @@ pub(crate) async fn get_by_tag(
             debug!("Could not extract content type from graph");
             return responses::GetManifestResponses::ManifestNotFound(
                 responses::ManifestNotFound {},
-            )
+            );
         }
     };
 
@@ -124,6 +124,6 @@ pub(crate) async fn get_by_tag(
         _ => {
             debug!("Could not open file");
             responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
-        },
+        }
     }
 }
