@@ -155,7 +155,7 @@ impl<'r> FromRequest<'r> for Token {
         // reject tokens if they don't include an issuer from that list
         options.allowed_issuers = Some(HashSet::from_strings(&[config.issuer.clone().unwrap()]));
 
-        let claims = match key.verify_token::<NoCustomClaims>(&token_bytes, Some(options)) {
+        let claims = match key.verify_token::<NoCustomClaims>(token_bytes, Some(options)) {
             Ok(claims) => claims,
             _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
         };
