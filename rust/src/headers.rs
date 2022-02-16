@@ -47,7 +47,9 @@ impl<'r> FromRequest<'r> for ContentRange {
     }
 }
 
-pub(crate) struct ContentType(String);
+pub(crate) struct ContentType {
+    pub content_type: String,
+}
 
 #[derive(Debug)]
 pub(crate) enum ContentTypeError {
@@ -61,7 +63,9 @@ impl<'r> FromRequest<'r> for ContentType {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let token = req.headers().get_one("content-type");
         match token {
-            Some(token) => Outcome::Success(ContentType(token.to_string())),
+            Some(token) => Outcome::Success(ContentType {
+                content_type: token.to_string(),
+            }),
             None => Outcome::Failure((Status::Unauthorized, ContentTypeError::Missing)),
         }
     }

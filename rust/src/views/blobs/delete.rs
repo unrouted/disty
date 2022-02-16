@@ -28,7 +28,8 @@ impl<'r> Responder<'r, 'static> for Responses {
         }
     }
 }
-#[delete("/<repository>/manifests/<digest>")]
+
+#[delete("/<repository>/blobs/<digest>")]
 pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
@@ -40,45 +41,11 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest) {
+    if !state.is_blob_available(&repository, &digest) {
         return Responses::NotFound {};
     }
 
-    let actions = vec![RegistryAction::ManifestUnmounted {
-        digest: digest,
-        repository: repository,
-        user: "FIXME".to_string(),
-    }];
-
-    if !state.send_actions(actions).await {
-        return Responses::Failed {};
-    }
-
-    Responses::Ok {}
-}
-
-#[delete("/<repository>/manifests/<tag>")]
-pub(crate) async fn delete_by_tag(
-    repository: RepositoryName,
-    tag: String,
-    state: &State<RegistryState>,
-) -> Responses {
-    let state: &RegistryState = state.inner();
-
-    if !state.check_token(&repository, &"pull".to_string()) {
-        return Responses::AccessDenied {};
-    }
-
-    let digest = match state.get_tag(&repository, &tag) {
-        Some(tag) => tag,
-        None => return Responses::NotFound {},
-    };
-
-    if !state.is_manifest_available(&repository, &digest) {
-        return Responses::NotFound {};
-    }
-
-    let actions = vec![RegistryAction::ManifestUnmounted {
+    let actions = vec![RegistryAction::BlobUnmounted {
         digest: digest,
         repository: repository,
         user: "FIXME".to_string(),

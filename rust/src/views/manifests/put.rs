@@ -1,4 +1,5 @@
 use crate::extractor::Extractor;
+use crate::headers::ContentType;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -58,6 +59,7 @@ pub(crate) async fn put(
     tag: String,
     state: &State<RegistryState>,
     extractor: &State<Extractor>,
+    content_type: ContentType,
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
@@ -68,8 +70,6 @@ pub(crate) async fn put(
     }
 
     let upload_path = crate::utils::get_temp_path(&state.repository_path);
-
-    let content_type = "".to_string();
 
     if !crate::views::utils::upload_part(&upload_path, body).await {
         return Responses::UploadInvalid {};
@@ -89,7 +89,13 @@ pub(crate) async fn put(
         }
     };
     let extracted = extractor
-        .extract(state, &repository, &digest, &content_type, &"".to_string())
+        .extract(
+            state,
+            &repository,
+            &digest,
+            &content_type.content_type,
+            &"".to_string(),
+        )
         .await;
 
     let mut actions = match extracted {
@@ -125,8 +131,8 @@ pub(crate) async fn put(
         },
         RegistryAction::ManifestInfo {
             digest: digest.clone(),
-            dependencies: vec![],         // FIXME
-            content_type: "".to_string(), // FIXME
+            dependencies: vec![], // FIXME
+            content_type: content_type.content_type,
         },
         RegistryAction::HashTagged {
             repository: repository.clone(),

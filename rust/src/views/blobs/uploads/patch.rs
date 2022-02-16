@@ -101,11 +101,11 @@ pub(crate) async fn patch(
         return Responses::AccessDenied {};
     }
 
-    if false {
+    let filename = get_upload_path(&state.repository_path, &upload_id);
+
+    if !filename.is_file() {
         return Responses::UploadInvalid {};
     }
-
-    let filename = get_upload_path(&state.repository_path, &upload_id);
 
     match range {
         Some(range) => {
@@ -114,7 +114,7 @@ pub(crate) async fn patch(
                 _ => 0,
             };
 
-            if range.stop != size {
+            if range.start != size {
                 return Responses::RangeNotSatisfiable {
                     repository: repository,
                     upload_id: upload_id,

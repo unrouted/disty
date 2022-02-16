@@ -9,12 +9,14 @@ pub fn routes() -> Vec<Route> {
         crate::views::blobs::uploads::put::put,
         crate::views::blobs::uploads::get::get,
         // Blobs
+        crate::views::blobs::delete::delete,
         crate::views::blobs::get::get,
         // Manifests
         crate::views::manifests::put::put,
         crate::views::manifests::get::get,
         crate::views::manifests::get::get_by_tag,
-        crate::views::manifests::get::delete,
+        crate::views::manifests::delete::delete,
+        crate::views::manifests::delete::delete_by_tag,
     ]
 }
 

@@ -95,6 +95,10 @@ pub(crate) async fn post(
 
     match (mount, from) {
         (Some(mount), Some(from)) => {
+            if from == repository {
+                return Responses::UploadInvalid {};
+            }
+
             if !state.check_token(&from, &"pull".to_string()) {
                 return Responses::UploadInvalid {};
             }
@@ -171,7 +175,20 @@ pub(crate) async fn post(
                 return Responses::UploadInvalid {};
             }
         }
-        _ => {}
+        _ => {
+            // Nothing was uploaded, but a session was started...
+            let filename = get_upload_path(&state.repository_path, &upload_id);
+
+            match tokio::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&filename)
+                .await
+            {
+                Ok(file) => drop(file),
+                _ => return Responses::UploadInvalid {},
+            }
+        }
     }
 
     Responses::Ok {

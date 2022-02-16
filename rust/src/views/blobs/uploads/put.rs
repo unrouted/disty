@@ -65,16 +65,15 @@ pub(crate) async fn put(
         return Responses::AccessDenied {};
     }
 
-    // FIXME: Check if upload_id is actually permitted
-    if false {
-        return Responses::UploadInvalid {};
-    }
-
     if digest.algo != "sha256" {
         return Responses::UploadInvalid {};
     }
 
     let filename = get_upload_path(&state.repository_path, &upload_id);
+
+    if !filename.is_file() {
+        return Responses::UploadInvalid {};
+    }
 
     if !crate::views::utils::upload_part(&filename, body).await {
         return Responses::UploadInvalid {};
