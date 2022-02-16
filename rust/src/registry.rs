@@ -13,6 +13,7 @@ pub fn routes() -> Vec<Route> {
         // Manifests
         crate::views::manifests::put::put,
         crate::views::manifests::get::get,
+        crate::views::manifests::get::get_by_tag,
     ]
 }
 

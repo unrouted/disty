@@ -110,7 +110,7 @@ async def main(argv=None, config=None):
     try:
         webhooks = config["webhooks"].get(list)
     except confuse.exceptions.NotFoundError:
-        webhooks = [{"url": "http://foo", "matcher": ".*"}]
+        webhooks = []
 
     if not start_registry_service(
         registry_state,

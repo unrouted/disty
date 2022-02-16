@@ -1,4 +1,5 @@
 use crate::types::Blob;
+use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
@@ -78,6 +79,34 @@ impl RegistryState {
             let retval =
                 self.state
                     .call_method1(py, "get_blob", (repository.to_string(), hash.to_string()));
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => Some(extracted),
+                    _ => None,
+                },
+                _ => None,
+            }
+        })
+    }
+    pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
+        Python::with_gil(|py| {
+            let retval =
+                self.state
+                    .call_method1(py, "get_manifest", (repository.to_string(), hash.to_string()));
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => Some(extracted),
+                    _ => None,
+                },
+                _ => None,
+            }
+        })
+    }
+    pub fn get_tag(&self, repository: &RepositoryName, tag: &String) -> Option<Digest> {
+        Python::with_gil(|py| {
+            let retval =
+                self.state
+                    .call_method1(py, "get_tag", (repository.to_string(), tag.to_string()));
             match retval {
                 Ok(inner) => match inner.extract(py) {
                     Ok(extracted) => Some(extracted),
