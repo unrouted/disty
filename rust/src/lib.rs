@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+mod extractor;
 mod headers;
 mod registry;
 mod responses;
@@ -8,7 +9,6 @@ mod types;
 mod utils;
 mod views;
 mod webhook;
-mod extractor;
 
 use pyo3::prelude::*;
 use webhook::{start_webhook_worker, WebhookConfig};

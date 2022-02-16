@@ -1,3 +1,4 @@
+use crate::extractor::Extractor;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -11,7 +12,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
-use crate::extractor::Extractor;
 
 pub(crate) enum Responses {
     AccessDenied {},
@@ -88,7 +88,9 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     };
-    let extracted = extractor.extract(state, &repository, &digest, &content_type, &"".to_string()).await;
+    let extracted = extractor
+        .extract(state, &repository, &digest, &content_type, &"".to_string())
+        .await;
 
     let mut actions = match extracted {
         Ok(extracted_actions) => extracted_actions,

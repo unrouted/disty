@@ -1,9 +1,9 @@
 use crate::types::{Digest, RepositoryName};
+use pyo3::prelude::*;
 use regex::Regex;
 use reqwest;
 use serde_json::json;
 use tokio::sync::mpsc;
-use pyo3::{prelude::*};
 
 #[derive(Debug)]
 pub struct WebhookConfig {

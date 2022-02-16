@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-use crate::types::{Digest, RegistryAction, RepositoryName, RegistryState};
+use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
@@ -261,7 +261,7 @@ impl Extractor {
                     continue;
                 }
 
-                match state.get_blob( &repository, &extraction.digest) {
+                match state.get_blob(&repository, &extraction.digest) {
                     Some(blob) => {
                         if blob.content_type.is_some() || blob.dependencies.is_some() {
                             // Was already analyzed, don't do it again!
@@ -287,8 +287,11 @@ impl Extractor {
                 }
 
                 // Lookup extraction.digest in blob store
-                let data =
-                    tokio::fs::read_to_string(crate::utils::get_blob_path(&state.repository_path, &extraction.digest)).await;
+                let data = tokio::fs::read_to_string(crate::utils::get_blob_path(
+                    &state.repository_path,
+                    &extraction.digest,
+                ))
+                .await;
 
                 match data {
                     Ok(data) => {

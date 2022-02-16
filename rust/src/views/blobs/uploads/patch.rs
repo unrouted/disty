@@ -12,6 +12,11 @@ use rocket::State;
 pub(crate) enum Responses {
     AccessDenied {},
     UploadInvalid {},
+    RangeNotSatisfiable {
+        repository: RepositoryName,
+        upload_id: String,
+        size: u64,
+    },
     Ok {
         repository: RepositoryName,
         upload_id: String,
@@ -24,6 +29,33 @@ impl<'r> Responder<'r, 'static> for Responses {
         match self {
             Responses::AccessDenied {} => Response::build().status(Status::Forbidden).ok(),
             Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
+            Responses::RangeNotSatisfiable {
+                repository,
+                upload_id,
+                size,
+            } => {
+                /*
+                416 Range Not Satisfiable
+                Location: /v2/<name>/blobs/uploads/<uuid>
+                Range: 0-<offset>
+                Content-Length: 0
+                Docker-Upload-UUID: <uuid>
+                */
+
+                let range_end = size - 1;
+
+                Response::build()
+                    .header(Header::new(
+                        "Location",
+                        format!("/v2/{repository}/blobs/uploads/{upload_id}"),
+                    ))
+                    .header(Header::new("Range", format!("0-{range_end}")))
+                    .header(Header::new("Content-Length", "0"))
+                    .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
+                    .header(Header::new("Docker-Upload-UUID", upload_id))
+                    .status(Status::RangeNotSatisfiable)
+                    .ok()
+            }
             Responses::Ok {
                 repository,
                 upload_id,
@@ -69,7 +101,6 @@ pub(crate) async fn patch(
         return Responses::AccessDenied {};
     }
 
-    // FIXME: Check if upload_id is actually permitted
     if false {
         return Responses::UploadInvalid {};
     }
@@ -77,25 +108,19 @@ pub(crate) async fn patch(
     let filename = get_upload_path(&state.repository_path, &upload_id);
 
     match range {
-        Some(_range) => {
-            /*
-            size = 0
-            if os.path.exists(upload_path):
-            size = os.path.getsize(upload_path)
+        Some(range) => {
+            let size = match tokio::fs::metadata(&filename).await {
+                Ok(value) => value.len(),
+                _ => 0,
+            };
 
-            content_range = request.headers["Content-Range"]
-            left, right = content_range.split("-")
-
-            if int(left) != size:
-            raise web.HTTPRequestRangeNotSatisfiable(
-                headers={
-                    "Location": f"/v2/{repository}/blobs/uploads/{session_id}",
-                    "Range": f"0-{size}",
-                    "Content-Length": "0",
-                    "Blob-Upload-Session-ID": session_id,
-                }
-            )
-            */
+            if range.stop != size {
+                return Responses::RangeNotSatisfiable {
+                    repository: repository,
+                    upload_id: upload_id,
+                    size: size,
+                };
+            }
         }
         _ => {}
     }

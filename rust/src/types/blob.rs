@@ -1,6 +1,6 @@
 use super::Digest;
 
-use pyo3::{prelude::*};
+use pyo3::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct Blob {
@@ -20,10 +20,11 @@ impl FromPyObject<'_> for Blob {
         for dep in pydeps.iter() {
             dependencies.push(dep.extract().unwrap());
         }
-        
 
         Ok(Blob {
-            size: Some(size), content_type: Some(content_type), dependencies: Some(dependencies)
+            size: Some(size),
+            content_type: Some(content_type),
+            dependencies: Some(dependencies),
         })
     }
 }
