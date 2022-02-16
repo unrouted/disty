@@ -46,8 +46,8 @@ pub(crate) async fn delete(
     }
 
     let actions = vec![RegistryAction::BlobUnmounted {
-        digest: digest,
-        repository: repository,
+        digest,
+        repository,
         user: "FIXME".to_string(),
     }];
 

@@ -52,7 +52,7 @@ impl RegistryState {
                 _ => false,
             },
             _ => {
-                return false;
+                false
             }
         }
     }

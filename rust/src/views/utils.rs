@@ -51,13 +51,13 @@ pub(crate) async fn get_hash(filename: &std::path::PathBuf) -> Option<Digest> {
             Some(Digest::from_sha256(&hasher.finish()))
         }
         _ => {
-            return None;
+            None
         }
     }
 }
 
 pub(crate) async fn validate_hash(filename: &std::path::PathBuf, expected_hash: &Digest) -> bool {
-    match get_hash(&filename).await {
+    match get_hash(filename).await {
         Some(actual_digest) => &actual_digest == expected_hash,
         None => false,
     }

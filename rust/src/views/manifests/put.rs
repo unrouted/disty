@@ -127,7 +127,7 @@ pub(crate) async fn put(
         },
         RegistryAction::ManifestStat {
             digest: digest.clone(),
-            size: size,
+            size,
         },
         RegistryAction::ManifestInfo {
             digest: digest.clone(),
@@ -152,7 +152,7 @@ pub(crate) async fn put(
         .send_webhook(Event {
             repository: repository.clone(),
             digest: digest.clone(),
-            tag: tag,
+            tag,
             content_type: "".to_string(),
         })
         .await;

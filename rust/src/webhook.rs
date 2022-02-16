@@ -1,7 +1,7 @@
 use crate::types::{Digest, RepositoryName};
 use pyo3::prelude::*;
 use regex::Regex;
-use reqwest;
+
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -17,7 +17,7 @@ impl FromPyObject<'_> for WebhookConfig {
         let url: String = dict.get_item("url").unwrap().extract().unwrap();
         let matcher: &str = dict.get_item("matcher").unwrap().extract().unwrap();
         Ok(WebhookConfig {
-            url: url,
+            url,
             matcher: Regex::new(matcher).unwrap(),
         })
     }
@@ -103,5 +103,5 @@ pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::
         }
     });
 
-    return tx;
+    tx
 }

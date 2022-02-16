@@ -47,7 +47,7 @@ pub(crate) async fn get(
 
     match File::open(path).await {
         Ok(file) => responses::GetManifestResponses::Manifest(responses::Manifest {
-            content_type: content_type,
+            content_type,
             digest,
             file,
         }),
@@ -105,7 +105,7 @@ pub(crate) async fn get_by_tag(
 
     match File::open(path).await {
         Ok(file) => responses::GetManifestResponses::Manifest(responses::Manifest {
-            content_type: content_type,
+            content_type,
             digest,
             file,
         }),

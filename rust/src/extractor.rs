@@ -148,14 +148,14 @@ impl Extractor {
         match self.schemas.get(content_type) {
             Some(schema) => {
                 let cfg = jsonschema_valid::Config::from_schema(
-                    &schema,
+                    schema,
                     Some(jsonschema_valid::schemas::Draft::Draft7),
                 )
                 .unwrap();
 
                 match serde_json::from_str(data) {
                     Ok(value) => {
-                        return cfg.validate(&value).is_ok() == true;
+                        return cfg.validate(&value).is_ok();
                     }
                     _ => false,
                 }
@@ -166,10 +166,10 @@ impl Extractor {
 
     fn extract_one(
         &self,
-        content_type: &String,
+        _content_type: &String,
         data: &String,
     ) -> Result<HashSet<Extraction>, ExtractError> {
-        let manifest = serde_json::from_str(&data);
+        let manifest = serde_json::from_str(data);
         let mut results = HashSet::new();
 
         match manifest {
@@ -211,7 +211,7 @@ impl Extractor {
             _ => {}
         }
 
-        return Ok(results);
+        Ok(results)
     }
 
     pub async fn extract(
@@ -230,7 +230,7 @@ impl Extractor {
             return Err(ExtractError::UnknownError {});
         }
 
-        let dependencies = self.extract_one(&content_type, &data);
+        let dependencies = self.extract_one(content_type, data);
         match dependencies {
             Ok(dependencies) => {
                 analysis.push(RegistryAction::ManifestInfo {
@@ -253,7 +253,7 @@ impl Extractor {
         drop(digest);
         drop(data);
 
-        while pending.len() > 0 {
+        while !pending.is_empty() {
             let drain: Vec<Extraction> = pending.drain().collect();
             for extraction in drain {
                 if seen.contains(&extraction.digest) {
@@ -261,7 +261,7 @@ impl Extractor {
                     continue;
                 }
 
-                match state.get_blob(&repository, &extraction.digest) {
+                match state.get_blob(repository, &extraction.digest) {
                     Some(blob) => {
                         if blob.content_type.is_some() || blob.dependencies.is_some() {
                             // Was already analyzed, don't do it again!

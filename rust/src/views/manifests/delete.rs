@@ -45,8 +45,8 @@ pub(crate) async fn delete(
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
-        digest: digest,
-        repository: repository,
+        digest,
+        repository,
         user: "FIXME".to_string(),
     }];
 
@@ -79,8 +79,8 @@ pub(crate) async fn delete_by_tag(
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
-        digest: digest,
-        repository: repository,
+        digest,
+        repository,
         user: "FIXME".to_string(),
     }];
 
