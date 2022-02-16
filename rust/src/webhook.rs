@@ -74,8 +74,10 @@ pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::
                         },
                     });
 
+                    let match_target = format!("{repository}:{tag}");
+
                     for hook in &webhooks {
-                        if !hook.matcher.is_match("foo") {
+                        if !hook.matcher.is_match(&match_target) {
                             continue;
                         }
                         let resp = reqwest::Client::new()
