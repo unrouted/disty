@@ -50,9 +50,7 @@ pub(crate) async fn get_hash(filename: &std::path::PathBuf) -> Option<Digest> {
 
             Some(Digest::from_sha256(&hasher.finish()))
         }
-        _ => {
-            None
-        }
+        _ => None,
     }
 }
 

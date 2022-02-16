@@ -51,9 +51,7 @@ impl RegistryState {
                 },
                 _ => false,
             },
-            _ => {
-                false
-            }
+            _ => false,
         }
     }
 

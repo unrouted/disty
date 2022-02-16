@@ -98,23 +98,7 @@ pub(crate) async fn put(
         )
         .await;
 
-    let mut actions = match extracted {
-        Ok(extracted_actions) => extracted_actions,
-        _ => {
-            return Responses::UploadInvalid {};
-        }
-    };
-
-    let dest = get_manifest_path(&state.repository_path, &digest);
-
-    match std::fs::rename(upload_path, dest) {
-        Ok(_) => {}
-        Err(_) => {
-            return Responses::UploadInvalid {};
-        }
-    }
-
-    let mut extra_actions = vec![
+    let mut actions = vec![
         RegistryAction::ManifestMounted {
             digest: digest.clone(),
             repository: repository.clone(),
@@ -129,20 +113,30 @@ pub(crate) async fn put(
             digest: digest.clone(),
             size,
         },
-        RegistryAction::ManifestInfo {
-            digest: digest.clone(),
-            dependencies: vec![], // FIXME
-            content_type: content_type.content_type,
-        },
-        RegistryAction::HashTagged {
-            repository: repository.clone(),
-            digest: digest.clone(),
-            tag: tag.clone(),
-            user: "FIXME".to_string(),
-        },
     ];
 
-    actions.append(&mut extra_actions);
+    let extracted = match extracted {
+        Ok( extracted_actions) => extracted_actions,
+        _ => {
+            return Responses::UploadInvalid {};
+        }
+    };
+    actions.append(&mut extracted.clone());
+    actions.append(&mut vec![RegistryAction::HashTagged {
+        repository: repository.clone(),
+        digest: digest.clone(),
+        tag: tag.clone(),
+        user: "FIXME".to_string(),
+    }]);
+
+    let dest = get_manifest_path(&state.repository_path, &digest);
+
+    match std::fs::rename(upload_path, dest) {
+        Ok(_) => {}
+        Err(_) => {
+            return Responses::UploadInvalid {};
+        }
+    }
 
     if !state.send_actions(actions).await {
         return Responses::UploadInvalid {};
