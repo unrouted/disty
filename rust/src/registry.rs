@@ -14,6 +14,7 @@ pub fn routes() -> Vec<Route> {
         crate::views::manifests::put::put,
         crate::views::manifests::get::get,
         crate::views::manifests::get::get_by_tag,
+        crate::views::manifests::get::delete,
     ]
 }
 

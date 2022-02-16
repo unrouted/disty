@@ -90,9 +90,11 @@ impl RegistryState {
     }
     pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
         Python::with_gil(|py| {
-            let retval =
-                self.state
-                    .call_method1(py, "get_manifest", (repository.to_string(), hash.to_string()));
+            let retval = self.state.call_method1(
+                py,
+                "get_manifest",
+                (repository.to_string(), hash.to_string()),
+            );
             match retval {
                 Ok(inner) => match inner.extract(py) {
                     Ok(extracted) => Some(extracted),

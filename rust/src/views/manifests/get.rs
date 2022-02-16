@@ -24,12 +24,20 @@ pub(crate) async fn get(
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
-        _ => return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        _ => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     };
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
-        _ => return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        _ => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     };
 
     let path = get_manifest_path(&state.repository_path, &digest);
@@ -61,7 +69,11 @@ pub(crate) async fn get_by_tag(
 
     let digest = match state.get_tag(&repository, &tag) {
         Some(tag) => tag,
-        None => return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        None => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     };
 
     if !state.is_manifest_available(&repository, &digest) {
@@ -70,12 +82,20 @@ pub(crate) async fn get_by_tag(
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
-        _ => return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        _ => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     };
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
-        _ => return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+        _ => {
+            return responses::GetManifestResponses::ManifestNotFound(
+                responses::ManifestNotFound {},
+            )
+        }
     };
 
     let path = get_manifest_path(&state.repository_path, &digest);
