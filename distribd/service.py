@@ -106,10 +106,17 @@ async def main(argv=None, config=None):
         )
 
     from distribd.distribd_rust import start_registry_service
+
+    try:
+        webhooks = config["webhooks"].get(list)
+    except confuse.exceptions.NotFoundError:
+        webhooks = [{"url": "http://foo", "matcher": ".*"}]
+
     if not start_registry_service(
         registry_state,
         raft.append,
         str(images_directory),
+        webhooks,
     ):
         return
 

@@ -10,7 +10,7 @@ mod views;
 mod webhook;
 
 use pyo3::prelude::*;
-use webhook::start_webhook_worker;
+use webhook::{start_webhook_worker, WebhookConfig};
 
 fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -25,6 +25,7 @@ fn start_registry_service(
     registry_state: PyObject,
     send_action: PyObject,
     repository_path: String,
+    webhooks: Vec<WebhookConfig>,
 ) -> bool {
     if !create_dir(&repository_path, "uploads")
         || !create_dir(&repository_path, "manifests")
@@ -33,7 +34,7 @@ fn start_registry_service(
         return false;
     }
 
-    let webhook_send = start_webhook_worker();
+    let webhook_send = start_webhook_worker(webhooks);
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(

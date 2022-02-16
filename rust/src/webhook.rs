@@ -1,7 +1,27 @@
 use crate::types::{Digest, RepositoryName};
+use regex::Regex;
 use reqwest;
 use serde_json::json;
 use tokio::sync::mpsc;
+use pyo3::{prelude::*};
+
+#[derive(Debug)]
+pub struct WebhookConfig {
+    pub url: String,
+    pub matcher: Regex,
+}
+
+impl FromPyObject<'_> for WebhookConfig {
+    fn extract(dict: &'_ PyAny) -> PyResult<Self> {
+        // FIXME: This should send nice errors back to python if any of the unwraps fail...
+        let url: String = dict.get_item("url").unwrap().extract().unwrap();
+        let matcher: &str = dict.get_item("matcher").unwrap().extract().unwrap();
+        Ok(WebhookConfig {
+            url: url,
+            matcher: Regex::new(matcher).unwrap(),
+        })
+    }
+}
 
 pub struct Event {
     pub repository: RepositoryName,
@@ -10,10 +30,13 @@ pub struct Event {
     pub tag: String,
 }
 
-pub fn start_webhook_worker() -> tokio::sync::mpsc::Sender<Event> {
+pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::Sender<Event> {
     let (tx, mut rx) = mpsc::channel::<Event>(100);
 
-    tokio::spawn(async move {
+    println!("{webhooks:?}");
+
+    let runtime = pyo3_asyncio::tokio::get_runtime();
+    runtime.spawn(async move {
         loop {
             match rx.recv().await {
                 Some(Event {
@@ -51,20 +74,25 @@ pub fn start_webhook_worker() -> tokio::sync::mpsc::Sender<Event> {
                         },
                     });
 
-                    let resp = reqwest::Client::new()
-                        .post("https://httpbin.org/ip")
-                        .json(&payload)
-                        .send()
-                        .await;
-
-                    match resp {
-                        Ok(resp) => {
-                            if resp.status() != 200 {
-                                // FIXME: Log failures here
-                            }
+                    for hook in &webhooks {
+                        if !hook.matcher.is_match("foo") {
+                            continue;
                         }
-                        _ => {
-                            // FIXME: Log failure
+                        let resp = reqwest::Client::new()
+                            .post(&hook.url)
+                            .json(&payload)
+                            .send()
+                            .await;
+
+                        match resp {
+                            Ok(resp) => {
+                                if resp.status() != 200 {
+                                    // FIXME: Log failures here
+                                }
+                            }
+                            _ => {
+                                // FIXME: Log failure
+                            }
                         }
                     }
                 }

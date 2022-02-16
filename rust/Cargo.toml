@@ -28,6 +28,7 @@ ring = "*"
 serde_json = "*"
 uuid = { version = "*", features=["v4"] }
 jwt-simple = "0.10"
+regex = "1.5.4"
 
 [build-dependencies]
 pyo3-build-config = "*"
