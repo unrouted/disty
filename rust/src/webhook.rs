@@ -1,4 +1,5 @@
 use crate::types::{Digest, RepositoryName};
+use reqwest;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -23,7 +24,7 @@ pub fn start_webhook_worker() -> tokio::sync::mpsc::Sender<Event> {
                 }) => {
                     // FIXME: This is just enough webhook for what I personally need. Sorry if
                     // you need it to be valid!
-                    let _payload = json!({
+                    let payload = json!({
                         "id": "",
                         "timestamp": "2016-03-09T14:44:26.402973972-08:00",
                         "action": "push",
@@ -49,6 +50,23 @@ pub fn start_webhook_worker() -> tokio::sync::mpsc::Sender<Event> {
                             "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
                         },
                     });
+
+                    let resp = reqwest::Client::new()
+                        .post("https://httpbin.org/ip")
+                        .json(&payload)
+                        .send()
+                        .await;
+
+                    match resp {
+                        Ok(resp) => {
+                            if resp.status() != 200 {
+                                // FIXME: Log failures here
+                            }
+                        }
+                        _ => {
+                            // FIXME: Log failure
+                        }
+                    }
                 }
                 None => {}
             }
