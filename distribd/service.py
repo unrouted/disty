@@ -134,6 +134,4 @@ async def main(argv=None, config=None):
         pass
 
     finally:
-        await asyncio.gather(
-            raft.close(), storage.close(), mirrorer.close()
-        )
+        await asyncio.gather(raft.close(), storage.close(), mirrorer.close())
