@@ -30,7 +30,7 @@ jobs:
       id: cache
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/Cargo.lock') }}
+        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/Cargo.lock')-${{ hashFiles('**/pyproject.toml') }}
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
@@ -39,7 +39,7 @@ jobs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install -e .
+      run: pip install -e .[tests]
 
     - name: Run isort
       shell: bash
@@ -67,7 +67,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [Ubuntu, MacOS, Windows]
+        os: [Ubuntu, MacOS]
         python-version: ["3.9", "3.10"]
 
     env:
@@ -93,7 +93,7 @@ jobs:
       id: cache
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/Cargo.lock') }}
+        key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/Cargo.lock')-${{ hashFiles('**/pyproject.toml') }}
 
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
@@ -102,7 +102,7 @@ jobs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install -e .
+      run: pip install -e .[tests]
 
     - name: Run pytest
       shell: bash
