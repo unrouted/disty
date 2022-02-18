@@ -18,7 +18,7 @@ class WorkerPool(Scheduler):
     def spawn(self, coro):
         if self._closed:
             return
-        job = Job(coro, self, self._loop)
+        job = Job(coro, self)
         should_start = self._limit is None or self.active_count < self._limit
         self._jobs.add(job)
         if should_start:
