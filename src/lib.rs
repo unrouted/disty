@@ -64,7 +64,7 @@ fn start_registry_service(
 }
 
 #[pymodule]
-fn distribd_rust(_py: Python, m: &PyModule) -> PyResult<()> {
+fn distribd(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_registry_service, m)?)?;
     Ok(())
 }

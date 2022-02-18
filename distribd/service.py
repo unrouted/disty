@@ -105,7 +105,7 @@ async def main(argv=None, config=None):
             )
         )
 
-    from distribd.distribd_rust import start_registry_service
+    from distribd.distribd import start_registry_service
 
     try:
         webhooks = config["webhooks"].get(list)

@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 class WorkerPool(Scheduler):
     def __init__(self, limit=10):
         super().__init__(
-            loop=asyncio.get_event_loop(),
             close_timeout=0.1,
             limit=limit,
             pending_limit=10000,
