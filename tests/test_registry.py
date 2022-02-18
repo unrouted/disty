@@ -40,7 +40,7 @@ async def check_consensus(cluster_config, session):
 
 
 @pytest.fixture
-async def fake_cluster(loop, cluster_config, tmp_path, monkeypatch, client_session):
+async def fake_cluster(event_loop, cluster_config, tmp_path, monkeypatch, client_session):
     from distribd import machine
 
     machine.SCALE = 1000

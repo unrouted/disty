@@ -8,7 +8,7 @@ make sure to build good integration tests as well.
 from distribd.machine import Machine, Message, Msg, NodeState
 
 
-def test_become_pre_candidate(loop):
+def test_become_pre_candidate(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -23,7 +23,7 @@ def test_become_pre_candidate(loop):
     assert m.outbox[1].type == Message.PreVote
 
 
-def test_pre_candidate_timeout(loop):
+def test_pre_candidate_timeout(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -41,7 +41,7 @@ def test_pre_candidate_timeout(loop):
     assert m.state == NodeState.FOLLOWER
 
 
-def test_become_candidate(loop):
+def test_become_candidate(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -59,7 +59,7 @@ def test_become_candidate(loop):
     assert m.outbox[1].type == Message.Vote
 
 
-def test_candidate_timeout(loop):
+def test_candidate_timeout(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -75,7 +75,7 @@ def test_candidate_timeout(loop):
     assert m.state == NodeState.FOLLOWER
 
 
-def test_become_leader(loop):
+def test_become_leader(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -122,7 +122,7 @@ def test_become_leader(loop):
     assert m.peers["node3"].match_index == 0
 
 
-def test_leader_handle_append_entries_reply_success(loop):
+def test_leader_handle_append_entries_reply_success(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -161,7 +161,7 @@ def test_leader_handle_append_entries_reply_success(loop):
     assert m.peers["node2"].match_index == 4
 
 
-def test_append_entries_against_empty(loop):
+def test_append_entries_against_empty(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -193,7 +193,7 @@ def test_append_entries_against_empty(loop):
     assert m.outbox[0].type == Message.AppendEntriesReply
 
 
-def test_answer_pre_vote(loop):
+def test_answer_pre_vote(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -221,7 +221,7 @@ def test_answer_pre_vote(loop):
     assert m.voted_for is None
 
 
-def test_answer_vote(loop):
+def test_answer_vote(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -261,7 +261,7 @@ def test_answer_vote(loop):
     assert m.term == 2
 
 
-def test_append_entries_revoke_previous_log_entry(loop):
+def test_append_entries_revoke_previous_log_entry(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
     m.add_peer("node3")
@@ -309,7 +309,7 @@ def test_append_entries_revoke_previous_log_entry(loop):
     assert m.outbox[-1].log_index == 2
 
 
-def test_find_inconsistencies(loop):
+def test_find_inconsistencies(event_loop):
     n = Machine("node1")
     assert (
         n.find_first_inconsistency(

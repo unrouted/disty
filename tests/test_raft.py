@@ -66,7 +66,7 @@ examples = [
 
 
 @pytest.fixture
-async def fake_cluster(cluster_config, loop):
+async def fake_cluster(cluster_config, event_loop):
     from distribd import machine
 
     machine.SCALE = 1000

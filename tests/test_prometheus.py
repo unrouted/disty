@@ -6,7 +6,7 @@ from distribd.service import main
 logger = logging.getLogger(__name__)
 
 
-async def test_prometheus(loop, cluster_config, client_session):
+async def test_prometheus(event_loop, cluster_config, client_session):
     servers = asyncio.ensure_future(
         asyncio.gather(
             main([], cluster_config["node1"]),

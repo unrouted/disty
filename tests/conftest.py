@@ -13,7 +13,7 @@ def fixtures_path():
 
 
 @pytest.fixture
-async def client_session(loop):
+async def client_session(event_loop):
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=0.1)
     ) as session:
