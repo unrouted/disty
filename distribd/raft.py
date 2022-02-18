@@ -267,7 +267,11 @@ class HttpRaft(Raft):
         routes.get("/status")(self._receive_status)
 
         return await run_server(
-            self, "raft", self.config["raft"], routes, access_log_class=RaftAccessLog,
+            self,
+            "raft",
+            self.config["raft"],
+            routes,
+            access_log_class=RaftAccessLog,
         )
 
     async def close(self):

@@ -21,7 +21,8 @@ def create_server_context(config: confuse.ConfigView):
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
 
     context.load_cert_chain(
-        certfile=cert_file, keyfile=key_file,
+        certfile=cert_file,
+        keyfile=key_file,
     )
 
     _configure_context_common(context, config)

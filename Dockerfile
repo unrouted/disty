@@ -1,10 +1,10 @@
-FROM alpine:3.15 as base
+FROM rust:alpine3.15 as base
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 FROM base as builder
 
-RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev make g++ cargo
+RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev make g++ curl
 RUN python3 -m venv /app && /app/bin/python -m pip install -U pip setuptools wheel
 
 COPY . /src

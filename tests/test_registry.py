@@ -6,10 +6,11 @@ import os
 import pathlib
 
 import aiohttp
+import pytest
+
 from distribd.machine import NodeState
 from distribd.service import main
 from distribd.utils.registry import get_blob_path, get_manifest_path
-import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +378,10 @@ async def test_put_blob_and_delete(fake_cluster):
                 stat = path.stat()
                 os.utime(
                     path,
-                    times=(stat.st_mtime - 24 * 60 * 60, stat.st_atime - 24 * 60 * 60,),
+                    times=(
+                        stat.st_mtime - 24 * 60 * 60,
+                        stat.st_atime - 24 * 60 * 60,
+                    ),
                 )
 
             break
@@ -498,7 +502,10 @@ async def test_delete_manifest(fake_cluster):
             stat = path.stat()
             os.utime(
                 path,
-                times=(stat.st_mtime - 24 * 60 * 60, stat.st_atime - 24 * 60 * 60,),
+                times=(
+                    stat.st_mtime - 24 * 60 * 60,
+                    stat.st_atime - 24 * 60 * 60,
+                ),
             )
 
         async with session.delete(manifest_url) as resp:

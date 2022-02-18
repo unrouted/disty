@@ -19,7 +19,7 @@ analyzers = Dispatcher()
 @analyzers.register("application/vnd.docker.distribution.manifest.v1+json")
 @analyzers.register("application/vnd.docker.distribution.manifest.v1+prettyjws")
 def distribution_manifest_v1(manifest):
-    """ application/vnd.docker.distribution.manifest.v1+json: schema1 (existing manifest format) """
+    """application/vnd.docker.distribution.manifest.v1+json: schema1 (existing manifest format)"""
     dependencies = set()
     for layer in manifest["fsLayers"]:
         dependencies.add(("application/octet-stream", layer["blobSum"]))

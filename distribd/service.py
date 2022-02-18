@@ -76,7 +76,10 @@ async def main(argv=None, config=None):
     )
 
     garbage_collector = GarbageCollector(
-        images_directory, machine.identifier, registry_state, raft.append,
+        images_directory,
+        machine.identifier,
+        registry_state,
+        raft.append,
     )
 
     wh_manager = WebhookManager(config)
@@ -87,7 +90,11 @@ async def main(argv=None, config=None):
     services = [
         raft.run_forever(),
         run_prometheus(
-            raft, config, machine.identifier, registry_state, images_directory,
+            raft,
+            config,
+            machine.identifier,
+            registry_state,
+            images_directory,
         ),
     ]
 
@@ -125,9 +132,7 @@ async def main(argv=None, config=None):
             token_config["public_key"] = fp.read()
 
     else:
-        token_config = {
-            "enabled": False
-        }
+        token_config = {"enabled": False}
 
     if not start_registry_service(
         registry_state,
@@ -136,7 +141,7 @@ async def main(argv=None, config=None):
         webhooks,
         token_config,
         machine.identifier,
-        asyncio.get_running_loop()
+        asyncio.get_running_loop(),
     ):
         return
 

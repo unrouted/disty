@@ -3,8 +3,9 @@ import json
 import logging
 
 from aiofile import AIOFile, LineReader
-from distribd.service import main
 import pytest
+
+from distribd.service import main
 
 logger = logging.getLogger(__name__)
 

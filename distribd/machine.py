@@ -353,7 +353,8 @@ class Machine:
     def is_append_entries_valid(self, message: Msg):
         if message.prev_index > self.log.last_index:
             logger.debug(
-                "Leader assumed we had log entry %d but we do not", message.prev_index,
+                "Leader assumed we had log entry %d but we do not",
+                message.prev_index,
             )
             return False
 

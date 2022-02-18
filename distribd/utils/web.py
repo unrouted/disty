@@ -8,7 +8,7 @@ from .tls import create_server_context
 async def run_server(
     raft, server_name, bind_config, routes, access_log_class=None, **context
 ):
-    app = aiohttp.web.Application(client_max_size=1024 ** 3)
+    app = aiohttp.web.Application(client_max_size=1024**3)
 
     for key, value in context.items():
         app[key] = value

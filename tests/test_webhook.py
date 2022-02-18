@@ -1,4 +1,5 @@
 from confuse import Configuration
+
 from distribd.webhook import WebhookManager
 
 
