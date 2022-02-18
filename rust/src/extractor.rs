@@ -1,14 +1,14 @@
+use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-
-use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
     #[serde(rename = "mediaType")]
     pub media_type: String,
-    pub size: usize,
+    pub size: Option<usize>,
     pub digest: Digest,
 }
 
@@ -16,7 +16,7 @@ struct ManifestV2Config {
 struct ManifestV2Layer {
     #[serde(rename = "mediaType")]
     media_type: String,
-    size: usize,
+    size: Option<usize>,
     digest: Digest,
     urls: Option<Vec<String>>,
 }
@@ -330,6 +330,8 @@ impl Extractor {
                 }
             }
         }
+
+        debug!("Processed {digest} and made analysis: {analysis:?}");
 
         Ok(analysis)
     }
