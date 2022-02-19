@@ -25,12 +25,6 @@ jobs:
       - name: Handle Rust dependencies caching
         uses: Swatinem/rust-cache@v1
 
-      - name: Release build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-
       - uses: actions-rs/cargo@v1
         with:
           command: test
