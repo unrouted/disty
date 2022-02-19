@@ -35,23 +35,27 @@ jobs:
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
-      run: pip --version >/dev/null 2>&1 || rm -rf .venv
+      run: ./venv/bin/python -m pip --version >/dev/null 2>&1 || rm -rf .venv
+
+    - name: Setup venv
+      id: setup-venv
+      run: python -m venv .venv
 
     - name: Install dependencies
       shell: bash
-      run: pip install -e .[tests]
+      run: ./venv/bin/python -m pip install -e .[tests]
 
     - name: Run isort
       shell: bash
-      run: python -m isort -c --diff distribd tests
+      run: ./venv/bin/python -m isort -c --diff distribd tests
 
     - name: Run black
       shell: bash
-      run: python -m black --check --diff distribd tests
+      run: ./venv/bin/python --check --diff distribd tests
 
     - name: Run flake8
       shell: bash
-      run: python -m flake8 distribd tests
+      run: ./venv/bin/python -m flake8 distribd tests
 
   tests:
     name: pytest/${{ matrix.os }}/${{ matrix.python-version }}
@@ -90,16 +94,20 @@ jobs:
     - name: Ensure cache is healthy
       if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
-      run: pip --version >/dev/null 2>&1 || rm -rf .venv
+      run: ./venv/bin/python -m pip --version >/dev/null 2>&1 || rm -rf .venv
+
+    - name: Setup venv
+      id: setup-venv
+      run: python -m venv .venv
 
     - name: Install dependencies
       shell: bash
-      run: pip install -e .[tests]
+      run: ./venv/bin/python -m pip install -e .[tests]
 
     - name: Run pytest
       shell: bash
-      run: python -m pytest --cov=. --cov-report=xml
+      run: ./venv/bin/python -m pytest --cov=. --cov-report=xml
 
     - name: Upload coverage to Codecov
       shell: bash
-      run: codecov --flags unittests -e OS -e PYTHON --tries 20
+      run: ./venv/bin/codecov --flags unittests -e OS -e PYTHON --tries 20
