@@ -11,8 +11,8 @@ mod utils;
 mod views;
 mod webhook;
 
-use std::time::Duration;
 use pyo3::prelude::*;
+use std::time::Duration;
 use token::TokenConfig;
 use webhook::{start_webhook_worker, WebhookConfig};
 
