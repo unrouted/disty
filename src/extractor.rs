@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn ManifestV2() {
+    fn manifestv2() {
         let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.v2+json".to_string();

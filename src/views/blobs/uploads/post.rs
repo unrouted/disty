@@ -207,10 +207,7 @@ pub(crate) async fn post(
                 return Responses::UploadInvalid {};
             }
 
-            return Responses::UploadComplete {
-                repository,
-                digest: digest,
-            };
+            return Responses::UploadComplete { repository, digest };
         }
         _ => {
             // Nothing was uploaded, but a session was started...

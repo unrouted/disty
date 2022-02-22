@@ -24,7 +24,7 @@ pub fn routes() -> Vec<Route> {
 
 #[cfg(test)]
 mod test {
-    use rocket::http::Status;
+
     use rocket::local::blocking::Client;
 
     fn client() -> Client {

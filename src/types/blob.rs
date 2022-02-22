@@ -40,8 +40,8 @@ impl FromPyObject<'_> for Blob {
         };
 
         Ok(Blob {
-            size: size,
-            content_type: content_type,
+            size,
+            content_type,
             dependencies: Some(dependencies),
         })
     }

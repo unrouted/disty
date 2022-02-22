@@ -86,14 +86,9 @@ pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::
                             .send()
                             .await;
 
-                        match resp {
-                            Ok(resp) => {
-                                if resp.status() != 200 {
-                                    // FIXME: Log failures here
-                                }
-                            }
-                            _ => {
-                                // FIXME: Log failure
+                        if let Ok(resp) = resp {
+                            if resp.status() != 200 {
+                                // FIXME: Log failures here
                             }
                         }
                     }

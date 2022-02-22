@@ -12,11 +12,11 @@ mod views;
 mod webhook;
 
 use pyo3::prelude::*;
-use std::time::Duration;
+
 use token::TokenConfig;
 use webhook::{start_webhook_worker, WebhookConfig};
 
-fn create_dir(parent_dir: &String, child_dir: &str) -> bool {
+fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
     if !path.exists() {
         return matches!(std::fs::create_dir_all(path), Ok(()));

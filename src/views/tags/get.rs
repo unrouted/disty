@@ -66,7 +66,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                         _ => {}
                     };
 
-                    let suffix = if fragments.len() > 0 {
+                    let suffix = if !fragments.is_empty() {
                         let joined = fragments.join("&");
                         format!("?{joined}")
                     } else {
@@ -133,6 +133,6 @@ pub(crate) async fn get(
                 tags,
             }
         }
-        None => return Responses::NoSuchRepository {},
+        None => Responses::NoSuchRepository {},
     }
 }
