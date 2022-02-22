@@ -1,5 +1,6 @@
 use super::Digest;
 
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -31,10 +32,24 @@ impl FromPyObject<'_> for Blob {
         let dependencies = match dict.get_item("dependencies") {
             Ok(pydeps) => {
                 let mut dependencies: Vec<Digest> = Vec::new();
-                for dep in pydeps.iter() {
-                    dependencies.push(dep.extract().unwrap());
+                match pydeps.iter() {
+                    Ok(iterator) => {
+                        for dep in iterator {
+                            match dep {
+                                Ok(dep) => {
+                                    dependencies.push(dep.extract().unwrap());
+                                }
+                                _ => {
+                                    return PyResult::Err(PyValueError::new_err(
+                                        "Could not convert list item to digest",
+                                    ))
+                                }
+                            }
+                        }
+                        dependencies
+                    }
+                    _ => vec![],
                 }
-                dependencies
             }
             _ => vec![],
         };

@@ -17,7 +17,6 @@ pub fn into_future_with_loop(
     )
 }
 
-
 pub struct RegistryState {
     pub repository_path: String,
     pub machine_identifier: String,
