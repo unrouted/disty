@@ -15,15 +15,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.9
-
-      - name: Get full Python version
-        id: full-python-version
-        shell: bash
-        run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
+      - name: Setup python
+        id: setup-python
+        run: apt-get update && apt-get install -y python3
 
       - name: Stable with rustfmt and clippy
         uses: actions-rs/toolchain@v1
