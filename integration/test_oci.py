@@ -2,7 +2,11 @@ from docker.client import DockerClient
 from pytest_docker_tools import fetch
 
 conformance = fetch(
-    repository="ghcr.io/opencontainers/distribution-spec/conformance:v1.0.0"
+    repository="ghcr.io/opencontainers/distribution-spec/conformance:v1.0.0",
+)
+
+skopeo = fetch(
+    repository="quay.io/skopeo/stable:latest",
 )
 
 
@@ -26,6 +30,30 @@ def test_oci(
             "OCI_DEBUG": "1",
             "OCI_DELETE_MANIFEST_BEFORE_BLOBS": "0",
         },
+        detach=True,
+    )
+    request.addfinalizer(container.remove)
+
+    for line in container.logs(stream=True):
+        print(line.decode("utf-8"))
+
+    assert container.wait()["StatusCode"] == 0
+
+
+def test_skopeo(
+    request, cluster, skopeo, temporary_network, docker_client: DockerClient
+):
+    container = docker_client.containers.run(
+        skopeo.id,
+        network=temporary_network.id,
+        hostname="skopeo",
+        command=[
+            "copy",
+            "--dest-creds",
+            "admin:badmin",
+            "docker://alpine:3.15",
+            "docker://node1:8000/alpine:3.15",
+        ],
         detach=True,
     )
     request.addfinalizer(container.remove)
