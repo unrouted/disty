@@ -40,3 +40,7 @@ integration = [
 [build-system]
 requires = ["maturin>=0.12,<0.13", 'patchelf ; platform_system=="Linux"']
 build-backend = "maturin"
+
+[tool.maturin]
+cargo-extra-args = "--features pyo3/extension-module"
+
