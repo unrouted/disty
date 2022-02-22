@@ -56,15 +56,13 @@ impl<'r> Responder<'r, 'static> for Responses {
                 if include_link {
                     let mut fragments = vec![];
 
-                    match tags.last() {
-                        Some(tag) => fragments.push(format!("last={tag}")),
-                        _ => {}
-                    };
+                    if let Some(tag) = tags.last() {
+                        fragments.push(format!("last={tag}"))
+                    }
 
-                    match n {
-                        Some(n) => fragments.push(format!("n={n}")),
-                        _ => {}
-                    };
+                    if let Some(n) = n {
+                        fragments.push(format!("n={n}"))
+                    }
 
                     let suffix = if !fragments.is_empty() {
                         let joined = fragments.join("&");
@@ -106,24 +104,18 @@ pub(crate) async fn get(
         Some(mut tags) => {
             tags.sort();
 
-            match last {
-                Some(last) => {
-                    let index = tags.iter().position(|r| r == &last).unwrap();
-                    tags = tags[index..].to_vec();
-                }
-                _ => {}
+            if let Some(last) = last {
+                let index = tags.iter().position(|r| r == &last).unwrap();
+                tags = tags[index..].to_vec();
             }
 
             let mut include_link = false;
 
-            match n {
-                Some(n) => {
-                    if n < tags.len() {
-                        include_link = true;
-                    }
-                    tags = tags[..n].to_vec();
+            if let Some(n) = n {
+                if n < tags.len() {
+                    include_link = true;
                 }
-                _ => {}
+                tags = tags[..n].to_vec();
             }
 
             Responses::Ok {

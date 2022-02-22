@@ -129,22 +129,19 @@ pub(crate) async fn patch(
         return Responses::UploadInvalid {};
     }
 
-    match range {
-        Some(range) => {
-            let size = match tokio::fs::metadata(&filename).await {
-                Ok(value) => value.len(),
-                _ => 0,
-            };
+    if let Some(range) = range {
+        let size = match tokio::fs::metadata(&filename).await {
+            Ok(value) => value.len(),
+            _ => 0,
+        };
 
-            if range.start != size {
-                return Responses::RangeNotSatisfiable {
-                    repository,
-                    upload_id,
-                    size,
-                };
-            }
+        if range.start != size {
+            return Responses::RangeNotSatisfiable {
+                repository,
+                upload_id,
+                size,
+            };
         }
-        _ => {}
     }
 
     if !crate::views::utils::upload_part(&filename, body).await {

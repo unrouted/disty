@@ -125,34 +125,31 @@ pub(crate) async fn post(
         return Responses::AccessDenied {};
     }
 
-    match (mount, from) {
-        (Some(mount), Some(from)) => {
-            if from == repository {
-                return Responses::UploadInvalid {};
-            }
-
-            if !token.has_permission(&from, &"pull".to_string()) {
-                return Responses::UploadInvalid {};
-            }
-
-            if state.is_blob_available(&from, &mount) {
-                let actions = vec![RegistryAction::BlobMounted {
-                    digest: mount.clone(),
-                    repository: repository.clone(),
-                    user: token.sub.clone(),
-                }];
-
-                if !state.send_actions(actions).await {
-                    return Responses::UploadInvalid {};
-                }
-
-                return Responses::UploadComplete {
-                    repository,
-                    digest: mount,
-                };
-            }
+    if let (Some(mount), Some(from)) = (mount, from) {
+        if from == repository {
+            return Responses::UploadInvalid {};
         }
-        _ => {}
+
+        if !token.has_permission(&from, &"pull".to_string()) {
+            return Responses::UploadInvalid {};
+        }
+
+        if state.is_blob_available(&from, &mount) {
+            let actions = vec![RegistryAction::BlobMounted {
+                digest: mount.clone(),
+                repository: repository.clone(),
+                user: token.sub.clone(),
+            }];
+
+            if !state.send_actions(actions).await {
+                return Responses::UploadInvalid {};
+            }
+
+            return Responses::UploadComplete {
+                repository,
+                digest: mount,
+            };
+        }
     }
 
     let upload_id = Uuid::new_v4().to_hyphenated().to_string();

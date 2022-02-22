@@ -35,10 +35,7 @@ impl RegistryState {
     }
 
     pub async fn send_webhook(&self, event: Event) -> bool {
-        match self.webhook_send.send(event).await {
-            Ok(_) => true,
-            _ => false,
-        }
+        matches!(self.webhook_send.send(event).await, Ok(_))
     }
 
     pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
@@ -110,7 +107,7 @@ impl RegistryState {
             }
         })
     }
-    pub fn get_tag(&self, repository: &RepositoryName, tag: &String) -> Option<Digest> {
+    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         Python::with_gil(|py| {
             let retval =
                 self.state

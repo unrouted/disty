@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use rocket::form::{FromFormField, ValueField};
 
-#[derive(Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String", into = "String")]
 pub struct Digest {
     pub algo: String,
@@ -135,14 +135,6 @@ impl fmt::Display for Digest {
         write!(f, "{}:{}", self.algo, self.hash)
     }
 }
-
-impl PartialEq for Digest {
-    fn eq(&self, other: &Self) -> bool {
-        self.hash == other.hash && self.algo == other.algo
-    }
-}
-
-impl Eq for Digest {}
 
 #[cfg(test)]
 mod tests {

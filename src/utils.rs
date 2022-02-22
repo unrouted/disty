@@ -2,7 +2,7 @@ use crate::types::Digest;
 use std::path::Path;
 use uuid::Uuid;
 
-pub fn get_blob_path(images_directory: &String, digest: &Digest) -> std::path::PathBuf {
+pub fn get_blob_path(images_directory: &str, digest: &Digest) -> std::path::PathBuf {
     let mut path = std::path::Path::new(&images_directory).to_path_buf();
     let digest_string = &digest.hash;
 
@@ -18,7 +18,7 @@ pub fn get_blob_path(images_directory: &String, digest: &Digest) -> std::path::P
     path
 }
 
-pub fn get_manifest_path(images_directory: &String, digest: &Digest) -> std::path::PathBuf {
+pub fn get_manifest_path(images_directory: &str, digest: &Digest) -> std::path::PathBuf {
     let mut path = std::path::Path::new(&images_directory).to_path_buf();
     let digest_string = &digest.hash;
 
@@ -34,7 +34,7 @@ pub fn get_manifest_path(images_directory: &String, digest: &Digest) -> std::pat
     path
 }
 
-pub fn get_upload_path(images_directory: &String, upload_id: &String) -> std::path::PathBuf {
+pub fn get_upload_path(images_directory: &str, upload_id: &str) -> std::path::PathBuf {
     let mut path = Path::new(&images_directory).to_path_buf();
     path.push("uploads");
     path.push(format!("blob-{upload_id}"));
@@ -42,7 +42,7 @@ pub fn get_upload_path(images_directory: &String, upload_id: &String) -> std::pa
     path
 }
 
-pub fn get_temp_path(images_directory: &String) -> std::path::PathBuf {
+pub fn get_temp_path(images_directory: &str) -> std::path::PathBuf {
     let upload_id = Uuid::new_v4().to_hyphenated().to_string();
 
     let mut path = Path::new(&images_directory).to_path_buf();

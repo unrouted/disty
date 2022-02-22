@@ -144,7 +144,7 @@ impl Extractor {
         Extractor { schemas }
     }
 
-    fn validate(&self, content_type: &String, data: &String) -> bool {
+    fn validate(&self, content_type: &str, data: &str) -> bool {
         match self.schemas.get(content_type) {
             Some(schema) => {
                 let cfg = jsonschema_valid::Config::from_schema(
@@ -166,49 +166,46 @@ impl Extractor {
 
     fn extract_one(
         &self,
-        _content_type: &String,
-        data: &String,
+        _content_type: &str,
+        data: &str,
     ) -> Result<HashSet<Extraction>, ExtractError> {
         let manifest = serde_json::from_str(data);
         let mut results = HashSet::new();
 
-        match manifest {
-            Ok(manifest) => {
-                match manifest {
-                    Manifest::DistributionManifestListV2 { manifests } => {
-                        for layer in manifests.iter() {
-                            results.insert(Extraction {
-                                digest: layer.digest.clone(),
-                                content_type: layer.media_type.clone(),
-                            });
-                        }
-                    }
-
-                    Manifest::ManifestV2 { config, layers } => {
+        if let Ok(manifest) = manifest {
+            match manifest {
+                Manifest::DistributionManifestListV2 { manifests } => {
+                    for layer in manifests.iter() {
                         results.insert(Extraction {
-                            digest: config.digest.clone(),
-                            content_type: config.media_type,
+                            digest: layer.digest.clone(),
+                            content_type: layer.media_type.clone(),
                         });
-                        for layer in layers.iter() {
-                            results.insert(Extraction {
-                                digest: layer.digest.clone(),
-                                content_type: layer.media_type.clone(),
-                            });
-                        }
                     }
+                }
 
-                    Manifest::DistributionManifestV1 { layers } => {
-                        // all the layers are application/octet-stream
-                        for layer in layers.iter() {
-                            results.insert(Extraction {
-                                digest: layer.digest.clone(),
-                                content_type: "application/octet-string".into(),
-                            });
-                        }
+                Manifest::ManifestV2 { config, layers } => {
+                    results.insert(Extraction {
+                        digest: config.digest.clone(),
+                        content_type: config.media_type,
+                    });
+                    for layer in layers.iter() {
+                        results.insert(Extraction {
+                            digest: layer.digest.clone(),
+                            content_type: layer.media_type.clone(),
+                        });
+                    }
+                }
+
+                Manifest::DistributionManifestV1 { layers } => {
+                    // all the layers are application/octet-stream
+                    for layer in layers.iter() {
+                        results.insert(Extraction {
+                            digest: layer.digest.clone(),
+                            content_type: "application/octet-string".into(),
+                        });
                     }
                 }
             }
-            _ => {}
         }
 
         Ok(results)
@@ -219,7 +216,7 @@ impl Extractor {
         state: &RegistryState,
         repository: &RepositoryName,
         digest: &Digest,
-        content_type: &String,
+        content_type: &str,
         path: &std::path::PathBuf,
     ) -> Result<Vec<RegistryAction>, ExtractError> {
         let mut analysis: Vec<RegistryAction> = Vec::new();
@@ -243,7 +240,7 @@ impl Extractor {
             Ok(dependencies) => {
                 analysis.push(RegistryAction::ManifestInfo {
                     digest: digest.clone(),
-                    content_type: content_type.clone(),
+                    content_type: content_type.to_string(),
                     dependencies: dependencies
                         .iter()
                         .map(|extraction| extraction.digest.clone())

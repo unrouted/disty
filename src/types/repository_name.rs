@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use rocket::form::{FromFormField, ValueField};
 
-#[derive(Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String", into = "String")]
 pub struct RepositoryName {
     pub name: String,
@@ -67,14 +67,6 @@ impl fmt::Display for RepositoryName {
         write!(f, "{}", self.name)
     }
 }
-
-impl PartialEq for RepositoryName {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Eq for RepositoryName {}
 
 #[cfg(test)]
 mod tests {

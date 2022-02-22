@@ -38,62 +38,60 @@ pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(async move {
         loop {
-            match rx.recv().await {
-                Some(Event {
-                    repository,
-                    digest,
-                    tag,
-                    content_type,
-                }) => {
-                    // FIXME: This is just enough webhook for what I personally need. Sorry if
-                    // you need it to be valid!
-                    let payload = json!({
+            if let Some(Event {
+                repository,
+                digest,
+                tag,
+                content_type,
+            }) = rx.recv().await
+            {
+                // FIXME: This is just enough webhook for what I personally need. Sorry if
+                // you need it to be valid!
+                let payload = json!({
+                    "id": "",
+                    "timestamp": "2016-03-09T14:44:26.402973972-08:00",
+                    "action": "push",
+                    "target": {
+                        "mediaType": content_type,
+                        "size": 708,
+                        "digest": digest,
+                        "length": 708,
+                        "repository": repository,
+                        "url": format!("/v2/{repository}/manifests/{digest}"),
+                        "tag": tag,
+                    },
+                    "request": {
                         "id": "",
-                        "timestamp": "2016-03-09T14:44:26.402973972-08:00",
-                        "action": "push",
-                        "target": {
-                            "mediaType": content_type,
-                            "size": 708,
-                            "digest": digest,
-                            "length": 708,
-                            "repository": repository,
-                            "url": format!("/v2/{repository}/manifests/{digest}"),
-                            "tag": tag,
-                        },
-                        "request": {
-                            "id": "",
-                            "addr": "192.168.64.11:42961",
-                            "host": "192.168.100.227:5000",
-                            "method": "PUT",
-                            "useragent": "curl/7.38.0",
-                        },
-                        "actor": {},
-                        "source": {
-                            "addr": "xtal.local:5000",
-                            "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
-                        },
-                    });
+                        "addr": "192.168.64.11:42961",
+                        "host": "192.168.100.227:5000",
+                        "method": "PUT",
+                        "useragent": "curl/7.38.0",
+                    },
+                    "actor": {},
+                    "source": {
+                        "addr": "xtal.local:5000",
+                        "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
+                    },
+                });
 
-                    let match_target = format!("{repository}:{tag}");
+                let match_target = format!("{repository}:{tag}");
 
-                    for hook in &webhooks {
-                        if !hook.matcher.is_match(&match_target) {
-                            continue;
-                        }
-                        let resp = reqwest::Client::new()
-                            .post(&hook.url)
-                            .json(&payload)
-                            .send()
-                            .await;
+                for hook in &webhooks {
+                    if !hook.matcher.is_match(&match_target) {
+                        continue;
+                    }
+                    let resp = reqwest::Client::new()
+                        .post(&hook.url)
+                        .json(&payload)
+                        .send()
+                        .await;
 
-                        if let Ok(resp) = resp {
-                            if resp.status() != 200 {
-                                // FIXME: Log failures here
-                            }
+                    if let Ok(resp) = resp {
+                        if resp.status() != 200 {
+                            // FIXME: Log failures here
                         }
                     }
                 }
-                None => {}
             }
         }
     });

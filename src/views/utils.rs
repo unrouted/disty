@@ -24,10 +24,7 @@ pub(crate) async fn upload_part(filename: &std::path::PathBuf, body: Data<'_>) -
         .stream_to(&mut tokio::io::BufWriter::new(file))
         .await;
 
-    match result {
-        Ok(_) => true,
-        _ => false,
-    }
+    matches!(result, Ok(_))
 }
 
 pub(crate) async fn get_hash(filename: &std::path::PathBuf) -> Option<Digest> {

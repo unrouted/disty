@@ -87,13 +87,14 @@ pub(crate) struct Token {
 }
 
 impl Token {
-    pub fn has_permission(&self, repository: &RepositoryName, permission: &String) -> bool {
+    pub fn has_permission(&self, repository: &RepositoryName, permission: &str) -> bool {
         if self.admin {
             return true;
         }
 
         for access in self.access.iter() {
-            if &access.repository == repository && access.permissions.contains(&permission.clone())
+            if &access.repository == repository
+                && access.permissions.contains(&permission.to_string())
             {
                 return true;
             }
