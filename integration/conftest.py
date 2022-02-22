@@ -1,7 +1,8 @@
 import time
-import pytest
-from pytest_docker_tools import fetch, build, container, volume, network
+
 import httpx
+import pytest
+from pytest_docker_tools import build, container, fetch, network, volume
 
 temporary_network = network(scope="session")
 
@@ -29,7 +30,7 @@ prometheus:
     port: 7080
 
 storage: var
-   
+
 peers:
     - name: node1
       address: node1
@@ -187,7 +188,7 @@ node3 = container(
 def cluster(docker_auth, node1, node2, node3):
     while True:
         for node in [node1, node2, node3]:
-            ip, port = node.get_addr('8080/tcp')
+            ip, port = node.get_addr("8080/tcp")
             resp = httpx.get(f"http://{ip}:{port}/status").json()
             print(resp)
             if not resp["stable"] or not resp["consensus"]:

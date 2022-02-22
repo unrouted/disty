@@ -163,7 +163,7 @@ impl IntoPy<PyObject> for RegistryAction {
                 user,
             } => {
                 let dict = PyDict::new(py);
-                dict.set_item("type", "blob-ummounted").unwrap();
+                dict.set_item("type", "blob-unmounted").unwrap();
                 dict.set_item("hash", digest).unwrap();
                 dict.set_item("repository", repository.to_string()).unwrap();
                 dict.set_item("user", user).unwrap();
@@ -242,7 +242,7 @@ impl IntoPy<PyObject> for RegistryAction {
                 user,
             } => {
                 let dict = PyDict::new(py);
-                dict.set_item("type", "manifest-ummounted").unwrap();
+                dict.set_item("type", "manifest-unmounted").unwrap();
                 dict.set_item("hash", digest).unwrap();
                 dict.set_item("repository", repository.to_string()).unwrap();
                 dict.set_item("user", user).unwrap();

@@ -1,12 +1,14 @@
-from pytest_docker_tools import fetch
 from docker.client import DockerClient
+from pytest_docker_tools import fetch
 
 conformance = fetch(
     repository="ghcr.io/opencontainers/distribution-spec/conformance:v1.0.0"
 )
 
 
-def test_oci(cluster, conformance, temporary_network, docker_client: DockerClient):
+def test_oci(
+    request, cluster, conformance, temporary_network, docker_client: DockerClient
+):
     container = docker_client.containers.run(
         conformance.id,
         network=temporary_network.id,
@@ -26,8 +28,9 @@ def test_oci(cluster, conformance, temporary_network, docker_client: DockerClien
         },
         detach=True,
     )
+    request.addfinalizer(container.remove)
 
     for line in container.logs(stream=True):
-        print(line)
+        print(line.decode("utf-8"))
 
-    raise KeyError("meh")
+    assert container.wait()["StatusCode"] == 0

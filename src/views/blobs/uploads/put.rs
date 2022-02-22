@@ -37,11 +37,31 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .status(Status::Forbidden)
                     .ok()
             }
-            Responses::DigestInvalid {} => Response::build().status(Status::BadRequest).ok(),
-            Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
+            Responses::DigestInvalid {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "DIGEST_INVALID",
+                    "provided digest did not match uploaded content",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::BadRequest)
+                    .ok()
+            }
+            Responses::UploadInvalid {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "BLOB_UPLOAD_INVALID",
+                    "the upload was invalid",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::BadRequest)
+                    .ok()
+            }
             Responses::Ok { repository, digest } => {
                 /*
-                204 No Content
+                201 Created
                 Location: <blob location>
                 Content-Range: <start of range>-<end of range, inclusive>
                 Content-Length: 0
@@ -56,7 +76,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .header(Header::new("Range", "0-0"))
                     .header(Header::new("Content-Length", "0"))
                     .header(Header::new("Docker-Content-Digest", digest.to_string()))
-                    .status(Status::NoContent)
+                    .status(Status::Created)
                     .ok()
             }
         }

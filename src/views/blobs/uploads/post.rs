@@ -42,8 +42,28 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .status(Status::Forbidden)
                     .ok()
             }
-            Responses::DigestInvalid {} => Response::build().status(Status::BadRequest).ok(),
-            Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
+            Responses::DigestInvalid {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "DIGEST_INVALID",
+                    "provided digest did not match uploaded content",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::BadRequest)
+                    .ok()
+            }
+            Responses::UploadInvalid {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "BLOB_UPLOAD_INVALID",
+                    "the upload was invalid",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::BadRequest)
+                    .ok()
+            }
             Responses::UploadComplete { repository, digest } => {
                 /*
                 201 Created
@@ -118,7 +138,7 @@ pub(crate) async fn post(
             if state.is_blob_available(&from, &mount) {
                 let actions = vec![RegistryAction::BlobMounted {
                     digest: mount.clone(),
-                    repository: from.clone(),
+                    repository: repository.clone(),
                     user: token.sub.clone(),
                 }];
 
@@ -186,6 +206,11 @@ pub(crate) async fn post(
             if !state.send_actions(actions).await {
                 return Responses::UploadInvalid {};
             }
+
+            return Responses::UploadComplete {
+                repository,
+                digest: digest,
+            };
         }
         _ => {
             // Nothing was uploaded, but a session was started...

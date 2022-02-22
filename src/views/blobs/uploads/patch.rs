@@ -39,7 +39,17 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .status(Status::Forbidden)
                     .ok()
             }
-            Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
+            Responses::UploadInvalid {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "BLOB_UPLOAD_INVALID",
+                    "the upload was invalid",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::BadRequest)
+                    .ok()
+            }
             Responses::RangeNotSatisfiable {
                 repository,
                 upload_id,
