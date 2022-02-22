@@ -102,7 +102,7 @@ jobs:
 
     - name: Run black
       shell: bash
-      run: ./.venv/bin/python --check --diff distribd tests
+      run: ./.venv/bin/python -m black --check --diff distribd tests
 
     - name: Run flake8
       shell: bash
