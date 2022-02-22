@@ -19,6 +19,8 @@ pub fn routes() -> Vec<Route> {
         crate::views::manifests::delete::delete_by_tag,
         // Tags
         crate::views::tags::get::get,
+        // Root
+        crate::views::get::get,
     ]
 }
 
