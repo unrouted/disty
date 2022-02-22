@@ -217,7 +217,7 @@ impl Extractor {
         repository: &RepositoryName,
         digest: &Digest,
         content_type: &str,
-        path: &std::path::PathBuf,
+        path: &std::path::Path,
     ) -> Result<Vec<RegistryAction>, ExtractError> {
         let mut analysis: Vec<RegistryAction> = Vec::new();
         let mut pending: HashSet<Extraction> = HashSet::new();

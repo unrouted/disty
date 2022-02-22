@@ -135,6 +135,14 @@ pub(crate) async fn patch(
             _ => 0,
         };
 
+        if range.stop < range.start {
+            return Responses::RangeNotSatisfiable {
+                repository,
+                upload_id,
+                size,
+            };
+        }
+
         if range.start != size {
             return Responses::RangeNotSatisfiable {
                 repository,
