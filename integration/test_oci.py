@@ -49,6 +49,7 @@ def test_skopeo(
         hostname="skopeo",
         command=[
             "copy",
+            "--dest-tls-verify=false",
             "--dest-creds",
             "admin:badmin",
             "docker://alpine:3.15",
