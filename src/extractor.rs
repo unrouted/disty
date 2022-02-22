@@ -1,9 +1,9 @@
 use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
+use jsonschema::JSONSchema;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use jsonschema::JSONSchema;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
@@ -121,9 +121,7 @@ impl Extractor {
                 let compiled = JSONSchema::compile(schema).unwrap();
 
                 match serde_json::from_str(data) {
-                    Ok(value) => {
-                        compiled.is_valid(&value)
-                    }
+                    Ok(value) => compiled.is_valid(&value),
                     _ => false,
                 }
             }
