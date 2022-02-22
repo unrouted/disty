@@ -4,7 +4,19 @@ use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use pyo3::prelude::*;
-use pyo3_asyncio::into_future_with_loop;
+use pyo3_asyncio::{into_future_with_locals, TaskLocals};
+use std::future::Future;
+
+pub fn into_future_with_loop(
+    event_loop: &PyAny,
+    awaitable: &PyAny,
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send> {
+    into_future_with_locals(
+        &TaskLocals::new(event_loop).copy_context(event_loop.py())?,
+        awaitable,
+    )
+}
+
 
 pub struct RegistryState {
     pub repository_path: String,
