@@ -32,6 +32,7 @@ mod test {
         Client::tracked(server).expect("valid rocket instance")
     }
 
+    /*
     #[test]
     fn put_sha_query_param_fail() {
         let client = client();
@@ -40,6 +41,7 @@ mod test {
             .dispatch();
         assert_eq!(response.status(), Status::NotFound);
     }
+    */
 
     #[test]
     fn put() {}
