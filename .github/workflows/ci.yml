@@ -159,7 +159,7 @@ jobs:
 
     - name: Setup venv
       id: setup-venv
-      run: python -m venv .venv && ./venv/bin/python -m pip install --upgrade pip setuptools wheel
+      run: python -m venv .venv && ./.venv/bin/python -m pip install --upgrade pip setuptools wheel
 
     - name: Install dependencies
       shell: bash
