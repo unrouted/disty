@@ -60,3 +60,13 @@ pub(crate) async fn validate_hash(filename: &std::path::PathBuf, expected_hash: 
         None => false,
     }
 }
+
+pub(crate) fn simple_oci_error(code: &str, message: &str) -> String {
+    serde_json::json!({
+        "errors": [{
+            "code": code,
+            "message": message
+        }]
+    })
+    .to_string()
+}

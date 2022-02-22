@@ -38,8 +38,6 @@ async def run_server(
     bind_config["address"].set(sockname[0])
     bind_config["port"].set(sockname[1])
 
-    raft.state_changed(**{server_name: {"address": sockname[0], "port": sockname[1]}})
-
     try:
         # Sleep forever. No activity is needed.
         await asyncio.Event().wait()

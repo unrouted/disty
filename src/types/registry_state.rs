@@ -125,6 +125,21 @@ impl RegistryState {
         })
     }
 
+    pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+        Python::with_gil(|py| {
+            let retval = self
+                .state
+                .call_method1(py, "get_tags", (repository.to_string(),));
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => Some(extracted),
+                    _ => None,
+                },
+                _ => None,
+            }
+        })
+    }
+
     pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         Python::with_gil(|py| {
             let retval = self.state.call_method1(

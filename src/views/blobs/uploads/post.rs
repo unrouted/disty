@@ -11,6 +11,7 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
+use std::io::Cursor;
 use uuid::Uuid;
 pub(crate) enum Responses {
     AccessDenied {},
@@ -30,12 +31,22 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
-            Responses::AccessDenied {} => Response::build().status(Status::Forbidden).ok(),
+            Responses::AccessDenied {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "DENIED",
+                    "requested access to the resource is denied",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::Forbidden)
+                    .ok()
+            }
             Responses::DigestInvalid {} => Response::build().status(Status::BadRequest).ok(),
             Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
             Responses::UploadComplete { repository, digest } => {
                 /*
-                204 No Content
+                201 Created
                 Location: <blob location>
                 Content-Range: <start of range>-<end of range, inclusive>
                 Content-Length: 0
@@ -50,7 +61,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .header(Header::new("Range", "0-0"))
                     .header(Header::new("Content-Length", "0"))
                     .header(Header::new("Docker-Content-Digest", digest.to_string()))
-                    .status(Status::NoContent)
+                    .status(Status::Created)
                     .ok()
             }
             Responses::Ok {

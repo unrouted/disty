@@ -38,6 +38,7 @@ async def main(argv=None, config=None):
     config.set_args(args, dots=True)
 
     logger.debug("Configuration directory: %s", config.config_dir())
+    logger.debug(config.dump())
 
     identifier = config["node"]["identifier"].get(str)
 
@@ -53,7 +54,8 @@ async def main(argv=None, config=None):
         machine.term = storage.current_term
     machine.log.load(storage.log)
 
-    for other_identifier in config["peers"].get(list):
+    for peer in config["peers"].get(list):
+        other_identifier = peer["name"]
         if identifier != other_identifier:
             machine.add_peer(other_identifier)
 

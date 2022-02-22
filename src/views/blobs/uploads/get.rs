@@ -7,6 +7,7 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
+use std::io::Cursor;
 pub(crate) enum Responses {
     AccessDenied {},
     UploadInvalid {},
@@ -20,7 +21,17 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
-            Responses::AccessDenied {} => Response::build().status(Status::Forbidden).ok(),
+            Responses::AccessDenied {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "DENIED",
+                    "requested access to the resource is denied",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::Forbidden)
+                    .ok()
+            }
             Responses::UploadInvalid {} => Response::build().status(Status::BadRequest).ok(),
             Responses::Ok {
                 repository,

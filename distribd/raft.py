@@ -11,7 +11,6 @@ from yarl import URL
 from . import exceptions
 from .machine import Machine, Message, Msg, NodeState
 from .reducers import Reducers
-from .seeding import Seeder
 from .storage import Storage
 from .utils.tick import Tick
 from .utils.web import run_server
@@ -31,7 +30,13 @@ class Raft:
         self.storage = storage
         self.reducers = reducers
         self.queue = asyncio.Queue()
-        self.peers = None
+
+        self.peers = {}
+        for peer in self.config["peers"].get(list):
+            self.peers[peer["name"]] = {
+                "address": peer["address"],
+                "port": peer["port"],
+            }
 
         self._closed = False
 
@@ -79,20 +84,6 @@ class Raft:
             )
         )
 
-    def state_changed(self, **discovery_info):
-        self.queue.put_nowait(
-            (
-                {
-                    "type": str(Message.StateChanged),
-                    "source": self.machine.identifier,
-                    "destination": self.machine.identifier,
-                    "term": 0,
-                    "discovery_info": discovery_info,
-                },
-                None,
-            )
-        )
-
     async def step(self, raw_msg):
         msg = Msg.from_dict(raw_msg)
         self.machine.step(msg)
@@ -115,8 +106,6 @@ class Raft:
                     logger.exception("Unhandled error while sending message")
 
         await self.reducers.step(self.machine)
-
-        self.peers.step(self.machine, msg)
 
     async def _process_queue(self):
         task_complete = None
@@ -167,11 +156,10 @@ class HttpRaft(Raft):
     def __init__(self, config, machine: Machine, storage: Storage, reducers: Reducers):
         super().__init__(config, machine, storage, reducers)
         self.session = aiohttp.ClientSession(json_serialize=ujson.dumps)
-        self.peers = Seeder(config, self.storage.session, self.spread)
 
     def url_for_peer(self, peer):
-        address = self.peers[peer]["raft"]["address"]
-        port = self.peers[peer]["raft"]["port"]
+        address = self.peers[peer]["address"]
+        port = self.peers[peer]["port"]
         return URL.build(host=address, port=port)
 
     async def _append_remote(self, entries):
@@ -210,17 +198,6 @@ class HttpRaft(Raft):
             # Message wasn't delivered - client broken or netsplit
             pass
 
-    async def spread(self, gossip):
-        async with aiohttp.ClientSession(json_serialize=ujson.dumps) as session:
-            url = URL(random.choice(self.config["seeding"]["urls"].get(list)))
-            try:
-                async with session.post(url / "gossip", json=gossip) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
-            except aiohttp.ClientError:
-                pass
-        return {}
-
     async def _receive_message(self, request):
         payload = await request.json()
         await self.queue.put((payload, None))
@@ -232,11 +209,6 @@ class HttpRaft(Raft):
             raise exceptions.LeaderUnavailable()
         index, term = await self._append_local(entries)
         return web.json_response({"index": index, "term": term}, dumps=ujson.dumps)
-
-    async def _receive_gossip(self, request):
-        gossip = await request.json()
-        reply = self.peers.exchange_gossip(gossip)
-        return web.json_response(reply, dumps=ujson.dumps)
 
     async def _receive_status(self, request):
         stable = self.machine.log.last_index == self.reducers.applied_index
@@ -263,7 +235,6 @@ class HttpRaft(Raft):
         routes = web.RouteTableDef()
         routes.post("/rpc")(self._receive_message)
         routes.post("/append")(self._receive_append)
-        routes.post("/gossip")(self._receive_gossip)
         routes.get("/status")(self._receive_status)
 
         return await run_server(
@@ -276,5 +247,4 @@ class HttpRaft(Raft):
 
     async def close(self):
         await super().close()
-        await self.peers.close()
         await self.session.close()

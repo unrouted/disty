@@ -38,7 +38,7 @@ impl<'r> Responder<'r, 'static> for Manifest {
         Response::build()
             .header(content_type)
             .header(digest)
-            .status(Status::Accepted)
+            .status(Status::Ok)
             .streamed_body(self.file)
             .ok()
     }

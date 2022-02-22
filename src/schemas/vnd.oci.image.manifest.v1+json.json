@@ -22,7 +22,8 @@
                     "description": "The MIME type of the referenced manifest",
                     "enum": [
                         "application/vnd.oci.image.manifest.v1+json",
-                        "application/vnd.oci.image.index.v1+json"
+                        "application/vnd.oci.image.index.v1+json",
+                        "application/vnd.oci.image.config.v1+json"
                     ]
                 },
                 "size": {
