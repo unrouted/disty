@@ -257,8 +257,6 @@ impl Extractor {
             }
         }
 
-        drop(content_type);
-        drop(digest);
         drop(data);
 
         while !pending.is_empty() {
