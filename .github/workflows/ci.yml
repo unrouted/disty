@@ -7,31 +7,23 @@ on:
   pull_request: ~
 
 jobs:
-  rust:
-    name: rust
+  clippy:
+    name: clippy
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Setup python
-        id: setup-python
-        run: apt-get update && apt-get install -y python3
-
       - name: Stable with rustfmt and clippy
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
-          components: rustfmt, clippy
+          components: clippy
 
       - name: Handle Rust dependencies caching
         uses: Swatinem/rust-cache@v1
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
 
       - name: Annotate commit with clippy warnings
         uses: actions-rs/clippy-check@v1
