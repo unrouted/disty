@@ -3,6 +3,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use jsonschema::JSONSchema;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
@@ -49,36 +50,6 @@ enum Manifest {
 pub struct Extractor {
     schemas: HashMap<String, Value>,
 }
-
-/*
-def analyze(content_type, manifest):
-    logger.debug(f"MANIFEST: {content_type} start")
-    try:
-        parsed = json.loads(manifest)
-    except json.decoder.JSONDecodeError:
-        logger.debug(f"MANIFEST: invalid json")
-        raise ManifestInvalid()
-
-    if content_type not in analyzers:
-        logger.debug(f"MANIFEST: no analyzer for {content_type}")
-        return []
-
-    if content_type not in schemas:
-        logger.debug(f"MANIFEST: no schema for {content_type}")
-        raise ManifestInvalid(reason="no_schema_for_this_type")
-
-    schema = schemas[content_type]
-
-    try:
-        validate(instance=parsed, schema=schema)
-    except ValidationError:
-        logger.debug(f"MANIFEST: schema check fail")
-        raise ManifestInvalid(reason="schema_check_fail")
-
-    logger.debug(f"MANIFEST: invoking dep extractor")
-
-    return analyzers[content_type](parsed)
-*/
 
 pub enum ExtractError {
     UnknownError,
@@ -147,15 +118,11 @@ impl Extractor {
     fn validate(&self, content_type: &str, data: &str) -> bool {
         match self.schemas.get(content_type) {
             Some(schema) => {
-                let cfg = jsonschema_valid::Config::from_schema(
-                    schema,
-                    Some(jsonschema_valid::schemas::Draft::Draft7),
-                )
-                .unwrap();
+                let compiled = JSONSchema::compile(schema).unwrap();
 
                 match serde_json::from_str(data) {
                     Ok(value) => {
-                        return cfg.validate(&value).is_ok();
+                        compiled.is_valid(&value)
                     }
                     _ => false,
                 }
