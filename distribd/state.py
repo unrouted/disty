@@ -112,6 +112,7 @@ class RegistryState(Reducer):
 
     def get_tags(self, repository):
         logger.critical("get_tags: START: %s", repository)
+
         def _filter(node):
             n = self.graph.nodes[node]
             if n[ATTR_TYPE] != TYPE_TAG:
@@ -125,7 +126,7 @@ class RegistryState(Reducer):
         if len(resolved_tags) == 0:
             logger.critical("get_tags: FIN: %s: NO TAGS", repository)
             raise KeyError()
-        
+
         logger.critical("get_tags: FIN: %s: TAGS: %s", repository, resolved_tags)
 
         return resolved_tags

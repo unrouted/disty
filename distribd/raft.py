@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import random
 
 import aiohttp
 from aiohttp import web

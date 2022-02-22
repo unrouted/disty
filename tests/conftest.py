@@ -1,9 +1,6 @@
 import logging
-import os
 import pathlib
 
-import aiohttp
-import confuse
 import pytest
 
 
