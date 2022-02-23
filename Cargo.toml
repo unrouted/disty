@@ -27,6 +27,7 @@ jwt-simple = { git = "https://github.com/jedisct1/rust-jwt-simple" }
 regex = "1.5.4"
 jsonschema = "0.15"
 log = "0.4.14"
+urlencoding = "2.1.0"
 
 [build-dependencies]
 pyo3-build-config = "*"

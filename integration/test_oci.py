@@ -19,7 +19,7 @@ def test_oci(
         hostname="conformance",
         environment={
             "OCI_ROOT_URL": "http://node1:8000",
-            "OCI_NAMESPACE": "myrepo",
+            "OCI_NAMESPACE": "example3/example4",
             "OCI_USERNAME": "admin",
             "OCI_PASSWORD": "badmin",
             "OCI_TEST_PULL": "1",
