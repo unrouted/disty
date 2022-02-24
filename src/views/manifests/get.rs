@@ -1,12 +1,101 @@
 use crate::headers::Token;
-use crate::responses;
 use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use log::debug;
+use rocket::http::{Header, Status};
+use rocket::request::Request;
+use rocket::response::{Responder, Response};
 use rocket::tokio::fs::File;
 use rocket::State;
+use std::io::Cursor;
+
+pub(crate) enum Responses {
+    MustAuthenticate {
+        challenge: String,
+    },
+    AccessDenied {},
+    ManifestNotFound {},
+    Ok {
+        digest: Digest,
+        content_type: String,
+        file: File,
+    },
+}
+
+/*
+200 OK
+Docker-Content-Digest: <digest>
+Content-Type: <media type of manifest>
+
+{
+   "name": <name>,
+   "tag": <tag>,
+   "fsLayers": [
+      {
+         "blobSum": "<digest>"
+      },
+      ...
+    ]
+   ],
+   "history": <v1 images>,
+   "signature": <JWS>
+}
+*/
+
+impl<'r> Responder<'r, 'static> for Responses {
+    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
+        match self {
+            Responses::MustAuthenticate { challenge } => {
+                let body = crate::views::utils::simple_oci_error(
+                    "UNAUTHORIZED",
+                    "authentication required",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .header(Header::new("Www-Authenticate", challenge))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::Unauthorized)
+                    .ok()
+            }
+            Responses::AccessDenied {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "DENIED",
+                    "requested access to the resource is denied",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::Forbidden)
+                    .ok()
+            }
+            Responses::ManifestNotFound {} => {
+                let content_type = Header::new("Content-Type", "application/json; charset=utf-8");
+
+                Response::build()
+                    .header(content_type)
+                    .status(Status::NotFound)
+                    .ok()
+            }
+            Responses::Ok {
+                content_type,
+                digest,
+                file,
+            } => {
+                let content_type = Header::new("Content-Type", content_type);
+                let digest = Header::new("Docker-Content-Digest", digest.to_string());
+
+                Response::build()
+                    .header(content_type)
+                    .header(digest)
+                    .status(Status::Ok)
+                    .streamed_body(file)
+                    .ok()
+            }
+        }
+    }
+}
 
 #[get("/<repository>/manifests/<digest>")]
 pub(crate) async fn get(
@@ -14,15 +103,21 @@ pub(crate) async fn get(
     digest: Digest,
     state: &State<RegistryState>,
     token: Token,
-) -> responses::GetManifestResponses {
+) -> Responses {
     let state: &RegistryState = state.inner();
 
+    if !token.validated_token {
+        return Responses::MustAuthenticate {
+            challenge: token.get_pull_challenge(repository),
+        };
+    }
+
     if !token.has_permission(&repository, &"pull".to_string()) {
-        return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
+        return Responses::AccessDenied {};
     }
 
     if !state.is_manifest_available(&repository, &digest) {
-        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+        return Responses::ManifestNotFound {};
     }
 
     let manifest = match state.get_manifest(&repository, &digest) {
@@ -30,33 +125,27 @@ pub(crate) async fn get(
         _ => {
             debug!("Failed to return manifest from graph for {digest} (via {repository}");
 
-            return responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            );
+            return Responses::ManifestNotFound {};
         }
     };
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
-        _ => {
-            return responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            )
-        }
+        _ => return Responses::ManifestNotFound {},
     };
 
     let path = get_manifest_path(&state.repository_path, &digest);
     if !path.is_file() {
-        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+        return Responses::ManifestNotFound {};
     }
 
     match File::open(path).await {
-        Ok(file) => responses::GetManifestResponses::Manifest(responses::Manifest {
+        Ok(file) => Responses::Ok {
             content_type,
             digest,
             file,
-        }),
-        _ => responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {}),
+        },
+        _ => Responses::ManifestNotFound {},
     }
 }
 
@@ -66,36 +155,32 @@ pub(crate) async fn get_by_tag(
     tag: String,
     state: &State<RegistryState>,
     token: Token,
-) -> responses::GetManifestResponses {
+) -> Responses {
     let state: &RegistryState = state.inner();
 
     if !token.has_permission(&repository, &"push".to_string()) {
         debug!("User does not have permission");
-        return responses::GetManifestResponses::AccessDenied(responses::AccessDenied {});
+        return Responses::AccessDenied {};
     }
 
     let digest = match state.get_tag(&repository, &tag) {
         Some(tag) => tag,
         None => {
             debug!("No such tag");
-            return responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            );
+            return Responses::ManifestNotFound {};
         }
     };
 
     if !state.is_manifest_available(&repository, &digest) {
         debug!("Manifest not known to graph");
-        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+        return Responses::ManifestNotFound {};
     }
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
         _ => {
             debug!("Could not retrieve manifest info from graph");
-            return responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            );
+            return Responses::ManifestNotFound {};
         }
     };
 
@@ -103,27 +188,25 @@ pub(crate) async fn get_by_tag(
         Some(content_type) => content_type,
         _ => {
             debug!("Could not extract content type from graph");
-            return responses::GetManifestResponses::ManifestNotFound(
-                responses::ManifestNotFound {},
-            );
+            return Responses::ManifestNotFound {};
         }
     };
 
     let path = get_manifest_path(&state.repository_path, &digest);
     if !path.is_file() {
         debug!("Expected manifest file does not exist");
-        return responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {});
+        return Responses::ManifestNotFound {};
     }
 
     match File::open(path).await {
-        Ok(file) => responses::GetManifestResponses::Manifest(responses::Manifest {
+        Ok(file) => Responses::Ok {
             content_type,
             digest,
             file,
-        }),
+        },
         _ => {
             debug!("Could not open file");
-            responses::GetManifestResponses::ManifestNotFound(responses::ManifestNotFound {})
+            return Responses::ManifestNotFound {};
         }
     }
 }

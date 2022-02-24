@@ -28,7 +28,7 @@ impl<'r> FromRequest<'r> for ContentRange {
                         Ok(value) => value,
                         _ => {
                             return Outcome::Failure((
-                                Status::Unauthorized,
+                                Status::BadRequest,
                                 ContentRangeError::Missing,
                             ))
                         }
@@ -37,16 +37,16 @@ impl<'r> FromRequest<'r> for ContentRange {
                         Ok(value) => value,
                         _ => {
                             return Outcome::Failure((
-                                Status::Unauthorized,
+                                Status::BadRequest,
                                 ContentRangeError::Missing,
                             ))
                         }
                     };
                     Outcome::Success(ContentRange { start, stop })
                 }
-                _ => Outcome::Failure((Status::Unauthorized, ContentRangeError::Missing)),
+                _ => Outcome::Failure((Status::BadRequest, ContentRangeError::Missing)),
             },
-            None => Outcome::Failure((Status::Unauthorized, ContentRangeError::Missing)),
+            None => Outcome::Failure((Status::BadRequest, ContentRangeError::Missing)),
         }
     }
 }
@@ -70,7 +70,7 @@ impl<'r> FromRequest<'r> for ContentType {
             Some(token) => Outcome::Success(ContentType {
                 content_type: token.to_string(),
             }),
-            None => Outcome::Failure((Status::Unauthorized, ContentTypeError::Missing)),
+            None => Outcome::Failure((Status::BadRequest, ContentTypeError::Missing)),
         }
     }
 }
@@ -83,11 +83,58 @@ pub(crate) struct Access {
 pub(crate) struct Token {
     pub access: Vec<Access>,
     pub sub: String,
+    pub validated_token: bool,
     admin: bool,
+    realm: Option<String>,
+    service: Option<String>,
 }
 
 impl Token {
+    pub fn get_pull_challenge(&self, repository: RepositoryName) -> String {
+        let service = self
+            .service
+            .as_ref()
+            .expect("Service should not start with auth on but no 'service' config");
+        let realm = self
+            .realm
+            .as_ref()
+            .expect("Service should not start with auth on but no 'realm' config");
+        format!(
+            "Bearer realm=\"{realm}\",service=\"{service}\",scope=\"repository:{repository}:pull\""
+        )
+    }
+
+    pub fn get_push_challenge(&self, repository: RepositoryName) -> String {
+        let service = self
+            .service
+            .as_ref()
+            .expect("Service should not start with auth on but no 'service' config");
+        let realm = self
+            .realm
+            .as_ref()
+            .expect("Service should not start with auth on but no 'realm' config");
+
+        format!("Bearer realm=\"{realm}\",service=\"{service}\",scope=\"repository:{repository}:pull,push\"")
+    }
+
+    pub fn get_general_challenge(&self, repository: RepositoryName) -> String {
+        let service = self
+            .service
+            .as_ref()
+            .expect("Service should not start with auth on but no 'service' config");
+        let realm = self
+            .realm
+            .as_ref()
+            .expect("Service should not start with auth on but no 'realm' config");
+
+        format!("Bearer realm=\"{realm}\",service=\"{service}\"")
+    }
+
     pub fn has_permission(&self, repository: &RepositoryName, permission: &str) -> bool {
+        if !self.validated_token {
+            return false;
+        }
+
         if self.admin {
             return true;
         }
@@ -116,7 +163,7 @@ impl<'r> FromRequest<'r> for Token {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let config = match req.rocket().state::<TokenConfig>() {
             Some(value) => value,
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => return Outcome::Failure((Status::BadGateway, TokenError::Missing)),
         };
 
         if !config.enabled {
@@ -124,28 +171,40 @@ impl<'r> FromRequest<'r> for Token {
                 access: vec![],
                 sub: "anonymous".to_string(),
                 admin: true,
+                validated_token: true,
+                service: config.service.clone(),
+                realm: config.realm.clone(),
             });
         }
 
         let header = match req.headers().get_one("authorization") {
             Some(header) => header.to_string(),
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => {
+                return Outcome::Success(Token {
+                    access: vec![],
+                    sub: "anonymous".to_string(),
+                    admin: false,
+                    validated_token: false,
+                    service: config.service.clone(),
+                    realm: config.realm.clone(),
+                });
+            }
         };
 
         let (token_type, token_bytes) = match header.split_once(" ") {
             Some(value) => value,
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
         };
 
         if token_type.to_lowercase() != "bearer" {
-            return Outcome::Failure((Status::Unauthorized, TokenError::Missing));
+            return Outcome::Failure((Status::Forbidden, TokenError::Missing));
         }
 
         let key_string = std::fs::read_to_string(config.public_key.as_ref().unwrap()).unwrap();
 
         let key = match ES256PublicKey::from_pem(&key_string) {
             Ok(key) => key,
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
         };
 
         let options = VerificationOptions {
@@ -160,20 +219,23 @@ impl<'r> FromRequest<'r> for Token {
 
         let claims = match key.verify_token::<NoCustomClaims>(token_bytes, Some(options)) {
             Ok(claims) => claims,
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
         };
 
         println!("{claims:?}");
 
         let subject = match claims.subject {
             Some(subject) => subject,
-            _ => return Outcome::Failure((Status::Unauthorized, TokenError::Missing)),
+            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
         };
 
         Outcome::Success(Token {
             access: vec![],
             sub: subject,
             admin: false,
+            validated_token: true,
+            service: config.service.clone(),
+            realm: config.realm.clone(),
         })
     }
 }
