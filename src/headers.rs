@@ -75,9 +75,17 @@ impl<'r> FromRequest<'r> for ContentType {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Access {
+    #[serde(rename = "name")]
     pub repository: RepositoryName,
+    #[serde(rename = "actions")]
     pub permissions: HashSet<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AdditionalClaims {
+    access: Vec<Access>,
 }
 
 pub(crate) struct Token {
@@ -132,20 +140,28 @@ impl Token {
 
     pub fn has_permission(&self, repository: &RepositoryName, permission: &str) -> bool {
         if !self.validated_token {
+            info!("Not a validated token");
             return false;
         }
 
         if self.admin {
+            info!("Got an admin token");
             return true;
         }
 
+        info!("Need {permission} for {repository}");
+
         for access in self.access.iter() {
+            info!("Checking {access:?}");
+
             if &access.repository == repository
                 && access.permissions.contains(&permission.to_string())
             {
                 return true;
             }
         }
+
+        info!("Didn't find a matching access rule");
 
         false
     }
@@ -197,14 +213,19 @@ impl<'r> FromRequest<'r> for Token {
         };
 
         if token_type.to_lowercase() != "bearer" {
+            info!("Not bearer token");
             return Outcome::Failure((Status::Forbidden, TokenError::Missing));
         }
 
-        let key_string = std::fs::read_to_string(config.public_key.as_ref().unwrap()).unwrap();
+        let pub_key = config.public_key.as_ref().unwrap();
+        info!("{pub_key}");
 
-        let key = match ES256PublicKey::from_pem(&key_string) {
+        let key = match ES256PublicKey::from_pem(config.public_key.as_ref().unwrap()) {
             Ok(key) => key,
-            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
+            _ => {
+                info!("Could not load key from PEM");
+                return Outcome::Failure((Status::Forbidden, TokenError::Missing));
+            }
         };
 
         let options = VerificationOptions {
@@ -214,23 +235,31 @@ impl<'r> FromRequest<'r> for Token {
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
             allowed_issuers: Some(HashSet::from_strings(&[config.issuer.clone().unwrap()])),
+            // validate it is a token for us
+            allowed_audiences: Some(HashSet::from_strings(&[config.service.clone().unwrap()])),
             ..Default::default()
         };
 
-        let claims = match key.verify_token::<NoCustomClaims>(token_bytes, Some(options)) {
+        let claims = match key.verify_token::<AdditionalClaims>(token_bytes, Some(options)) {
             Ok(claims) => claims,
-            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
+            Err(error) => {
+                info!("Could not verify token: {error}");
+                return Outcome::Failure((Status::Forbidden, TokenError::Missing));
+            }
         };
-
-        println!("{claims:?}");
 
         let subject = match claims.subject {
             Some(subject) => subject,
-            _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
+            _ => {
+                info!("Could not retrieve subject from token");
+                return Outcome::Failure((Status::Forbidden, TokenError::Missing));
+            }
         };
 
+        info!("Validated token for subject \"{subject}\"");
+
         Outcome::Success(Token {
-            access: vec![],
+            access: claims.custom.access.clone(),
             sub: subject,
             admin: false,
             validated_token: true,

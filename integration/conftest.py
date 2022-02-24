@@ -17,11 +17,11 @@ registry:
         port: 9080
 
         token_server:
-            enabled: false
+            enabled: true
 
             realm: http://docker_auth:5001/auth
             service: My registry
-            issuer: My issuer
+            issuer: "Acme auth server"
             public_key: token_server.pub
 
 
@@ -74,7 +74,7 @@ acl:
 
 """
 
-DOCKER_AUTH_PUBLIC = b"""
+DOCKER_AUTH_CERT = b"""
 -----BEGIN CERTIFICATE-----
 MIIBEjCBuAIJAOStacpfM+zAMAoGCCqGSM49BAMCMBExDzANBgNVBAMMBnVudXNl
 ZDAeFw0yMDA0MjAxNzAxNTVaFw0yMDA1MjAxNzAxNTVaMBExDzANBgNVBAMMBnVu
@@ -85,6 +85,12 @@ j+6rAiEAoZXWaKucFpvqkkbrURjjyYZJGfClWkB9vZsJVDxKsUI=
 -----END CERTIFICATE-----
 """.strip()
 
+DOCKER_AUTH_PUBLIC = b"""
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5Gw5ndkZfLF26Hq6rwI0CclJRjYf
+eKNCHURiEo1TtHp6B/fF0laH3Z6RU4eUMlnfFj3niCL4LVrsihwd22ifOA==
+-----END PUBLIC KEY-----
+""".strip()
 
 DOCKER_AUTH_PRIVATE = b"""
 -----BEGIN EC PRIVATE KEY-----
@@ -99,7 +105,7 @@ docker_auth_image = fetch(repository="cesanta/docker_auth:1.9.0")
 docker_auth_config = volume(
     initial_content={
         "auth_config.yml": DOCKER_AUTH_CONFIG,
-        "server.cert": DOCKER_AUTH_PUBLIC,
+        "server.cert": DOCKER_AUTH_CERT,
         "server.key": DOCKER_AUTH_PRIVATE,
     },
     scope="session",
@@ -127,6 +133,7 @@ distribd_image = build(path=".")
 distribd_config = volume(
     initial_content={
         "config.yaml": DISTRIBD_CONFIG,
+        "token_server.pub": DOCKER_AUTH_PUBLIC,
     },
     scope="session",
 )

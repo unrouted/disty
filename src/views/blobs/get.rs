@@ -3,6 +3,7 @@ use crate::types::Digest;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
+use log::info;
 use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
@@ -100,6 +101,7 @@ pub(crate) async fn get(
     }
 
     if !token.has_permission(&repository, &"pull".to_string()) {
+        info!("Token does not have access to perform this action");
         return Responses::AccessDenied {};
     }
 
