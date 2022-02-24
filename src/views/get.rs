@@ -40,9 +40,8 @@ impl<'r> Responder<'r, 'static> for Responses {
 }
 
 #[get("/")]
-pub(crate) async fn get(state: &State<RegistryState>, token: &State<Token>) -> Responses {
+pub(crate) async fn get(state: &State<RegistryState>, token: Token) -> Responses {
     let _state: &RegistryState = state.inner();
-    let token: &Token = token.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
