@@ -14,6 +14,9 @@ use rocket::State;
 use std::io::Cursor;
 
 pub(crate) enum Responses {
+    MustAuthenticate {
+        challenge: String,
+    },
     AccessDenied {},
     DigestInvalid {},
     UploadInvalid {},
@@ -26,6 +29,18 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::MustAuthenticate { challenge } => {
+                let body = crate::views::utils::simple_oci_error(
+                    "UNAUTHORIZED",
+                    "authentication required",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .header(Header::new("Www-Authenticate", challenge))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::Unauthorized)
+                    .ok()
+            }
             Responses::AccessDenied {} => {
                 let body = crate::views::utils::simple_oci_error(
                     "DENIED",
@@ -93,6 +108,12 @@ pub(crate) async fn put(
     body: Data<'_>,
 ) -> Responses {
     let state: &RegistryState = state.inner();
+
+    if !token.validated_token {
+        return Responses::MustAuthenticate {
+            challenge: token.get_push_challenge(repository),
+        };
+    }
 
     println!("1");
 

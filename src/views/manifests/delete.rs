@@ -97,6 +97,12 @@ pub(crate) async fn delete_by_tag(
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
+    if !token.validated_token {
+        return Responses::MustAuthenticate {
+            challenge: token.get_push_challenge(repository),
+        };
+    }
+
     if !token.has_permission(&repository, &"push".to_string()) {
         return Responses::AccessDenied {};
     }

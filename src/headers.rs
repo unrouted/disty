@@ -117,7 +117,7 @@ impl Token {
         format!("Bearer realm=\"{realm}\",service=\"{service}\",scope=\"repository:{repository}:pull,push\"")
     }
 
-    pub fn get_general_challenge(&self, repository: RepositoryName) -> String {
+    pub fn get_general_challenge(&self) -> String {
         let service = self
             .service
             .as_ref()

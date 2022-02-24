@@ -158,6 +158,12 @@ pub(crate) async fn get_by_tag(
 ) -> Responses {
     let state: &RegistryState = state.inner();
 
+    if !token.validated_token {
+        return Responses::MustAuthenticate {
+            challenge: token.get_pull_challenge(repository),
+        };
+    }
+
     if !token.has_permission(&repository, &"push".to_string()) {
         debug!("User does not have permission");
         return Responses::AccessDenied {};
