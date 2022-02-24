@@ -19,8 +19,10 @@ impl<'r> FromParam<'r> for RepositoryName {
     type Error = &'r str;
 
     fn from_param(param: &'r str) -> Result<Self, Self::Error> {
+        let param = param.to_string();
+
         Ok(Self {
-            name: param.to_string(),
+            name: urlencoding::decode(&param).unwrap().into_owned(),
         })
     }
 }
