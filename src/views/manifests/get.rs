@@ -212,7 +212,7 @@ pub(crate) async fn get_by_tag(
         },
         _ => {
             debug!("Could not open file");
-            return Responses::ManifestNotFound {};
+            Responses::ManifestNotFound {}
         }
     }
 }

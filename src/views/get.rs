@@ -45,7 +45,7 @@ pub(crate) async fn get(state: &State<RegistryState>, token: &State<Token>) -> R
     let token: &Token = token.inner();
 
     if !token.validated_token {
-        Responses::MustAuthenticate {
+        return Responses::MustAuthenticate {
             challenge: token.get_general_challenge(),
         };
     }

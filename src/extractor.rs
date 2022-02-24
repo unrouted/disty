@@ -325,7 +325,7 @@ mod tests {
         "#
         .to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), false);
+        assert!(extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -337,7 +337,7 @@ mod tests {
         "#
         .to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), false);
+        assert!(extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
         "#
         .to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), false);
+        assert!(!extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -413,7 +413,7 @@ mod tests {
         "#
         .to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), true);
+        assert!(extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
             }
         "#.to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), true);
+        assert!(extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -499,6 +499,6 @@ mod tests {
             }
         "#.to_string();
 
-        assert_eq!(extractor.validate(&content_type, &data), true);
+        assert!(extractor.validate(&content_type, &data));
     }
 }
