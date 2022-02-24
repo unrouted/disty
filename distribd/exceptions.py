@@ -156,22 +156,6 @@ class Unauthorized(web.HTTPUnauthorized):
         )
 
 
-class Denied(JSONExceptionMixin, web.HTTPForbidden):
-
-    """The access controller denied access for the operation on a resource."""
-
-    code = "DENIED"
-    message = "requested access to the resource is denied"
-
-
-class Unsupported(JSONExceptionMixin, web.HTTPBadRequest):
-
-    """The operation was unsupported due to a missing implementation or invalid set of parameters."""
-
-    code = "UNSUPPORTED"
-    message = "The operation is unsupported."
-
-
 class LeaderUnavailable(JSONExceptionMixin, web.HTTPServiceUnavailable):
 
     """Cannot safely perform an operation because this node does not have leader."""

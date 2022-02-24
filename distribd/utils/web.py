@@ -2,8 +2,6 @@ import asyncio
 
 import aiohttp.web
 
-from .tls import create_server_context
-
 
 async def run_server(
     raft, server_name, bind_config, routes, access_log_class=None, **context
@@ -30,7 +28,6 @@ async def run_server(
         host,
         port,
         shutdown_timeout=1.0,
-        ssl_context=create_server_context(bind_config["tls"]),
     )
     await site.start()
 

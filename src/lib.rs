@@ -4,7 +4,6 @@ extern crate rocket;
 mod extractor;
 mod headers;
 mod registry;
-mod responses;
 mod token;
 mod types;
 mod utils;
