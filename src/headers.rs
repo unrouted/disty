@@ -98,7 +98,7 @@ pub(crate) struct Token {
 }
 
 impl Token {
-    pub fn get_pull_challenge(&self, repository: RepositoryName) -> String {
+    pub fn get_challenge(&self, access: Vec<Access>) -> String {
         let service = self
             .service
             .as_ref()
@@ -107,22 +107,35 @@ impl Token {
             .realm
             .as_ref()
             .expect("Service should not start with auth on but no 'realm' config");
-        format!(
-            "Bearer realm=\"{realm}\",service=\"{service}\",scope=\"repository:{repository}:pull\""
-        )
+
+        let mut scopes = vec![];
+        for req in access.iter() {
+            let repository = &req.repository;
+            let actions = req
+                .permissions
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(",");
+            scopes.push(format!("repository:{repository}:{actions}"));
+        }
+        let scope = scopes.join(" ");
+
+        format!("Bearer realm=\"{realm}\",service=\"{service}\",scope=\"{scope}\"")
+    }
+
+    pub fn get_pull_challenge(&self, repository: RepositoryName) -> String {
+        self.get_challenge(vec![Access {
+            repository,
+            permissions: HashSet::from(["pull".to_string()]),
+        }])
     }
 
     pub fn get_push_challenge(&self, repository: RepositoryName) -> String {
-        let service = self
-            .service
-            .as_ref()
-            .expect("Service should not start with auth on but no 'service' config");
-        let realm = self
-            .realm
-            .as_ref()
-            .expect("Service should not start with auth on but no 'realm' config");
-
-        format!("Bearer realm=\"{realm}\",service=\"{service}\",scope=\"repository:{repository}:pull,push\"")
+        self.get_challenge(vec![Access {
+            repository,
+            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
+        }])
     }
 
     pub fn get_general_challenge(&self) -> String {

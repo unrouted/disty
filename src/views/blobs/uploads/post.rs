@@ -1,3 +1,4 @@
+use crate::headers::Access;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
@@ -11,8 +12,10 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
+use std::collections::HashSet;
 use std::io::Cursor;
 use uuid::Uuid;
+
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -137,8 +140,20 @@ pub(crate) async fn post(
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
+        let mut access = vec![Access {
+            repository,
+            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
+        }];
+
+        if let Some(from) = from {
+            access.push(Access {
+                repository: from,
+                permissions: HashSet::from(["pull".to_string()]),
+            });
+        }
+
         return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
+            challenge: token.get_challenge(access),
         };
     }
 
