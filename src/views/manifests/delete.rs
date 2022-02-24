@@ -67,7 +67,7 @@ pub(crate) async fn delete(
         };
     }
 
-    if !token.has_permission(&repository, &"push".to_string()) {
+    if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
 
@@ -103,7 +103,7 @@ pub(crate) async fn delete_by_tag(
         };
     }
 
-    if !token.has_permission(&repository, &"push".to_string()) {
+    if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
 

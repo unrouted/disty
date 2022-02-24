@@ -117,7 +117,7 @@ pub(crate) async fn get(
         };
     }
 
-    if !token.has_permission(&repository, &"pull".to_string()) {
+    if !token.has_permission(&repository, "pull") {
         return Responses::AccessDenied {};
     }
 

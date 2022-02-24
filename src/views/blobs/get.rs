@@ -100,7 +100,7 @@ pub(crate) async fn get(
         };
     }
 
-    if !token.has_permission(&repository, &"pull".to_string()) {
+    if !token.has_permission(&repository, "pull") {
         info!("Token does not have access to perform this action");
         return Responses::AccessDenied {};
     }

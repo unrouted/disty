@@ -117,7 +117,7 @@ pub(crate) async fn put(
 
     println!("1");
 
-    if !token.has_permission(&repository, &"push".to_string()) {
+    if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
     println!("1");

@@ -22,7 +22,7 @@ impl<'r> FromRequest<'r> for ContentRange {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let token = req.headers().get_one("content-range");
         match token {
-            Some(token) => match token.split_once("-") {
+            Some(token) => match token.split_once('-') {
                 Some((start, stop)) => {
                     let start: u64 = match start.parse() {
                         Ok(value) => value,
@@ -220,7 +220,7 @@ impl<'r> FromRequest<'r> for Token {
             }
         };
 
-        let (token_type, token_bytes) = match header.split_once(" ") {
+        let (token_type, token_bytes) = match header.split_once(' ') {
             Some(value) => value,
             _ => return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
         };

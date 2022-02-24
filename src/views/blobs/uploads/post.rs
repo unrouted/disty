@@ -157,7 +157,7 @@ pub(crate) async fn post(
         };
     }
 
-    if !token.has_permission(&repository, &"push".to_string()) {
+    if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
 
@@ -166,7 +166,7 @@ pub(crate) async fn post(
             return Responses::UploadInvalid {};
         }
 
-        if !token.has_permission(&from, &"pull".to_string()) {
+        if !token.has_permission(&from, "pull") {
             return Responses::UploadInvalid {};
         }
 

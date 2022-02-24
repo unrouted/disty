@@ -140,7 +140,7 @@ pub(crate) async fn patch(
         };
     }
 
-    if !token.has_permission(&repository, &"push".to_string()) {
+    if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
 

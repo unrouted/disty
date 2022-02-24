@@ -112,7 +112,7 @@ pub(crate) async fn get(
         };
     }
 
-    if !token.has_permission(&repository, &"pull".to_string()) {
+    if !token.has_permission(&repository, "pull") {
         return Responses::AccessDenied {};
     }
 
@@ -164,7 +164,7 @@ pub(crate) async fn get_by_tag(
         };
     }
 
-    if !token.has_permission(&repository, &"pull".to_string()) {
+    if !token.has_permission(&repository, "pull") {
         debug!("User does not have permission");
         return Responses::AccessDenied {};
     }

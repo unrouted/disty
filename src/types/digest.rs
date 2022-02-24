@@ -66,7 +66,7 @@ impl<'r> FromParam<'r> for Digest {
             return Err(param);
         }
 
-        match param.to_string().split_once(":") {
+        match param.to_string().split_once(':') {
             Some((algo, digest)) => Ok(Digest {
                 algo: algo.to_string(),
                 hash: digest.to_string(),
