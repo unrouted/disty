@@ -154,7 +154,7 @@ pub(crate) async fn put(
         },
         RegistryAction::ManifestStored {
             digest: digest.clone(),
-            location: "FIXME".to_string(),
+            location: state.machine_identifier.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::ManifestStat {
