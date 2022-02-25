@@ -12,18 +12,16 @@ raft:
     port: 8080
 
 registry:
-    default:
-        address: 0.0.0.0
-        port: 9080
+    address: 0.0.0.0
+    port: 9080
 
-        token_server:
-            enabled: true
+token_server:
+    enabled: true
 
-            realm: http://docker_auth:5001/auth
-            service: My registry
-            issuer: "Acme auth server"
-            public_key: token_server.pub
-
+    realm: http://docker_auth:5001/auth
+    service: My registry
+    issuer: "Acme auth server"
+    public_key: token_server.pub
 
 prometheus:
     address: 0.0.0.0
@@ -33,16 +31,28 @@ storage: var
 
 peers:
     - name: node1
-      address: node1
-      port: 8080
+      raft:
+        address: node1
+        port: 8080
+      registry:
+        address: node1
+        port: 9080
 
     - name: node2
-      address: node2
-      port: 8080
+      raft:
+        address: node2
+        port: 8080
+      registry:
+        address: node2
+        port: 9080
 
     - name: node3
-      address: node3
-      port: 8080
+      raft:
+        address: node3
+        port: 8080
+      registry:
+        address: node3
+        port: 9080
 
 """
 
@@ -128,7 +138,14 @@ docker_auth = container(
     network="{temporary_network.name}",
 )
 
-distribd_image = build(path=".")
+distribd_image = build(
+    path=".",
+    tag="localhost/dev/distribd/integration:HEAD",
+    stages={
+        "base": "localhost/dev/distribd/integration-base:HEAD",
+        "builder": "localhost/dev/distribd/integration-builder:HEAD",
+    },
+)
 
 distribd_config = volume(
     initial_content={

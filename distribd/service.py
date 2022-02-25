@@ -27,9 +27,6 @@ async def main(argv=None, config=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", dest="node.identifier")
-    parser.add_argument("--raft-address", dest="raft.address")
-    parser.add_argument("--registry-address", dest="registry.default.address")
-    parser.add_argument("--prometheus-address", dest="prometheus.address")
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     if not config:
@@ -103,7 +100,7 @@ async def main(argv=None, config=None):
     except confuse.exceptions.NotFoundError:
         webhooks = []
 
-    token_server = config["registry"]["default"]["token_server"]
+    token_server = config["token_server"]
     if token_server["enabled"].get(bool):
         token_config = {
             "enabled": True,

@@ -3,17 +3,16 @@ raft:
     port: 8080
 
 registry:
-    default:
-        address: 0.0.0.0
-        port: 8000
+    address: 0.0.0.0
+    port: 8000
 
-        token_server:
-            enabled: false
+token_server:
+    enabled: false
 
-            realm: http://localhost:5001/auth
-            service: My registry
-            issuer: My issuer
-            public_key: token_server.pub
+    realm: http://localhost:5001/auth
+    service: My registry
+    issuer: My issuer
+    public_key: token_server.pub
 
 
 prometheus:

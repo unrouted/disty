@@ -33,8 +33,8 @@ class Raft:
         self.peers = {}
         for peer in self.config["peers"].get(list):
             self.peers[peer["name"]] = {
-                "address": peer["address"],
-                "port": peer["port"],
+                "address": peer["raft"]["address"],
+                "port": peer["raft"]["port"],
             }
 
         self._closed = False
