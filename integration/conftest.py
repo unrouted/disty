@@ -142,7 +142,6 @@ distribd_image = build(
     path=".",
     tag="localhost/dev/distribd/integration:HEAD",
     stages={
-        "base": "localhost/dev/distribd/integration-base:HEAD",
         "builder": "localhost/dev/distribd/integration-builder:HEAD",
     },
 )
