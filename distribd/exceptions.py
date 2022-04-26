@@ -45,7 +45,7 @@ class BlobUploadInvalid(JSONExceptionMixin, web.HTTPBadRequest):
 
 class DigestInvalid(JSONExceptionMixin, web.HTTPBadRequest):
 
-    """ When a blob is uploaded, the registry will check that the content matches the digest provided by the client. The error MAY include a detail structure with the key "digest", including the invalid digest string. This error MAY also be returned when a manifest includes an invalid layer digest. """
+    """When a blob is uploaded, the registry will check that the content matches the digest provided by the client. The error MAY include a detail structure with the key "digest", including the invalid digest string. This error MAY also be returned when a manifest includes an invalid layer digest."""
 
     code = "DIGEST_INVALID"
     message = "provided digest did not match uploaded content"
@@ -154,22 +154,6 @@ class Unauthorized(web.HTTPUnauthorized):
             },
             text=json.dumps({"errors": [error]}),
         )
-
-
-class Denied(JSONExceptionMixin, web.HTTPForbidden):
-
-    """The access controller denied access for the operation on a resource."""
-
-    code = "DENIED"
-    message = "requested access to the resource is denied"
-
-
-class Unsupported(JSONExceptionMixin, web.HTTPBadRequest):
-
-    """The operation was unsupported due to a missing implementation or invalid set of parameters."""
-
-    code = "UNSUPPORTED"
-    message = "The operation is unsupported."
 
 
 class LeaderUnavailable(JSONExceptionMixin, web.HTTPServiceUnavailable):

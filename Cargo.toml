@@ -1,0 +1,33 @@
+[package]
+name = "distribd"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "distribd"
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = "thin"
+overflow-checks = true
+
+[dependencies]
+pyo3 = "0.15.1"
+pyo3-asyncio = { version = "0.15", features = ["tokio-runtime"] }
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.4", features = ["full"] }
+rocket = "0.5.0-rc.1"
+serde = "1.0.36"
+data-encoding = "2.3.2"
+ring = "0.16.20"
+serde_json = "1.0.79"
+uuid = { version = "0.8.2", features=["v4"] }
+jwt-simple = { git = "https://github.com/jedisct1/rust-jwt-simple" }
+regex = "1.5.4"
+jsonschema = "0.15"
+log = "0.4.14"
+urlencoding = "2.1.0"
+
+[build-dependencies]
+pyo3-build-config = "*"

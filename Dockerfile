@@ -1,30 +1,29 @@
-FROM alpine:3.11 as base
+FROM rust:alpine3.15 as builder
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
+RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev make g++ curl
+RUN python3 -m venv /app && /app/bin/python -m pip install -U pip setuptools wheel
 
-FROM base as builder
+WORKDIR /src
 
-ENV PIP_DEFAULT_TIMEOUT=100 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+RUN USER=root cargo init --lib --name distribd /src
+COPY Cargo.toml Cargo.lock /src/
+RUN RUSTFLAGS="-C target-feature=-crt-static" cargo build
 
-RUN apk add --no-cache python3-dev gcc libffi-dev musl-dev openssl-dev make g++
-RUN python3 -m pip install poetry
+COPY requirements.txt /src/requirements.txt
+RUN /app/bin/python -m pip install -r requirements.txt
 
-RUN python3 -m venv /app
+COPY . /src/
+RUN /app/bin/python -m pip install /src
 
-
-COPY pyproject.toml poetry.lock /src/
-RUN ln -s /app /src/.venv
-RUN cd /src && poetry install --no-dev
-
-COPY . /src
-RUN cd /src && poetry build && /app/bin/pip install dist/*.whl
-
-FROM base as final
+FROM alpine:3.15
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
 
 RUN apk add --no-cache libffi libstdc++ openssl python3
 COPY --from=builder /app /app
+
+COPY Rocket.toml /app/Rocket.toml
 
 CMD ["/app/bin/python", "-m", "distribd", "8080"]

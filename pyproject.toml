@@ -1,35 +1,47 @@
-[tool.poetry]
+[project]
 name = "distribd"
-version = "0.1.0"
+version = "0.2.0"
 description = "A simple replicated docker image registry"
-authors = ["John Carr <john.carr@unrouted.co.uk>"]
-license = "Apache-2.0"
+authors = [
+    {name="John Carr", email="john.carr@unrouted.co.uk"}
+]
+license = {text="Apache-2.0"}
+dependencies = [
+    "aiohttp>=3.6.2",
+    "aiofile>=3.3.0",
+    "coloredlogs>=14.0",
+    "verboselogs>=1.7",
+    "prometheus_client>=0.7.1",
+    "aiojobs>=0.2.2",
+    "jsonschema>=3.2.0",
+    "yarl>=1.4.2",
+    "pyjwt[crypto]>=1.7.1",
+    "confuse>=1.1.0",
+    "networkx>=2.4",
+    "ujson>=2.0.3"
+]
 
-[tool.poetry.dependencies]
-python = "^3.7"
-aiohttp = "^3.6.2"
-aiofile = "^3.3.0"
-coloredlogs = "^14.0"
-verboselogs = "^1.7"
-prometheus_client = "^0.7.1"
-aiojobs = "^0.2.2"
-jsonschema = "^3.2.0"
-yarl = "^1.4.2"
-pyjwt = {version = "^1.7.1", extras = ["crypto"]}
-confuse = "^1.1.0"
-networkx = "^2.4"
-uvloop = "^0.14.0"
-ujson = "^2.0.3"
-
-[tool.poetry.dev-dependencies]
-mypy = "^0.770"
-pytest = "^5.4.1"
-isort = "^4.3.21"
-pytest-aiohttp = "^0.3.0"
-black = "^19.10b0"
-flake8 = "^3.7.9"
-pytest-cov = "^2.8.1"
+[project.optional-dependencies]
+tests = [
+  "pytest>=5.4.1",
+  "pytest-aiohttp>=0.3.0",
+  "pytest-cov>=2.8.1",
+  "black>=19.10b0",
+  "isort>=4.3.21",
+  "flake8>=3.7.9",
+  "mypy>=0.770",
+  "codecov"
+]
+integration = [
+  "pytest>=5.4.1",
+  "pytest-docker-tools",
+  "httpx",
+]
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["maturin>=0.12,<0.13", 'patchelf ; platform_system=="Linux"']
+build-backend = "maturin"
+
+[tool.maturin]
+cargo-extra-args = "--features pyo3/extension-module"
+

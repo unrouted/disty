@@ -43,8 +43,7 @@ class NodeState(enum.IntEnum):
     LEADER = 4
 
 
-# SCALE = 1000
-SCALE = 10
+SCALE = 1000
 ELECTION_TICK_LOW = 150
 ELECTION_TICK_HIGH = 300
 HEARTBEAT_TICK = (ELECTION_TICK_LOW / 20) / 1000
@@ -353,7 +352,8 @@ class Machine:
     def is_append_entries_valid(self, message: Msg):
         if message.prev_index > self.log.last_index:
             logger.debug(
-                "Leader assumed we had log entry %d but we do not", message.prev_index,
+                "Leader assumed we had log entry %d but we do not",
+                message.prev_index,
             )
             return False
 

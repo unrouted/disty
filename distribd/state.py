@@ -53,6 +53,17 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_blob(self, repository, hash):
+        blob = self.graph.nodes[hash]
+
+        if blob[ATTR_TYPE] != TYPE_BLOB:
+            raise KeyError("No such hash")
+
+        if repository not in self.graph.nodes[hash][ATTR_REPOSITORIES]:
+            raise KeyError("No such hash")
+
+        return blob
+
     def is_manifest_available(self, repository, hash):
         if hash not in self.graph.nodes:
             return False
@@ -70,6 +81,20 @@ class RegistryState(Reducer):
 
         return True
 
+    def get_manifest(self, repository, hash):
+        manifest = self.graph.nodes[hash]
+
+        if manifest[ATTR_TYPE] != TYPE_MANIFEST:
+            raise KeyError("No such hash")
+
+        if repository not in self.graph.nodes[hash][ATTR_REPOSITORIES]:
+            raise KeyError("No such hash")
+
+        manifest = dict(manifest)
+        manifest["dependencies"] = []
+
+        return manifest
+
     def get_orphaned_objects(self):
         """
         Returns all nodes that have no incoming edges and are not a tag.
@@ -86,6 +111,8 @@ class RegistryState(Reducer):
         return orphaned
 
     def get_tags(self, repository):
+        logger.critical("get_tags: START: %s", repository)
+
         def _filter(node):
             n = self.graph.nodes[node]
             if n[ATTR_TYPE] != TYPE_TAG:
@@ -97,7 +124,11 @@ class RegistryState(Reducer):
         tags = subgraph_view(self.graph, _filter)
         resolved_tags = [tags.nodes[tag][ATTR_TAG] for tag in tags.nodes]
         if len(resolved_tags) == 0:
+            logger.critical("get_tags: FIN: %s: NO TAGS", repository)
             raise KeyError()
+
+        logger.critical("get_tags: FIN: %s: TAGS: %s", repository, resolved_tags)
+
         return resolved_tags
 
     def get_tag(self, repository, tag):
@@ -194,7 +225,7 @@ class RegistryState(Reducer):
                 ATTR_CONTENT_TYPE
             ]
 
-        elif entry["type"] == RegistryActions.MANIFEST_INFO:
+        elif entry["type"] == RegistryActions.MANIFEST_STAT:
             self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
 
         elif entry["type"] == RegistryActions.MANIFEST_STORED:

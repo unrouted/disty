@@ -1,6 +1,7 @@
+import pytest
+
 from distribd.actions import RegistryActions
 from distribd.state import RegistryState
-import pytest
 
 
 def test_blob_not_available_initially():

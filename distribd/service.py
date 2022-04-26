@@ -13,10 +13,8 @@ from .mirror import Mirrorer
 from .prometheus import run_prometheus
 from .raft import HttpRaft
 from .reducers import Reducers
-from .registry import run_registry
 from .state import RegistryState
 from .storage import Storage
-from .webhook import WebhookManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +27,6 @@ async def main(argv=None, config=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", dest="node.identifier")
-    parser.add_argument("--raft-address", dest="raft.address")
-    parser.add_argument("--registry-address", dest="registry.default.address")
-    parser.add_argument("--prometheus-address", dest="prometheus.address")
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     if not config:
@@ -40,6 +35,7 @@ async def main(argv=None, config=None):
     config.set_args(args, dots=True)
 
     logger.debug("Configuration directory: %s", config.config_dir())
+    logger.debug(config.dump())
 
     identifier = config["node"]["identifier"].get(str)
 
@@ -55,7 +51,8 @@ async def main(argv=None, config=None):
         machine.term = storage.current_term
     machine.log.load(storage.log)
 
-    for other_identifier in config["peers"].get(list):
+    for peer in config["peers"].get(list):
+        other_identifier = peer["name"]
         if identifier != other_identifier:
             machine.add_peer(other_identifier)
 
@@ -76,10 +73,11 @@ async def main(argv=None, config=None):
     )
 
     garbage_collector = GarbageCollector(
-        images_directory, machine.identifier, registry_state, raft.append,
+        images_directory,
+        machine.identifier,
+        registry_state,
+        raft.append,
     )
-
-    wh_manager = WebhookManager(config)
 
     reducers.add_side_effects(mirrorer.dispatch_entries)
     reducers.add_side_effects(garbage_collector.dispatch_entries)
@@ -87,23 +85,46 @@ async def main(argv=None, config=None):
     services = [
         raft.run_forever(),
         run_prometheus(
-            raft, config, machine.identifier, registry_state, images_directory,
+            raft,
+            config,
+            machine.identifier,
+            registry_state,
+            images_directory,
         ),
     ]
 
-    for listener in config["registry"]:
-        services.append(
-            run_registry(
-                raft,
-                listener,
-                config["registry"][listener],
-                machine.identifier,
-                registry_state,
-                images_directory,
-                mirrorer,
-                wh_manager,
-            )
-        )
+    from distribd.distribd import start_registry_service
+
+    try:
+        webhooks = config["webhooks"].get(list)
+    except confuse.exceptions.NotFoundError:
+        webhooks = []
+
+    token_server = config["token_server"]
+    if token_server["enabled"].get(bool):
+        token_config = {
+            "enabled": True,
+            "realm": token_server["realm"].get(str),
+            "service": token_server["service"].get(str),
+            "issuer": token_server["issuer"].get(str),
+        }
+        public_key_path = token_server["public_key"].as_path()
+        with open(public_key_path, "r") as fp:
+            token_config["public_key"] = fp.read()
+
+    else:
+        token_config = {"enabled": False}
+
+    if not start_registry_service(
+        registry_state,
+        raft.append,
+        str(images_directory),
+        webhooks,
+        token_config,
+        machine.identifier,
+        asyncio.get_running_loop(),
+    ):
+        return
 
     try:
         await asyncio.gather(*services)
@@ -112,6 +133,4 @@ async def main(argv=None, config=None):
         pass
 
     finally:
-        await asyncio.gather(
-            raft.close(), storage.close(), mirrorer.close(), wh_manager.close()
-        )
+        await asyncio.gather(raft.close(), storage.close(), mirrorer.close())
