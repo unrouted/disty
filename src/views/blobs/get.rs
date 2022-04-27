@@ -20,6 +20,7 @@ pub(crate) enum Responses {
     Ok {
         digest: Digest,
         content_type: String,
+        content_length: u64,
         file: File,
     },
 }
@@ -68,15 +69,18 @@ impl<'r> Responder<'r, 'static> for Responses {
             }
             Responses::Ok {
                 content_type,
+                content_length,
                 digest,
                 file,
             } => {
                 let content_type = Header::new("Content-Type", content_type);
                 let digest = Header::new("Docker-Content-Digest", digest.to_string());
+                let content_length = Header::new("Content-Length", content_length.to_string());
 
                 Response::build()
                     .header(content_type)
                     .header(digest)
+                    .header(content_length)
                     .status(Status::Ok)
                     .streamed_body(file)
                     .ok()
@@ -105,7 +109,15 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_blob_available(&repository, &digest) {
+    let blob = match state.get_blob(&repository, &digest) {
+        Some(blob) => blob,
+        None => {
+            return Responses::BlobNotFound {};
+        }
+    };
+
+    if matches!(blob.content_type, None) || matches!(blob.size, None) {
+        info!("Blob was present but content_type and size not available");
         return Responses::BlobNotFound {};
     }
 
@@ -116,7 +128,8 @@ pub(crate) async fn get(
 
     match File::open(path).await {
         Ok(file) => Responses::Ok {
-            content_type: "application/octet-steam".to_string(),
+            content_type: blob.content_type.unwrap(),
+            content_length: blob.size.unwrap(),
             digest,
             file,
         },

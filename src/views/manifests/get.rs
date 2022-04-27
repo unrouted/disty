@@ -20,6 +20,7 @@ pub(crate) enum Responses {
     Ok {
         digest: Digest,
         content_type: String,
+        content_length: u64,
         file: File,
     },
 }
@@ -80,15 +81,18 @@ impl<'r> Responder<'r, 'static> for Responses {
             }
             Responses::Ok {
                 content_type,
+                content_length,
                 digest,
                 file,
             } => {
                 let content_type = Header::new("Content-Type", content_type);
                 let digest = Header::new("Docker-Content-Digest", digest.to_string());
+                let content_length = Header::new("Content-Type", content_length.to_string());
 
                 Response::build()
                     .header(content_type)
                     .header(digest)
+                    .header(content_length)
                     .status(Status::Ok)
                     .streamed_body(file)
                     .ok()
@@ -134,6 +138,11 @@ pub(crate) async fn get(
         _ => return Responses::ManifestNotFound {},
     };
 
+    let content_length = match manifest.size {
+        Some(content_length) => content_length,
+        _ => return Responses::ManifestNotFound {},
+    };
+
     let path = get_manifest_path(&state.repository_path, &digest);
     if !path.is_file() {
         return Responses::ManifestNotFound {};
@@ -142,6 +151,7 @@ pub(crate) async fn get(
     match File::open(path).await {
         Ok(file) => Responses::Ok {
             content_type,
+            content_length,
             digest,
             file,
         },
@@ -198,6 +208,14 @@ pub(crate) async fn get_by_tag(
         }
     };
 
+    let content_length = match manifest.size {
+        Some(content_length) => content_length,
+        _ => {
+            debug!("Could not extract content length from graph");
+            return Responses::ManifestNotFound {};
+        }
+    };
+
     let path = get_manifest_path(&state.repository_path, &digest);
     if !path.is_file() {
         debug!("Expected manifest file does not exist");
@@ -207,6 +225,7 @@ pub(crate) async fn get_by_tag(
     match File::open(path).await {
         Ok(file) => Responses::Ok {
             content_type,
+            content_length,
             digest,
             file,
         },
