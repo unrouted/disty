@@ -124,8 +124,8 @@ class Mirrorer:
             if location not in self.peers:
                 continue
 
-            address = self.peers[location]["registry"]["address"]
-            port = self.peers[location]["registry"]["port"]
+            address = self.peers[location]["address"]
+            port = self.peers[location]["port"]
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/blobs/{hash}")
 
@@ -177,8 +177,8 @@ class Mirrorer:
             if location not in self.peers:
                 continue
 
-            address = self.peers[location]["registry"]["address"]
-            port = self.peers[location]["registry"]["port"]
+            address = self.peers[location]["address"]
+            port = self.peers[location]["port"]
             url = f"http://{address}:{port}"
             urls.append(f"{url}/v2/{repo}/manifests/{hash}")
 
