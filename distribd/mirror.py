@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
 
 class Mirrorer:
     def __init__(self, config, peers, image_directory, identifier, state, send_action):
-        self.peers = peers
+        self.peers = {}
+        for peer in self.config["peers"].get(list):
+            self.peers[peer["name"]] = {
+                "address": peer["registry"]["address"],
+                "port": peer["registry"]["port"],
+            }
         self.image_directory = image_directory
         self.identifier = identifier
         self.state = state
