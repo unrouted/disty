@@ -119,10 +119,7 @@ pub(crate) async fn get(
 
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
-        _ => {
-            info!("Blob was present but content_type not available");
-            return Responses::BlobNotFound {};
-        }
+        _ => "application/octet-steam".to_string(),
     };
 
     let content_length = match blob.size {
