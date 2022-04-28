@@ -112,24 +112,37 @@ pub(crate) async fn get(
     let blob = match state.get_blob(&repository, &digest) {
         Some(blob) => blob,
         None => {
+            info!("get_blob returned no blob found");
             return Responses::BlobNotFound {};
         }
     };
 
-    if matches!(blob.content_type, None) || matches!(blob.size, None) {
-        info!("Blob was present but content_type and size not available");
-        return Responses::BlobNotFound {};
-    }
+    let content_type = match blob.content_type {
+        Some(content_type) => content_type,
+        _ => {
+            info!("Blob was present but content_type not available");
+            return Responses::BlobNotFound {};
+        }
+    };
+
+    let content_length = match blob.size {
+        Some(content_length) => content_length,
+        _ => {
+            info!("Blob was present but size not available");
+            return Responses::BlobNotFound {};
+        }
+    };
 
     let path = get_blob_path(&state.repository_path, &digest);
     if !path.is_file() {
+        info!("Blob was not present on disk");
         return Responses::BlobNotFound {};
     }
 
     match File::open(path).await {
         Ok(file) => Responses::Ok {
-            content_type: blob.content_type.unwrap(),
-            content_length: blob.size.unwrap(),
+            content_type: content_type,
+            content_length: content_length,
             digest,
             file,
         },
