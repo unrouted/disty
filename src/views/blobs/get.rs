@@ -141,8 +141,8 @@ pub(crate) async fn get(
 
     match File::open(path).await {
         Ok(file) => Responses::Ok {
-            content_type: content_type,
-            content_length: content_length,
+            content_type,
+            content_length,
             digest,
             file,
         },
