@@ -75,14 +75,12 @@ impl<'r> Responder<'r, 'static> for Responses {
             } => {
                 let content_type = Header::new("Content-Type", content_type);
                 let digest = Header::new("Docker-Content-Digest", digest.to_string());
-                let content_length = Header::new("Content-Length", content_length.to_string());
 
                 Response::build()
                     .header(content_type)
                     .header(digest)
-                    .header(content_length)
                     .status(Status::Ok)
-                    .streamed_body(file)
+                    .sized_body(Some(content_length as usize), file)
                     .ok()
             }
         }
