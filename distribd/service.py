@@ -73,7 +73,7 @@ async def main(argv=None, config=None):
     )
 
     garbage_collector = do_garbage_collect(
-        machine.identifier,
+        machine,
         registry_state,
         raft.append,
         images_directory,
