@@ -28,7 +28,7 @@ MINIMUM_GARBAGE_AGE = 60 * 60 * 12
 
 
 async def do_garbage_collect_phase1(machine, state, send_action):
-    if machine.leader != machine.identifier:
+    if not machine.is_leader:
         logger.info("Garbage collection: Phase 1: Not leader")
         return
 

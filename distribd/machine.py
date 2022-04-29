@@ -199,6 +199,10 @@ class Machine:
         return math.floor(self.cluster_size / 2) + 1
 
     @property
+    def is_leader(self):
+        return self.state == NodeState.LEADER
+
+    @property
     def leader_active(self):
         if self.state == NodeState.LEADER:
             return True
