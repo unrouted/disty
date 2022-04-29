@@ -9,6 +9,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
@@ -78,6 +79,7 @@ pub(crate) async fn delete(
     }
 
     let actions = vec![RegistryAction::BlobUnmounted {
+        timestamp: Utc::now(),
         digest,
         repository,
         user: token.sub.clone(),

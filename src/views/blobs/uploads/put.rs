@@ -12,6 +12,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -167,15 +168,18 @@ pub(crate) async fn put(
 
     let actions = vec![
         RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             repository: repository.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::BlobStat {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             size: stat.len(),
         },
         RegistryAction::BlobStored {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             location: state.machine_identifier.clone(),
             user: token.sub.clone(),
@@ -185,7 +189,6 @@ pub(crate) async fn put(
     if !state.send_actions(actions).await {
         return Responses::UploadInvalid {};
     }
-    println!("1");
 
     Responses::Ok { repository, digest }
 }

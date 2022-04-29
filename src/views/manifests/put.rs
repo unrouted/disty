@@ -15,6 +15,8 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use chrono::prelude::*;
+
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -148,21 +150,23 @@ pub(crate) async fn put(
 
     let mut actions = vec![
         RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             repository: repository.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::ManifestStored {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             location: state.machine_identifier.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::ManifestStat {
+            timestamp: Utc::now(),
             digest: digest.clone(),
             size,
         },
     ];
-    println!("running extractor");
 
     let extracted = match extracted {
         Ok(extracted_actions) => extracted_actions,
@@ -172,6 +176,7 @@ pub(crate) async fn put(
     };
     actions.append(&mut extracted.clone());
     actions.append(&mut vec![RegistryAction::HashTagged {
+        timestamp: Utc::now(),
         repository: repository.clone(),
         digest: digest.clone(),
         tag: tag.clone(),

@@ -4,6 +4,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use chrono::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
@@ -204,6 +205,7 @@ impl Extractor {
         match dependencies {
             Ok(dependencies) => {
                 analysis.push(RegistryAction::ManifestInfo {
+                    timestamp: Utc::now(),
                     digest: digest.clone(),
                     content_type: content_type.to_string(),
                     dependencies: dependencies
@@ -244,6 +246,7 @@ impl Extractor {
 
                 if !self.schemas.contains_key(&extraction.content_type) {
                     analysis.push(RegistryAction::BlobInfo {
+                        timestamp: Utc::now(),
                         digest: extraction.digest.clone(),
                         content_type: extraction.content_type.clone(),
                         dependencies: vec![],
@@ -267,6 +270,7 @@ impl Extractor {
                         match dependencies {
                             Ok(dependencies) => {
                                 analysis.push(RegistryAction::BlobInfo {
+                                    timestamp: Utc::now(),
                                     digest: extraction.digest.clone(),
                                     content_type: extraction.content_type.clone(),
                                     dependencies: dependencies

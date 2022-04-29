@@ -9,6 +9,8 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use chrono::prelude::*;
+
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
     AccessDenied {},
@@ -76,6 +78,7 @@ pub(crate) async fn delete(
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
+        timestamp: Utc::now(),
         digest,
         repository,
         user: token.sub.clone(),
@@ -117,6 +120,7 @@ pub(crate) async fn delete_by_tag(
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
+        timestamp: Utc::now(),
         digest,
         repository,
         user: token.sub.clone(),

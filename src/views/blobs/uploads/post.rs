@@ -15,6 +15,7 @@ use rocket::State;
 use std::collections::HashSet;
 use std::io::Cursor;
 use uuid::Uuid;
+use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -172,6 +173,7 @@ pub(crate) async fn post(
 
         if state.is_blob_available(&from, &mount) {
             let actions = vec![RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
                 digest: mount.clone(),
                 repository: repository.clone(),
                 user: token.sub.clone(),
@@ -221,15 +223,18 @@ pub(crate) async fn post(
 
             let actions = vec![
                 RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
                     digest: digest.clone(),
                     repository: repository.clone(),
                     user: token.sub.clone(),
                 },
                 RegistryAction::BlobStat {
+                    timestamp: Utc::now(),
                     digest: digest.clone(),
                     size: stat.len(),
                 },
                 RegistryAction::BlobStored {
+                    timestamp: Utc::now(),
                     digest: digest.clone(),
                     location: state.machine_identifier.clone(),
                     user: token.sub.clone(),
