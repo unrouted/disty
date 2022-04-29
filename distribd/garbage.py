@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import pathlib
+import datetime
 
 from .actions import RegistryActions
 from .state import (
@@ -54,6 +55,9 @@ async def do_garbage_collect_phase1(machine, state, send_action):
             actions.append(
                 {
                     "type": action,
+                    "timestamp": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
                     "hash": garbage_hash,
                     "repository": repository,
                 }
@@ -120,6 +124,9 @@ async def do_garbage_collect_phase2(machine, state, send_action, image_directory
             actions.append(
                 {
                     "type": RegistryActions.BLOB_UNSTORED,
+                    "timestamp": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
                     "hash": garbage_hash,
                     "location": machine.identifier,
                 }
@@ -133,6 +140,9 @@ async def do_garbage_collect_phase2(machine, state, send_action, image_directory
             actions.append(
                 {
                     "type": RegistryActions.MANIFEST_UNSTORED,
+                    "timestamp": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
                     "hash": garbage_hash,
                     "location": machine.identifier,
                 }

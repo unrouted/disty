@@ -16,6 +16,7 @@ ATTR_REPOSITORIES = "repositories"
 ATTR_TYPE = "type"
 ATTR_LOCATIONS = "locations"
 ATTR_LOCATION = "location"
+ATTR_TIMESTAMP = "timestamp"
 
 TYPE_MANIFEST = "manifest"
 TYPE_BLOB = "blob"
@@ -139,6 +140,8 @@ class RegistryState(Reducer):
 
     def dispatch(self, entry):
         logger.critical("Applying %s", entry)
+
+        timestamp = entry.get(ATTR_TIMESTAMP, "2022-04-29T17:03:04.285771+00:00")
 
         if entry["type"] == RegistryActions.HASH_TAGGED:
             tag = entry[ATTR_TAG]

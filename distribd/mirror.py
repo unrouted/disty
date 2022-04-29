@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import uuid
+import datetime
 
 from aiofile import AIOFile, Writer
 import aiohttp
@@ -143,6 +144,9 @@ class Mirrorer:
                     [
                         {
                             "type": RegistryActions.BLOB_STORED,
+                            "timestamp": datetime.datetime.now(
+                                datetime.timezone.utc
+                            ).isoformat(),
                             "hash": hash,
                             "location": self.identifier,
                             "user": "$internal",
@@ -196,6 +200,9 @@ class Mirrorer:
                     [
                         {
                             "type": RegistryActions.MANIFEST_STORED,
+                            "timestamp": datetime.datetime.now(
+                                datetime.timezone.utc
+                            ).isoformat(),
                             "hash": hash,
                             "location": self.identifier,
                             "user": "$internal",
