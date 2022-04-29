@@ -1,11 +1,15 @@
 import asyncio
 import logging
 import pathlib
-import time
 
 from .actions import RegistryActions
-from .jobs import WorkerPool
-from .state import ATTR_LOCATIONS, ATTR_TYPE, TYPE_BLOB, TYPE_MANIFEST
+from .state import (
+    ATTR_LOCATIONS,
+    ATTR_REPOSITORIES,
+    ATTR_TYPE,
+    TYPE_BLOB,
+    TYPE_MANIFEST,
+)
 from .utils.registry import get_blob_path, get_manifest_path
 
 logger = logging.getLogger(__name__)
@@ -23,114 +27,134 @@ GARBAGE_COLLECTION_TRIGGER = [
 MINIMUM_GARBAGE_AGE = 60 * 60 * 12
 
 
-class GarbageCollector:
-    def __init__(self, image_directory, identifier, state, send_action):
-        self.image_directory = image_directory
-        self.identifier = identifier
-        self.state = state
-        self.send_action = send_action
+async def do_garbage_collect_phase1(machine, state, send_action):
+    if machine.leader != machine.identifier:
+        logger.info("Garbage collection: Phase 1: Not leader")
+        return
 
-        self.pool = WorkerPool()
-        self._futures = {}
+    logger.info(
+        "Garbage collection: Phase 1: Sweeping for mounted objects with no dependents"
+    )
 
-        self._lock = asyncio.Lock()
+    actions = []
 
-    async def close(self):
-        await self.pool.close()
+    for garbage_hash in state.get_orphaned_objects():
+        object = state[garbage_hash]
 
-    def should_garbage_collect(self, entries):
-        for term, entry in entries:
-            if "type" not in entry:
+        if object[ATTR_TYPE] == TYPE_BLOB:
+            action = RegistryActions.BLOB_UNMOUNTED
+        elif object[ATTR_TYPE] == TYPE_MANIFEST:
+            action = RegistryActions.MANIFEST_UNMOUNTED
+        else:
+            continue
+
+        # FIXME: Consider last modified date
+
+        for repository in object[ATTR_REPOSITORIES]:
+            actions.append(
+                {
+                    "type": action,
+                    "hash": garbage_hash,
+                    "repository": repository,
+                }
+            )
+
+    if actions:
+        logger.info("Garbage collection: Phase 1: Reaped %d mounts", len(actions))
+        await send_action(actions)
+
+
+def cleanup_object(image_directory: pathlib.Path, path: pathlib.Path):
+    if path.exists():
+        try:
+            logger.info("Unlinking orphaned object: %s", path)
+            path.unlink()
+        except pathlib.FileNotFoundError:
+            pass
+
+    # Clean empty directories caused by cleanup. Given
+    #
+    # a = pathlib.Path("/etc/foo")
+    # b = pathlib.Path("/etc")
+    #
+    # a.is_relative_to(b) == True
+    # a.parent.is_relative_to(b) == True
+    # a.parent.parent.is_relative_to(b) == False
+    #
+    # Then traverse up until the parent directory is not relative to image_directory
+    # As that means the current path *is* the image directory.
+
+    while path.parent.is_relative_to(image_directory):
+        try:
+            next(path.iterdir())
+
+        except StopIteration:
+            logger.info("Unlinking empty directory: %s", path)
+            path.rmdir()
+
+            path = path.parent
+
+        finally:
+            break
+
+    return True
+
+
+async def do_garbage_collect_phase2(machine, state, send_action, image_directory):
+    logger.info(
+        "Garbage collection: Phase 1: Sweeping for unmounted objects that can be unstored"
+    )
+
+    actions = []
+
+    for garbage_hash in state.get_orphaned_objects():
+        object = state[garbage_hash]
+
+        if machine.identifier not in object[ATTR_LOCATIONS]:
+            continue
+
+        if object[ATTR_TYPE] == TYPE_BLOB:
+            path = get_blob_path(image_directory, garbage_hash)
+            if not cleanup_object(image_directory, path):
+                continue
+            actions.append(
+                {
+                    "type": RegistryActions.BLOB_UNSTORED,
+                    "hash": garbage_hash,
+                    "location": machine.identifier,
+                }
+            )
+
+        elif object[ATTR_TYPE] == TYPE_MANIFEST:
+            path = get_manifest_path(image_directory, garbage_hash)
+            if not cleanup_object(image_directory, path):
                 continue
 
-            if entry["type"] in GARBAGE_COLLECTION_TRIGGER:
-                return True
+            actions.append(
+                {
+                    "type": RegistryActions.MANIFEST_UNSTORED,
+                    "hash": garbage_hash,
+                    "location": machine.identifier,
+                }
+            )
 
-        return False
+    if actions:
+        logger.info("Garbage collection: Phase 2: Reaped %d stores", len(actions))
+        await send_action(actions)
 
-    def cleanup_object(self, image_directory: pathlib.Path, path: pathlib.Path):
-        if path.exists():
-            mtime = time.time() - path.stat().st_mtime
-            if mtime < MINIMUM_GARBAGE_AGE:
-                logger.debug(
-                    "Skipped orphaned object: %s (younger than 12 hours)", path
-                )
-                return False
 
-            try:
-                logger.debug("Unlinking orphaned object: %s", path)
-                path.unlink()
-            except pathlib.FileNotFoundError:
-                pass
+async def do_garbage_collect(machine, state, send_action, image_directory):
+    while True:
+        try:
+            await do_garbage_collect_phase1(machine, state, send_action)
+            await do_garbage_collect_phase2(
+                machine, state, send_action, image_directory
+            )
 
-        # Clean empty directories caused by cleanup. Given
-        #
-        # a = pathlib.Path("/etc/foo")
-        # b = pathlib.Path("/etc")
-        #
-        # a.is_relative_to(b) == True
-        # a.parent.is_relative_to(b) == True
-        # a.parent.parent.is_relative_to(b) == False
-        #
-        # Then traverse up until the parent directory is not relative to image_directory
-        # As that means the current path *is* the image directory.
+        except asyncio.CancelledError:
+            return
 
-        while path.parent.is_relative_to(image_directory):
-            try:
-                next(path.iterdir())
+        except Exception:
+            logger.exception("Unhandled error whilst collecting garbage")
 
-            except StopIteration:
-                logger.debug("Unlinking empty directory: %s", path)
-                path.rmdir()
-
-                path = path.parent
-
-            finally:
-                break
-
-        return True
-
-    async def garbage_collect(self, state):
-        async with self._lock:
-            actions = []
-
-            for garbage_hash in state.get_orphaned_objects():
-                object = state[garbage_hash]
-
-                if self.identifier not in object[ATTR_LOCATIONS]:
-                    continue
-
-                if object[ATTR_TYPE] == TYPE_BLOB:
-                    path = get_blob_path(self.image_directory, garbage_hash)
-                    if not self.cleanup_object(self.image_directory, path):
-                        continue
-
-                    actions.append(
-                        {
-                            "type": RegistryActions.BLOB_UNSTORED,
-                            "hash": garbage_hash,
-                            "location": self.identifier,
-                        }
-                    )
-
-                elif object[ATTR_TYPE] == TYPE_MANIFEST:
-                    path = get_manifest_path(self.image_directory, garbage_hash)
-                    if not self.cleanup_object(self.image_directory, path):
-                        continue
-
-                    actions.append(
-                        {
-                            "type": RegistryActions.MANIFEST_UNSTORED,
-                            "hash": garbage_hash,
-                            "location": self.identifier,
-                        }
-                    )
-
-            if actions:
-                await self.send_action(actions)
-
-    def dispatch_entries(self, state, entries):
-        if self.should_garbage_collect(entries):
-            logger.critical("MEMEMEMEMEMEMEME")
-            self.pool.spawn(self.garbage_collect(state))
-        pass
+        await asyncio.sleep(60)
