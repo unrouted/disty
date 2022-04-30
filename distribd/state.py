@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 from networkx import DiGraph, subgraph_view
@@ -17,6 +18,8 @@ ATTR_TYPE = "type"
 ATTR_LOCATIONS = "locations"
 ATTR_LOCATION = "location"
 ATTR_TIMESTAMP = "timestamp"
+ATTR_CREATED = "created"
+ATTR_UPDATED = "updated"
 
 TYPE_MANIFEST = "manifest"
 TYPE_BLOB = "blob"
@@ -148,12 +151,20 @@ class RegistryState(Reducer):
             repository = entry[ATTR_REPOSITORY]
             key = f"tag:{repository}:{tag}"
 
+            created = timestamp
             if key in self.graph.nodes:
+                created = self.graph.nodes[key][ATTR_CREATED]
                 self.graph.remove_node(key)
 
             self.graph.add_node(
                 key,
-                **{ATTR_TAG: tag, ATTR_REPOSITORY: repository, ATTR_TYPE: TYPE_TAG},
+                **{
+                    ATTR_TAG: tag,
+                    ATTR_REPOSITORY: repository,
+                    ATTR_TYPE: TYPE_TAG,
+                    ATTR_CREATED: created,
+                    ATTR_UPDATED: timestamp,
+                },
             )
             self.graph.add_edge(key, entry[ATTR_HASH])
 
@@ -163,38 +174,44 @@ class RegistryState(Reducer):
                     entry[ATTR_HASH],
                     **{
                         ATTR_TYPE: TYPE_BLOB,
+                        ATTR_CREATED: timestamp,
                         ATTR_REPOSITORIES: set(),
                         ATTR_LOCATIONS: set(),
                     },
                 )
 
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].add(
-                entry[ATTR_REPOSITORY]
-            )
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_REPOSITORIES].add(entry[ATTR_REPOSITORY])
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.BLOB_UNMOUNTED:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].discard(
-                entry[ATTR_REPOSITORY]
-            )
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_REPOSITORIES].discard(entry[ATTR_REPOSITORY])
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.BLOB_INFO:
+            node = self.graph.nodes[entry[ATTR_HASH]]
             for dependency in entry[ATTR_DEPENDENCIES]:
                 self.graph.add_edge(entry[ATTR_HASH], dependency)
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_CONTENT_TYPE] = entry[
-                ATTR_CONTENT_TYPE
-            ]
+            node[ATTR_CONTENT_TYPE] = entry[ATTR_CONTENT_TYPE]
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.BLOB_STAT:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_SIZE] = entry[ATTR_SIZE]
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.BLOB_STORED:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_UPDATED] = timestamp
+            node[ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
 
         elif entry["type"] == RegistryActions.BLOB_UNSTORED:
             if entry[ATTR_HASH] not in self.graph.nodes:
                 return
             node = self.graph.nodes[entry[ATTR_HASH]]
             node[ATTR_LOCATIONS].discard(entry[ATTR_LOCATION])
+            node[ATTR_UPDATED] = timestamp
             if len(node[ATTR_LOCATIONS]) == 0:
                 self.graph.remove_node(entry[ATTR_HASH])
 
@@ -204,40 +221,47 @@ class RegistryState(Reducer):
                     entry[ATTR_HASH],
                     **{
                         ATTR_TYPE: TYPE_MANIFEST,
+                        ATTR_CREATED: timestamp,
                         ATTR_REPOSITORIES: set(),
                         ATTR_LOCATIONS: set(),
                     },
                 )
 
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_REPOSITORIES].add(
-                entry[ATTR_REPOSITORY]
-            )
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_REPOSITORIES].add(entry[ATTR_REPOSITORY])
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.MANIFEST_UNMOUNTED:
             manifest = self.graph.nodes[entry[ATTR_HASH]]
             manifest[ATTR_REPOSITORIES].discard(entry[ATTR_REPOSITORY])
+            manifest[ATTR_UPDATED] = timestamp
 
             for tag in list(self.graph.predecessors(entry[ATTR_HASH])):
                 if self.graph.nodes[tag][ATTR_REPOSITORY] == entry[ATTR_REPOSITORY]:
                     self.graph.remove_node(tag)
 
         elif entry["type"] == RegistryActions.MANIFEST_INFO:
+            node = self.graph.nodes[entry[ATTR_HASH]]
             for dependency in entry[ATTR_DEPENDENCIES]:
                 self.graph.add_edge(entry[ATTR_HASH], dependency)
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_CONTENT_TYPE] = entry[
-                ATTR_CONTENT_TYPE
-            ]
+            node[ATTR_CONTENT_TYPE] = entry[ATTR_CONTENT_TYPE]
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.MANIFEST_STAT:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_SIZE] = entry[ATTR_SIZE]
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_SIZE] = entry[ATTR_SIZE]
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.MANIFEST_STORED:
-            self.graph.nodes[entry[ATTR_HASH]][ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
+            node = self.graph.nodes[entry[ATTR_HASH]]
+            node[ATTR_LOCATIONS].add(entry[ATTR_LOCATION])
+            node[ATTR_UPDATED] = timestamp
 
         elif entry["type"] == RegistryActions.MANIFEST_UNSTORED:
             if entry[ATTR_HASH] not in self.graph.nodes:
                 return
             node = self.graph.nodes[entry[ATTR_HASH]]
             node[ATTR_LOCATIONS].discard(entry[ATTR_LOCATION])
+            node[ATTR_UPDATED] = timestamp
             if len(node[ATTR_LOCATIONS]) == 0:
                 self.graph.remove_node(entry[ATTR_HASH])
