@@ -1,5 +1,6 @@
 use super::Digest;
 
+use chrono::{DateTime, Utc};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -8,6 +9,8 @@ pub struct Blob {
     pub size: Option<u64>,
     pub content_type: Option<String>,
     pub dependencies: Option<Vec<Digest>>,
+    pub created: DateTime<Utc>,
+    pub updated: DateTime<Utc>,
 }
 
 impl FromPyObject<'_> for Blob {
@@ -58,6 +61,8 @@ impl FromPyObject<'_> for Blob {
             size,
             content_type,
             dependencies: Some(dependencies),
+            created: Utc::now(),
+            updated: Utc::now(),
         })
     }
 }

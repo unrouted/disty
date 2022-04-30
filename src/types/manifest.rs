@@ -1,5 +1,6 @@
 use super::Digest;
 
+use chrono::{DateTime, Utc};
 use pyo3::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -7,6 +8,8 @@ pub struct Manifest {
     pub size: Option<u64>,
     pub content_type: Option<String>,
     pub dependencies: Option<Vec<Digest>>,
+    pub created: DateTime<Utc>,
+    pub updated:DateTime<Utc>,
 }
 
 impl FromPyObject<'_> for Manifest {
@@ -21,6 +24,8 @@ impl FromPyObject<'_> for Manifest {
             size: Some(size),
             content_type: Some(content_type),
             dependencies: Some(dependencies),
+            created: Utc::now(),
+            updated: Utc::now(),
         })
     }
 }
