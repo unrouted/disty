@@ -5,6 +5,7 @@ import datetime
 
 from .actions import RegistryActions
 from .state import (
+    ATTR_CREATED,
     ATTR_LOCATIONS,
     ATTR_REPOSITORIES,
     ATTR_TYPE,
@@ -49,7 +50,13 @@ async def do_garbage_collect_phase1(machine, state, send_action):
         else:
             continue
 
-        # FIXME: Consider last modified date
+        now = datetime.datetime.utcnow()
+        if (now - object[ATTR_CREATED]).total_seconds() < MINIMUM_GARBAGE_AGE:
+            logger.info(
+                "Garbage collection: Phase 1: %s is orphaned but less than 12 hours old",
+                garbage_hash,
+            )
+            continue
 
         for repository in object[ATTR_REPOSITORIES]:
             actions.append(
