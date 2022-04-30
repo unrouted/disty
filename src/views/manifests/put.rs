@@ -8,6 +8,7 @@ use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use crate::views::utils::get_hash;
 use crate::webhook::Event;
+use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -15,7 +16,6 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
-use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate {

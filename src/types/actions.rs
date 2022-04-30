@@ -1,7 +1,7 @@
+use chrono::prelude::*;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use serde::{Deserialize, Serialize};
-use chrono::prelude::*;
 
 use super::digest::Digest;
 use super::RepositoryName;
@@ -209,7 +209,11 @@ impl IntoPy<PyObject> for RegistryAction {
             }
             // How big is our blob store?
             //BLOB_STAT = "blob-stat"
-            RegistryAction::BlobStat { timestamp, digest, size } => {
+            RegistryAction::BlobStat {
+                timestamp,
+                digest,
+                size,
+            } => {
                 let dict = PyDict::new(py);
                 dict.set_item("type", "blob-stat").unwrap();
                 dict.set_item("timestamp", timestamp.to_rfc3339()).unwrap();
@@ -299,7 +303,11 @@ impl IntoPy<PyObject> for RegistryAction {
             }
             // How big is our manifest store?
             //MANIFEST_STAT = "manifest-stat"
-            RegistryAction::ManifestStat { timestamp, digest, size } => {
+            RegistryAction::ManifestStat {
+                timestamp,
+                digest,
+                size,
+            } => {
                 let dict = PyDict::new(py);
                 dict.set_item("type", "manifest-stat").unwrap();
                 dict.set_item("timestamp", timestamp.to_rfc3339()).unwrap();

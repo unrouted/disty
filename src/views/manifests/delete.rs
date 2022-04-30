@@ -3,13 +3,13 @@ use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
 use crate::types::RepositoryName;
+use chrono::prelude::*;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
-use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },

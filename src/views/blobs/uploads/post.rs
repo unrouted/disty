@@ -6,6 +6,7 @@ use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
 use crate::utils::get_upload_path;
+use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -15,7 +16,6 @@ use rocket::State;
 use std::collections::HashSet;
 use std::io::Cursor;
 use uuid::Uuid;
-use chrono::prelude::*;
 
 pub(crate) enum Responses {
     MustAuthenticate {

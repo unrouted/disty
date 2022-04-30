@@ -1,10 +1,10 @@
 use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
+use chrono::prelude::*;
 use jsonschema::JSONSchema;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use chrono::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {

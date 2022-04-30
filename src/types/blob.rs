@@ -3,6 +3,7 @@ use super::Digest;
 use chrono::{DateTime, Utc};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_chrono;
 
 #[derive(Debug, Clone)]
 pub struct Blob {
@@ -57,12 +58,28 @@ impl FromPyObject<'_> for Blob {
             _ => vec![],
         };
 
+        let created: pyo3_chrono::NaiveDateTime = match dict.get_item("created") {
+            Ok(value) => match value.extract() {
+                Ok(extracted) => extracted,
+                _ => return PyResult::Err(PyValueError::new_err("Extraction of 'created' failed")),
+            },
+            _ => return PyResult::Err(PyValueError::new_err("Key 'created' missing")),
+        };
+
+        let updated: pyo3_chrono::NaiveDateTime = match dict.get_item("updated") {
+            Ok(value) => match value.extract() {
+                Ok(extracted) => extracted,
+                _ => return PyResult::Err(PyValueError::new_err("Extraction of 'updated' failed")),
+            },
+            _ => return PyResult::Err(PyValueError::new_err("Key 'updated' missing")),
+        };
+
         Ok(Blob {
             size,
             content_type,
             dependencies: Some(dependencies),
-            created: Utc::now(),
-            updated: Utc::now(),
+            created: DateTime::from_utc(created.into(), Utc),
+            updated: DateTime::from_utc(updated.into(), Utc),
         })
     }
 }

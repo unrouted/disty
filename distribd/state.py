@@ -144,7 +144,8 @@ class RegistryState(Reducer):
     def dispatch(self, entry):
         logger.critical("Applying %s", entry)
 
-        timestamp = entry.get(ATTR_TIMESTAMP, "2022-04-29T17:03:04.285771+00:00")
+        timestamp_str = entry.get(ATTR_TIMESTAMP, "2022-04-29T17:03:04.285771+00:00")
+        timestamp = datetime.datetime.fromisoformat(timestamp_str)
 
         if entry["type"] == RegistryActions.HASH_TAGGED:
             tag = entry[ATTR_TAG]
