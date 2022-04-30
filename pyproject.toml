@@ -18,7 +18,8 @@ dependencies = [
     "pyjwt[crypto]>=1.7.1",
     "confuse>=1.1.0",
     "networkx>=2.4",
-    "ujson>=2.0.3"
+    "ujson>=2.0.3",
+    "iso8601"
 ]
 
 [project.optional-dependencies]

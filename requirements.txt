@@ -53,4 +53,5 @@ urllib3==1.26.8
 verboselogs==1.7
 websocket-client==1.2.3
 yarl==1.7.2
+iso8601
 codecov
