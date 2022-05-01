@@ -50,7 +50,7 @@ async def do_garbage_collect_phase1(machine, state, send_action):
         else:
             continue
 
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         if (now - object[ATTR_CREATED]).total_seconds() < MINIMUM_GARBAGE_AGE:
             logger.info(
                 "Garbage collection: Phase 1: %s is orphaned but less than 12 hours old",
