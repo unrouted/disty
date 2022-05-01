@@ -3,6 +3,7 @@ extern crate rocket;
 
 mod extractor;
 mod headers;
+mod prometheus;
 mod registry;
 mod token;
 mod types;
@@ -11,7 +12,6 @@ mod views;
 mod webhook;
 
 use pyo3::prelude::*;
-
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
 use token::TokenConfig;
@@ -82,6 +82,14 @@ fn start_registry_service(
             .manage(extractor)
             .manage(token_config)
             .mount("/v2/", crate::registry::routes())
+            .launch(),
+    );
+
+    let prometheus_conf = rocket::Config::figment().merge(("port", 7080));
+
+    runtime.spawn(
+        rocket::custom(prometheus_conf)
+            .mount("/", crate::prometheus::routes())
             .launch(),
     );
 

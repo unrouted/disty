@@ -10,7 +10,6 @@ import verboselogs
 from .garbage import do_garbage_collect
 from .machine import Machine
 from .mirror import Mirrorer
-from .prometheus import run_prometheus
 from .raft import HttpRaft
 from .reducers import Reducers
 from .state import RegistryState
@@ -84,13 +83,6 @@ async def main(argv=None, config=None):
     services = [
         raft.run_forever(),
         garbage_collector,
-        run_prometheus(
-            raft,
-            config,
-            machine.identifier,
-            registry_state,
-            images_directory,
-        ),
     ]
 
     from distribd.distribd import start_registry_service
