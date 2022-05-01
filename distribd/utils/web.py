@@ -17,7 +17,7 @@ async def run_server(
     if access_log_class:
         kwargs["access_log_class"] = access_log_class
 
-    runner = aiohttp.web.AppRunner(app, handle_signals=False, **kwargs)
+    runner = aiohttp.web.AppRunner(app, handle_signals=False, access_log=None, **kwargs)
     await runner.setup()
 
     host = bind_config["address"].get(str)
