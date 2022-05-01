@@ -113,7 +113,7 @@ def cleanup_object(image_directory: pathlib.Path, path: pathlib.Path):
 
 async def do_garbage_collect_phase2(machine, state, send_action, image_directory):
     logger.info(
-        "Garbage collection: Phase 1: Sweeping for unmounted objects that can be unstored"
+        "Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored"
     )
 
     actions = []
@@ -122,6 +122,14 @@ async def do_garbage_collect_phase2(machine, state, send_action, image_directory
         object = state[garbage_hash]
 
         if machine.identifier not in object[ATTR_LOCATIONS]:
+            continue
+
+        if len(object[ATTR_REPOSITORIES]) > 0:
+            logger.debug(
+                "Garbage collection: Phase 2: %s is orphaned but still part of %d repositories",
+                garbage_hash,
+                len(object[ATTR_REPOSITORIES]),
+            )
             continue
 
         if object[ATTR_TYPE] == TYPE_BLOB:
