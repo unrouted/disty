@@ -61,7 +61,7 @@ fn start_registry_service(
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let webhook_send = start_webhook_worker(webhooks);
+    let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();
 
     let runtime = pyo3_asyncio::tokio::get_runtime();

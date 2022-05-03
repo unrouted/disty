@@ -1,10 +1,13 @@
 use crate::types::{Digest, RepositoryName};
+use prometheus_client::encoding::text::Encode;
+use prometheus_client::registry::Registry;
 use pyo3::prelude::*;
 use regex::Regex;
 
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
 use serde_json::json;
 use tokio::sync::mpsc;
-
 #[derive(Debug)]
 pub struct WebhookConfig {
     pub url: String,
@@ -30,10 +33,23 @@ pub struct Event {
     pub tag: String,
 }
 
-pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::Sender<Event> {
-    let (tx, mut rx) = mpsc::channel::<Event>(100);
+#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+struct WebhookMetricLabels {
+    status: String,
+}
 
-    println!("{webhooks:?}");
+pub fn start_webhook_worker(
+    webhooks: Vec<WebhookConfig>,
+    registry: &mut Registry,
+) -> tokio::sync::mpsc::Sender<Event> {
+    let webhooks_total = Family::<WebhookMetricLabels, Counter>::default();
+    registry.register(
+        "distribd_webhooks_total",
+        "Number of webhooks sent",
+        Box::new(webhooks_total.clone()),
+    );
+
+    let (tx, mut rx) = mpsc::channel::<Event>(100);
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
     runtime.spawn(async move {
@@ -87,9 +103,19 @@ pub fn start_webhook_worker(webhooks: Vec<WebhookConfig>) -> tokio::sync::mpsc::
                         .await;
 
                     if let Ok(resp) = resp {
+                        let labels = WebhookMetricLabels {
+                            status: resp.status().to_string(),
+                        };
+                        webhooks_total.get_or_create(&labels).inc();
+
                         if resp.status() != 200 {
                             // FIXME: Log failures here
                         }
+                    } else {
+                        let labels = WebhookMetricLabels {
+                            status: String::from("000"),
+                        };
+                        webhooks_total.get_or_create(&labels).inc();
                     }
                 }
             }
