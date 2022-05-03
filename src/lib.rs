@@ -3,6 +3,7 @@ extern crate rocket;
 
 mod extractor;
 mod headers;
+mod machine;
 mod prometheus;
 mod registry;
 mod token;
@@ -11,6 +12,7 @@ mod utils;
 mod views;
 mod webhook;
 
+use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
@@ -60,6 +62,8 @@ fn start_registry_service(
     }
 
     let mut registry = <prometheus_client::registry::Registry>::default();
+
+    let _machine = Machine::new(&mut registry);
 
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();

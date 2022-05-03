@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-
 #[derive(Debug, Clone)]
 pub struct Blob {
     pub size: Option<u64>,
