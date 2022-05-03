@@ -2,6 +2,7 @@
 extern crate rocket;
 
 mod extractor;
+mod garbage;
 mod headers;
 mod machine;
 mod prometheus;

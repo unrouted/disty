@@ -164,4 +164,30 @@ impl RegistryState {
             }
         })
     }
+
+    pub fn get_orphaned_blobs(&self) -> Vec<Blob> {
+        Python::with_gil(|py| {
+            let retval = self.state.call_method1(py, "get_orphaned_blobs", ());
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => extracted,
+                    _ => vec![],
+                },
+                _ => vec![],
+            }
+        })
+    }
+
+    pub fn get_orphaned_manifests(&self) -> Vec<Manifest> {
+        Python::with_gil(|py| {
+            let retval = self.state.call_method1(py, "get_orphaned_manifests", ());
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => extracted,
+                    _ => vec![],
+                },
+                _ => vec![],
+            }
+        })
+    }
 }
