@@ -1,11 +1,4 @@
-from aiohttp import web
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from prometheus_client.core import CollectorRegistry, GaugeMetricFamily
-import ujson
-
-from .utils.web import run_server
-
-routes = web.RouteTableDef()
+from prometheus_client.core import GaugeMetricFamily
 
 
 class MetricsCollector:
@@ -63,33 +56,3 @@ class MetricsCollector:
         )
         current_state.add_metric([self.identifier, str(self.machine.state)], 1)
         yield current_state
-
-
-@routes.get("/metrics")
-async def metrics(request):
-    return web.Response(
-        body=generate_latest(request.app["prometheus_registry"]),
-        headers={"Content-Type": CONTENT_TYPE_LATEST},
-    )
-
-
-@routes.get("/healthz")
-async def ok(request):
-    return web.json_response({"ok": True}, dumps=ujson.dumps)
-
-
-async def run_prometheus(raft, config, identifier, registry_state, images_directory):
-    registry = CollectorRegistry()
-    collector = MetricsCollector(raft)
-    registry.register(collector)
-
-    return await run_server(
-        raft,
-        "prometheus",
-        config["prometheus"],
-        routes,
-        identifier=identifier,
-        registry_state=registry_state,
-        images_directory=images_directory,
-        prometheus_registry=registry,
-    )
