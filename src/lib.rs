@@ -59,6 +59,8 @@ fn start_registry_service(
         return false;
     }
 
+    let mut registry = <prometheus_client::registry::Registry>::default();
+
     let webhook_send = start_webhook_worker(webhooks);
     let extractor = crate::extractor::Extractor::new();
 
@@ -81,17 +83,14 @@ fn start_registry_service(
             ))
             .manage(extractor)
             .manage(token_config)
+            .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );
 
     let prometheus_conf = rocket::Config::figment().merge(("port", 7080));
 
-    runtime.spawn(
-        rocket::custom(prometheus_conf)
-            .mount("/", crate::prometheus::routes())
-            .launch(),
-    );
+    runtime.spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
 
     true
 }

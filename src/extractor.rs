@@ -329,7 +329,7 @@ mod tests {
         "#
         .to_string();
 
-        assert!(extractor.validate(&content_type, &data));
+        assert!(!extractor.validate(&content_type, &data));
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
         "#
         .to_string();
 
-        assert!(extractor.validate(&content_type, &data));
+        assert!(!extractor.validate(&content_type, &data));
     }
 
     #[test]

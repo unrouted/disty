@@ -30,6 +30,7 @@ log = "0.4.14"
 urlencoding = "2.1.0"
 chrono = {version = "0.4", features=["serde"]}
 pyo3-chrono = "0.4.0"
+prometheus-client = "0.15.1"
 
 [build-dependencies]
 pyo3-build-config = "*"
