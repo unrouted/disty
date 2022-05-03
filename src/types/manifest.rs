@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3_chrono;
+
 #[derive(Debug, Clone)]
 pub struct Manifest {
     pub size: Option<u64>,

@@ -18,15 +18,15 @@ use rocket::{Build, Rocket, Route};
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
 enum HttpMethod {
-    GET,
-    HEAD,
-    POST,
-    PUT,
-    PATCH,
-    DELETE,
-    OPTIONS,
-    TRACE,
-    CONNECT,
+    Get,
+    Head,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Options,
+    Trace,
+    Connect,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
@@ -89,15 +89,15 @@ impl Fairing for HttpMetrics {
         }
 
         let method = match request.method() {
-            rocket::http::Method::Get => HttpMethod::GET,
-            rocket::http::Method::Post => HttpMethod::POST,
-            rocket::http::Method::Put => HttpMethod::PUT,
-            rocket::http::Method::Patch => HttpMethod::PATCH,
-            rocket::http::Method::Delete => HttpMethod::DELETE,
-            rocket::http::Method::Head => HttpMethod::HEAD,
-            rocket::http::Method::Options => HttpMethod::OPTIONS,
-            rocket::http::Method::Trace => HttpMethod::TRACE,
-            rocket::http::Method::Connect => HttpMethod::CONNECT,
+            rocket::http::Method::Get => HttpMethod::Get,
+            rocket::http::Method::Post => HttpMethod::Post,
+            rocket::http::Method::Put => HttpMethod::Put,
+            rocket::http::Method::Patch => HttpMethod::Patch,
+            rocket::http::Method::Delete => HttpMethod::Delete,
+            rocket::http::Method::Head => HttpMethod::Head,
+            rocket::http::Method::Options => HttpMethod::Options,
+            rocket::http::Method::Trace => HttpMethod::Trace,
+            rocket::http::Method::Connect => HttpMethod::Connect,
         };
 
         let path = request.route().unwrap().uri.to_string();
