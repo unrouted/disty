@@ -124,7 +124,7 @@ class RegistryState(Reducer):
                 continue
             if len(self.graph.in_edges(v)) == 0:
                 orphaned.add(v)
-        return [self.graph.nodes[v] for v in orphaned]
+        return [{"digest": v, "blob": self.graph.nodes[v]} for v in orphaned]
 
     def get_orphaned_manifests(self):
         """
@@ -136,7 +136,7 @@ class RegistryState(Reducer):
                 continue
             if len(self.graph.in_edges(v)) == 0:
                 orphaned.add(v)
-        return [self.graph.nodes[v] for v in orphaned]
+        return [{"digest": v, "manifest": self.graph.nodes[v]} for v in orphaned]
 
     def get_tags(self, repository):
         logger.critical("get_tags: START: %s", repository)

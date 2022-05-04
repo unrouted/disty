@@ -64,12 +64,27 @@ fn start_registry_service(
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let _machine = Machine::new(&mut registry);
-
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();
 
+    let machine = Machine::new(&mut registry);
+    let state = crate::types::RegistryState::new(
+        registry_state,
+        send_action,
+        repository_path.clone(),
+        webhook_send,
+        machine_identifier,
+        event_loop,
+    );
+
     let runtime = pyo3_asyncio::tokio::get_runtime();
+
+    runtime.spawn(crate::garbage::do_garbage_collect(
+        &machine,
+        &state,
+        &repository_path,
+    ));
+
     runtime.spawn(
         rocket::build()
             .attach(AdHoc::on_request("URL Rewriter", |req, _| {
@@ -78,14 +93,7 @@ fn start_registry_service(
                     req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
                 })
             }))
-            .manage(crate::types::RegistryState::new(
-                registry_state,
-                send_action,
-                repository_path,
-                webhook_send,
-                machine_identifier,
-                event_loop,
-            ))
+            .manage(state)
             .manage(extractor)
             .manage(token_config)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))

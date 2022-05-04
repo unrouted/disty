@@ -7,6 +7,8 @@ use pyo3::prelude::*;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
 use std::future::Future;
 
+use super::{BlobEntry, ManifestEntry};
+
 pub fn into_future_with_loop(
     event_loop: &PyAny,
     awaitable: &PyAny,
@@ -165,7 +167,7 @@ impl RegistryState {
         })
     }
 
-    pub fn get_orphaned_blobs(&self) -> Vec<Blob> {
+    pub fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
         Python::with_gil(|py| {
             let retval = self.state.call_method1(py, "get_orphaned_blobs", ());
             match retval {
@@ -178,7 +180,7 @@ impl RegistryState {
         })
     }
 
-    pub fn get_orphaned_manifests(&self) -> Vec<Manifest> {
+    pub fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
         Python::with_gil(|py| {
             let retval = self.state.call_method1(py, "get_orphaned_manifests", ());
             match retval {

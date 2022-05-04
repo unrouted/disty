@@ -4,7 +4,6 @@
 
 use chrono::Utc;
 use log::info;
-use std::path::PathBuf;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -25,36 +24,36 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
 
     let actions = vec![];
 
-    for manifest in state.get_orphaned_manifests() {
-        if (Utc::now() - manifest.created) > MINIMUM_GARBAGE_AGE {
+    for entry in state.get_orphaned_manifests() {
+        if (Utc::now() - entry.manifest.created) > MINIMUM_GARBAGE_AGE {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
-                manifest.digest,
+                &entry.digest,
             );
             continue;
         }
 
-        for repository in manifest.repositories {
+        for repository in entry.manifest.repositories {
             actions.push(RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
-                digest: manifest.digest,
+                digest: entry.digest,
                 repository: repository,
                 user: "$system".to_string(),
             })
         }
     }
-    for blob in state.get_orphaned_blobs() {
-        if (Utc::now() - blob.created) > MINIMUM_GARBAGE_AGE {
+    for entry in state.get_orphaned_blobs() {
+        if (Utc::now() - entry.blob.created) > MINIMUM_GARBAGE_AGE {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
-                blob.digest,
+                &entry.digest,
             );
             continue;
         }
-        for repository in blob.repositories {
+        for repository in entry.blob.repositories {
             actions.push(RegistryAction::BlobUnmounted {
                 timestamp: Utc::now(),
-                digest: blob.digest,
+                digest: entry.digest,
                 repository: repository,
                 user: "$system".to_string(),
             })
@@ -110,43 +109,43 @@ return True
 async fn do_garbage_collect_phase2(
     machine: &Machine,
     state: &RegistryState,
-    images_directory: &PathBuf,
+    images_directory: &str,
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
     let actions = vec![];
 
-    for manifest in state.get_orphaned_manifests() {
-        if manifest.repositories.len() > 0 {
+    for entry in state.get_orphaned_manifests() {
+        if entry.manifest.repositories.len() > 0 {
             continue;
         }
 
-        let path = get_manifest_path(images_directory, manifest.digest);
+        let path = get_manifest_path(images_directory, &entry.digest);
         if !cleanup_object(images_directory, path) {
             continue;
         }
 
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
-            digest: manifest.digest,
+            digest: entry.digest,
             location: machine.identifier,
             user: "$system".to_string(),
         });
     }
 
-    for blob in state.get_orphaned_blobs() {
-        if blob.repositories.len() > 0 {
+    for entry in state.get_orphaned_blobs() {
+        if entry.blob.repositories.len() > 0 {
             continue;
         }
 
-        let path = get_blob_path(images_directory, blob.digest);
+        let path = get_blob_path(images_directory, &entry.digest);
         if !cleanup_object(images_directory, path) {
             continue;
         }
 
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
-            digest: blob.digest,
+            digest: entry.digest,
             location: machine.identifier,
             user: "$system".to_string(),
         });
@@ -161,11 +160,7 @@ async fn do_garbage_collect_phase2(
     }
 }
 
-pub async fn do_garbage_collect(
-    machine: &Machine,
-    state: &RegistryState,
-    image_directory: &PathBuf,
-) {
+pub async fn do_garbage_collect(machine: &Machine, state: &RegistryState, image_directory: &str) {
     loop {
         do_garbage_collect_phase1(machine, state).await;
         do_garbage_collect_phase2(machine, state, image_directory).await;
