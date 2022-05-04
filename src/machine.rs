@@ -20,7 +20,7 @@ pub struct Machine {
 
 impl Machine {
     pub fn is_leader(&self) -> bool {
-        return false;
+        false
     }
 
     pub fn new(registry: &mut Registry, identifier: String) -> Self {

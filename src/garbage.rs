@@ -65,7 +65,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
         }
     }
 
-    if actions.len() > 0 {
+    if !actions.is_empty() {
         info!(
             "Garbage collection: Phase 1: Reaped {} mounts",
             actions.len()
@@ -78,14 +78,9 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
     let image_directory = Path::new(image_directory).canonicalize().unwrap();
     let path = path.canonicalize().unwrap();
 
-    if path.exists() {
-        match remove_file(&path).await {
-            Err(_) => {
-                warn!("Error whilst removing: {:?}", path);
-                return false;
-            }
-            _ => {}
-        }
+    if path.exists() && remove_file(&path).await.is_err() {
+        warn!("Error whilst removing: {:?}", path);
+        return false;
     }
 
     while let Some(path) = path.parent() {
@@ -108,12 +103,9 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
             }
         }
 
-        match tokio::fs::remove_dir(path).await {
-            Err(_) => {
-                warn!("Error whilst removing: {:?}", path);
-                return false;
-            }
-            _ => {}
+        if tokio::fs::remove_dir(path).await.is_err() {
+            warn!("Error whilst removing: {:?}", path);
+            return false;
         }
     }
 
@@ -130,7 +122,7 @@ async fn do_garbage_collect_phase2(
     let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests() {
-        if entry.manifest.repositories.len() > 0 {
+        if !entry.manifest.repositories.is_empty() {
             continue;
         }
 
@@ -148,7 +140,7 @@ async fn do_garbage_collect_phase2(
     }
 
     for entry in state.get_orphaned_blobs() {
-        if entry.blob.repositories.len() > 0 {
+        if !entry.blob.repositories.is_empty() {
             continue;
         }
 
@@ -165,7 +157,7 @@ async fn do_garbage_collect_phase2(
         });
     }
 
-    if actions.len() > 0 {
+    if !actions.is_empty() {
         info!(
             "Garbage collection: Phase 2: Reaped {} stores",
             actions.len()
