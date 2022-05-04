@@ -19,6 +19,10 @@ pub struct Machine {
 }
 
 impl Machine {
+    pub fn is_leader(&self) -> bool {
+        return false;
+    }
+
     pub fn new(registry: &mut Registry, identifier: String) -> Self {
         let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
         registry.register(

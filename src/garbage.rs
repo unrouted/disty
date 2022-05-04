@@ -19,10 +19,10 @@ use crate::{
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
 async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
-    /*if !machine.is_leader() {
+    if !machine.is_leader() {
         info!("Garbage collection: Phase 1: Not leader");
         return;
-    }*/
+    }
 
     info!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
 
