@@ -54,6 +54,7 @@ fn start_registry_service(
     repository_path: String,
     webhooks: Vec<WebhookConfig>,
     token_config: TokenConfig,
+    machine: PyObject,
     machine_identifier: String,
     event_loop: PyObject,
 ) -> bool {
@@ -69,7 +70,11 @@ fn start_registry_service(
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();
 
-    let machine = Arc::new(Machine::new(&mut registry, machine_identifier.clone()));
+    let machine = Arc::new(Machine::new(
+        &mut registry,
+        machine_identifier.clone(),
+        machine,
+    ));
     let state = Arc::new(crate::types::RegistryState::new(
         registry_state,
         send_action,

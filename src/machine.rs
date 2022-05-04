@@ -2,6 +2,7 @@ use prometheus_client::encoding::text::Encode;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use pyo3::prelude::*;
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
 struct MachineMetricLabels {
@@ -9,6 +10,8 @@ struct MachineMetricLabels {
 }
 pub struct Machine {
     pub identifier: String,
+
+    machine: PyObject,
 
     last_applied_index: Family<MachineMetricLabels, Gauge>,
     last_committed: Family<MachineMetricLabels, Gauge>,
@@ -20,10 +23,19 @@ pub struct Machine {
 
 impl Machine {
     pub fn is_leader(&self) -> bool {
-        false
+        Python::with_gil(|py| {
+            let retval = self.machine.call_method1(py, "is_leader", ());
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => extracted,
+                    _ => false,
+                },
+                _ => false,
+            }
+        })
     }
 
-    pub fn new(registry: &mut Registry, identifier: String) -> Self {
+    pub fn new(registry: &mut Registry, identifier: String, machine: PyObject) -> Self {
         let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
         registry.register(
             "distribd_last_applied_index",
@@ -68,6 +80,7 @@ impl Machine {
 
         Machine {
             identifier,
+            machine,
             last_applied_index,
             last_committed,
             last_saved,
