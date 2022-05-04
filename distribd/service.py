@@ -104,6 +104,7 @@ async def main(argv=None, config=None):
         str(images_directory),
         webhooks,
         token_config,
+        machine,
         machine.identifier,
         asyncio.get_running_loop(),
     ):
