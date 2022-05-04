@@ -12,7 +12,7 @@ use crate::{
     utils::{get_blob_path, get_manifest_path},
 };
 
-const MINIMUM_GARBAGE_AGE: chrono::Duration = chrono::Duration::seconds(60 * 60 * 12);
+const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
 async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
     /*if !machine.is_leader() {
@@ -22,10 +22,11 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
 
     info!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
 
-    let actions = vec![];
+    let minimum_age = chrono::Duration::seconds(MINIMUM_GARBAGE_AGE);
+    let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests() {
-        if (Utc::now() - entry.manifest.created) > MINIMUM_GARBAGE_AGE {
+        if (Utc::now() - entry.manifest.created) > minimum_age {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
                 &entry.digest,
@@ -36,14 +37,14 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
         for repository in entry.manifest.repositories {
             actions.push(RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
-                digest: entry.digest,
+                digest: entry.digest.clone(),
                 repository: repository,
                 user: "$system".to_string(),
             })
         }
     }
     for entry in state.get_orphaned_blobs() {
-        if (Utc::now() - entry.blob.created) > MINIMUM_GARBAGE_AGE {
+        if (Utc::now() - entry.blob.created) > minimum_age {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
                 &entry.digest,
@@ -53,7 +54,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
         for repository in entry.blob.repositories {
             actions.push(RegistryAction::BlobUnmounted {
                 timestamp: Utc::now(),
-                digest: entry.digest,
+                digest: entry.digest.clone(),
                 repository: repository,
                 user: "$system".to_string(),
             })
@@ -65,7 +66,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
             "Garbage collection: Phase 1: Reaped {} mounts",
             actions.len()
         );
-        send_action(actions);
+        state.send_actions(actions).await;
     }
 }
 
@@ -113,7 +114,7 @@ async fn do_garbage_collect_phase2(
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
-    let actions = vec![];
+    let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests() {
         if entry.manifest.repositories.len() > 0 {
@@ -127,8 +128,8 @@ async fn do_garbage_collect_phase2(
 
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
-            digest: entry.digest,
-            location: machine.identifier,
+            digest: entry.digest.clone(),
+            location: machine.identifier.clone(),
             user: "$system".to_string(),
         });
     }
@@ -145,8 +146,8 @@ async fn do_garbage_collect_phase2(
 
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
-            digest: entry.digest,
-            location: machine.identifier,
+            digest: entry.digest.clone(),
+            location: machine.identifier.clone(),
             user: "$system".to_string(),
         });
     }
@@ -156,7 +157,7 @@ async fn do_garbage_collect_phase2(
             "Garbage collection: Phase 2: Reaped {} stores",
             actions.len()
         );
-        send_action(actions);
+        state.send_actions(actions).await;
     }
 }
 

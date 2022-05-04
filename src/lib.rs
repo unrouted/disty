@@ -67,7 +67,7 @@ fn start_registry_service(
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();
 
-    let machine = Machine::new(&mut registry);
+    let machine = Machine::new(&mut registry, machine_identifier.clone());
     let state = crate::types::RegistryState::new(
         registry_state,
         send_action,

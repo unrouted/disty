@@ -8,6 +8,8 @@ struct MachineMetricLabels {
     identifier: String,
 }
 pub struct Machine {
+    pub identifier: String,
+
     last_applied_index: Family<MachineMetricLabels, Gauge>,
     last_committed: Family<MachineMetricLabels, Gauge>,
     last_saved: Family<MachineMetricLabels, Gauge>,
@@ -17,7 +19,7 @@ pub struct Machine {
 }
 
 impl Machine {
-    pub fn new(registry: &mut Registry) -> Self {
+    pub fn new(registry: &mut Registry, identifier: String) -> Self {
         let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
         registry.register(
             "distribd_last_applied_index",
@@ -61,6 +63,7 @@ impl Machine {
         );
 
         Machine {
+            identifier,
             last_applied_index,
             last_committed,
             last_saved,
