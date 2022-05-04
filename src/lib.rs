@@ -82,9 +82,9 @@ fn start_registry_service(
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
     runtime.spawn(crate::garbage::do_garbage_collect(
-        machine.clone(),
+        machine,
         state.clone(),
-        repository_path.clone(),
+        repository_path,
     ));
 
     runtime.spawn(

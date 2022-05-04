@@ -8,6 +8,7 @@ use rocket::response::{Responder, Response};
 use rocket::State;
 use serde_json::json;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -106,7 +107,7 @@ pub(crate) async fn get(
     repository: RepositoryName,
     last: Option<String>,
     n: Option<usize>,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();

@@ -6,6 +6,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
@@ -40,7 +41,7 @@ impl<'r> Responder<'r, 'static> for Responses {
 }
 
 #[get("/")]
-pub(crate) async fn get(state: &State<RegistryState>, token: Token) -> Responses {
+pub(crate) async fn get(state: &State<Arc<RegistryState>>, token: Token) -> Responses {
     let _state: &RegistryState = state.inner();
 
     if !token.validated_token {

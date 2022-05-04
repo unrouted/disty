@@ -16,6 +16,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -93,7 +94,7 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     extractor: &State<Extractor>,
     content_type: ContentType,
     token: Token,
