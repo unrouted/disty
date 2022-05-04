@@ -10,6 +10,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -128,7 +129,7 @@ pub(crate) async fn patch(
     repository: RepositoryName,
     upload_id: String,
     range: Option<ContentRange>,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {

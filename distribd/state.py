@@ -114,6 +114,30 @@ class RegistryState(Reducer):
                 orphaned.add(v)
         return orphaned
 
+    def get_orphaned_blobs(self):
+        """
+        Returns all nodes that have no incoming edges and are a blob.
+        """
+        orphaned = set()
+        for v in self.graph:
+            if self.graph.nodes[v][ATTR_TYPE] != TYPE_BLOB:
+                continue
+            if len(self.graph.in_edges(v)) == 0:
+                orphaned.add(v)
+        return [{"digest": v, "blob": self.graph.nodes[v]} for v in orphaned]
+
+    def get_orphaned_manifests(self):
+        """
+        Returns all nodes that have no incoming edges and are a manifest.
+        """
+        orphaned = set()
+        for v in self.graph:
+            if self.graph.nodes[v][ATTR_TYPE] != TYPE_MANIFEST:
+                continue
+            if len(self.graph.in_edges(v)) == 0:
+                orphaned.add(v)
+        return [{"digest": v, "manifest": self.graph.nodes[v]} for v in orphaned]
+
     def get_tags(self, repository):
         logger.critical("get_tags: START: %s", repository)
 

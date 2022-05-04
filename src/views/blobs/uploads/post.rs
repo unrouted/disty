@@ -15,6 +15,7 @@ use rocket::response::{Responder, Response};
 use rocket::State;
 use std::collections::HashSet;
 use std::io::Cursor;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) enum Responses {
@@ -134,7 +135,7 @@ pub(crate) async fn post(
     mount: Option<Digest>,
     from: Option<RepositoryName>,
     digest: Option<Digest>,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {

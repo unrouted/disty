@@ -7,7 +7,6 @@ import coloredlogs
 import confuse
 import verboselogs
 
-from .garbage import do_garbage_collect
 from .machine import Machine
 from .mirror import Mirrorer
 from .raft import HttpRaft
@@ -71,18 +70,10 @@ async def main(argv=None, config=None):
         raft.append,
     )
 
-    garbage_collector = do_garbage_collect(
-        machine,
-        registry_state,
-        raft.append,
-        images_directory,
-    )
-
     reducers.add_side_effects(mirrorer.dispatch_entries)
 
     services = [
         raft.run_forever(),
-        garbage_collector,
     ]
 
     from distribd.distribd import start_registry_service

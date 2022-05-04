@@ -3,9 +3,12 @@ use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
+use log::info;
 use pyo3::prelude::*;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
 use std::future::Future;
+
+use super::{BlobEntry, ManifestEntry};
 
 pub fn into_future_with_loop(
     event_loop: &PyAny,
@@ -161,6 +164,32 @@ impl RegistryState {
                     _ => false,
                 },
                 _ => false,
+            }
+        })
+    }
+
+    pub fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
+        Python::with_gil(|py| {
+            let retval = self.state.call_method1(py, "get_orphaned_blobs", ());
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => extracted,
+                    _ => vec![],
+                },
+                _ => vec![],
+            }
+        })
+    }
+
+    pub fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
+        Python::with_gil(|py| {
+            let retval = self.state.call_method1(py, "get_orphaned_manifests", ());
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => extracted,
+                    _ => vec![],
+                },
+                _ => vec![],
             }
         })
     }

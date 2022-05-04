@@ -16,6 +16,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -93,7 +94,7 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     extractor: &State<Extractor>,
     content_type: ContentType,
     token: Token,
@@ -114,12 +115,9 @@ pub(crate) async fn put(
 
     let upload_path = crate::utils::get_temp_path(&state.repository_path);
 
-    println!("1");
-
     if !crate::views::utils::upload_part(&upload_path, body).await {
         return Responses::UploadInvalid {};
     }
-    println!("1");
 
     let size = match tokio::fs::metadata(&upload_path).await {
         Ok(result) => result.len(),
@@ -127,7 +125,6 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     };
-    println!("1");
 
     let digest = match get_hash(&upload_path).await {
         Some(digest) => digest,
@@ -135,7 +132,6 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     };
-    println!("1");
 
     let extracted = extractor
         .extract(
@@ -146,7 +142,6 @@ pub(crate) async fn put(
             &upload_path,
         )
         .await;
-    println!("1");
 
     let mut actions = vec![
         RegistryAction::ManifestMounted {
@@ -182,10 +177,8 @@ pub(crate) async fn put(
         tag: tag.clone(),
         user: token.sub.clone(),
     }]);
-    println!("1");
 
     let dest = get_manifest_path(&state.repository_path, &digest);
-    println!("1");
 
     match std::fs::rename(upload_path, dest) {
         Ok(_) => {}
@@ -193,12 +186,10 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     }
-    println!("1");
 
     if !state.send_actions(actions).await {
         return Responses::UploadInvalid {};
     }
-    println!("actions committed");
 
     state
         .send_webhook(Event {
@@ -208,7 +199,6 @@ pub(crate) async fn put(
             content_type: content_type.content_type,
         })
         .await;
-    println!("webhooks queued");
 
     Responses::Ok { repository, digest }
 }

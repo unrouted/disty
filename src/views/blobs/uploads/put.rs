@@ -13,6 +13,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -104,7 +105,7 @@ pub(crate) async fn put(
     repository: RepositoryName,
     upload_id: String,
     digest: Digest,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
@@ -116,38 +117,30 @@ pub(crate) async fn put(
         };
     }
 
-    println!("1");
-
     if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
-    println!("1");
 
     if digest.algo != "sha256" {
         return Responses::UploadInvalid {};
     }
-    println!("1");
 
     let filename = get_upload_path(&state.repository_path, &upload_id);
 
     if !filename.is_file() {
         return Responses::UploadInvalid {};
     }
-    println!("1");
 
     if !crate::views::utils::upload_part(&filename, body).await {
         return Responses::UploadInvalid {};
     }
-    println!("1");
 
     // Validate upload
     if !crate::views::utils::validate_hash(&filename, &digest).await {
         return Responses::DigestInvalid {};
     }
-    println!("1");
 
     let dest = get_blob_path(&state.repository_path, &digest);
-    println!("1");
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,
@@ -155,13 +148,10 @@ pub(crate) async fn put(
             return Responses::UploadInvalid {};
         }
     };
-    println!("about to rename");
-    println!("1 {filename:?} {dest:?}");
 
     match std::fs::rename(filename.clone(), dest.clone()) {
         Ok(_) => {}
         Err(e) => {
-            println!("{e:?}");
             return Responses::UploadInvalid {};
         }
     }

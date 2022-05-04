@@ -8,6 +8,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
@@ -61,7 +62,7 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn delete(
     repository: RepositoryName,
     upload_id: String,
-    state: &State<RegistryState>,
+    state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
