@@ -38,7 +38,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
             actions.push(RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
                 digest: entry.digest.clone(),
-                repository: repository,
+                repository,
                 user: "$system".to_string(),
             })
         }
@@ -55,7 +55,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
             actions.push(RegistryAction::BlobUnmounted {
                 timestamp: Utc::now(),
                 digest: entry.digest.clone(),
-                repository: repository,
+                repository,
                 user: "$system".to_string(),
             })
         }
