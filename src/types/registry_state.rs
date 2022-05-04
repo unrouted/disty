@@ -3,6 +3,7 @@ use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
+use log::info;
 use pyo3::prelude::*;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
 use std::future::Future;
@@ -52,6 +53,8 @@ impl RegistryState {
     }
 
     pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
+        info!("send_actions: {:?}", actions);
+
         let result = Python::with_gil(|py| {
             let event_loop = self.event_loop.as_ref(py);
 

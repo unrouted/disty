@@ -194,10 +194,7 @@ impl Extractor {
             _ => return Err(ExtractError::UnknownError {}),
         };
 
-        println!("{data}");
-
         if !self.validate(content_type, &data) {
-            println!("Not a valid manifest");
             return Err(ExtractError::UnknownError {});
         }
 

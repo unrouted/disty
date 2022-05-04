@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{Digest, RepositoryName};
 
 use chrono::{DateTime, Utc};
@@ -9,7 +11,8 @@ pub struct Blob {
     pub size: Option<u64>,
     pub content_type: Option<String>,
     pub dependencies: Option<Vec<Digest>>,
-    pub repositories: Vec<RepositoryName>,
+    pub repositories: HashSet<RepositoryName>,
+    pub locations: HashSet<String>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
 }
@@ -58,7 +61,7 @@ impl FromPyObject<'_> for Blob {
             _ => vec![],
         };
 
-        let repositories: Vec<RepositoryName> = match dict.get_item("repositories") {
+        let repositories: HashSet<RepositoryName> = match dict.get_item("repositories") {
             Ok(value) => match value.extract() {
                 Ok(extracted) => extracted,
                 _ => {
@@ -68,6 +71,16 @@ impl FromPyObject<'_> for Blob {
                 }
             },
             _ => return PyResult::Err(PyValueError::new_err("Key 'repositories' missing")),
+        };
+
+        let locations: HashSet<String> = match dict.get_item("locations") {
+            Ok(value) => match value.extract() {
+                Ok(extracted) => extracted,
+                _ => {
+                    return PyResult::Err(PyValueError::new_err("Extraction of 'locations' failed"))
+                }
+            },
+            _ => return PyResult::Err(PyValueError::new_err("Key 'locations' missing")),
         };
 
         let created: pyo3_chrono::NaiveDateTime = match dict.get_item("created") {
@@ -91,6 +104,7 @@ impl FromPyObject<'_> for Blob {
             content_type,
             dependencies: Some(dependencies),
             repositories,
+            locations,
             created: DateTime::from_utc(created.into(), Utc),
             updated: DateTime::from_utc(updated.into(), Utc),
         })

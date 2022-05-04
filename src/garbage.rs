@@ -122,6 +122,10 @@ async fn do_garbage_collect_phase2(
     let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests() {
+        if !entry.manifest.locations.contains(&machine.identifier) {
+            continue;
+        }
+
         if !entry.manifest.repositories.is_empty() {
             continue;
         }
@@ -140,6 +144,10 @@ async fn do_garbage_collect_phase2(
     }
 
     for entry in state.get_orphaned_blobs() {
+        if !entry.blob.locations.contains(&machine.identifier) {
+            continue;
+        }
+
         if !entry.blob.repositories.is_empty() {
             continue;
         }
