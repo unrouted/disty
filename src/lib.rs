@@ -13,6 +13,8 @@ mod utils;
 mod views;
 mod webhook;
 
+use std::sync::Arc;
+
 use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
@@ -67,22 +69,22 @@ fn start_registry_service(
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
     let extractor = crate::extractor::Extractor::new();
 
-    let machine = Machine::new(&mut registry, machine_identifier.clone());
-    let state = crate::types::RegistryState::new(
+    let machine = Arc::new(Machine::new(&mut registry, machine_identifier.clone()));
+    let state = Arc::new(crate::types::RegistryState::new(
         registry_state,
         send_action,
         repository_path.clone(),
         webhook_send,
         machine_identifier,
         event_loop,
-    );
+    ));
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
     runtime.spawn(crate::garbage::do_garbage_collect(
-        &machine,
-        &state,
-        &repository_path,
+        machine.clone(),
+        state.clone(),
+        repository_path.clone(),
     ));
 
     runtime.spawn(

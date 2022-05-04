@@ -2,8 +2,12 @@
 //!
 //! distribd automatically garbage collects blobs and manifests that are no longer referenced by other objects in the DAG.
 
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use chrono::Utc;
 use log::info;
+use tokio::fs::remove_file;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -70,42 +74,51 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
     }
 }
 
-/*
-def cleanup_object(image_directory: pathlib.Path, path: pathlib.Path):
-if path.exists():
-try:
-logger.info("Unlinking orphaned object: %s", path)
-path.unlink()
-except pathlib.FileNotFoundError:
-pass
+async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
+    let image_directory = Path::new(image_directory).canonicalize().unwrap();
+    let path = path.canonicalize().unwrap();
 
-# Clean empty directories caused by cleanup. Given
-#
-# a = pathlib.Path("/etc/foo")
-# b = pathlib.Path("/etc")
-#
-# a.is_relative_to(b) == True
-# a.parent.is_relative_to(b) == True
-# a.parent.parent.is_relative_to(b) == False
-#
-# Then traverse up until the parent directory is not relative to image_directory
-# As that means the current path *is* the image directory.
+    if path.exists() {
+        match remove_file(&path).await {
+            Err(_) => {
+                warn!("Error whilst removing: {:?}", path);
+                return false;
+            }
+            _ => {}
+        }
+    }
 
-while path.parent.is_relative_to(image_directory):
-try:
-next(path.iterdir())
+    while let Some(path) = path.parent() {
+        if path == image_directory {
+            // We've hit the root directory
+            return true;
+        }
 
-except StopIteration:
-logger.info("Unlinking empty directory: %s", path)
-path.rmdir()
+        match path.read_dir() {
+            Ok(mut iter) => {
+                if iter.next().is_some() {
+                    // We've hit a shared directory
+                    // This counts as a win
+                    return true;
+                }
+            }
+            Err(_) => {
+                warn!("Error whilst checking contents of {:?}", path);
+                return false;
+            }
+        }
 
-path = path.parent
+        match tokio::fs::remove_dir(path).await {
+            Err(_) => {
+                warn!("Error whilst removing: {:?}", path);
+                return false;
+            }
+            _ => {}
+        }
+    }
 
-finally:
-break
-
-return True
-*/
+    true
+}
 
 async fn do_garbage_collect_phase2(
     machine: &Machine,
@@ -122,7 +135,7 @@ async fn do_garbage_collect_phase2(
         }
 
         let path = get_manifest_path(images_directory, &entry.digest);
-        if !cleanup_object(images_directory, path) {
+        if !cleanup_object(images_directory, path).await {
             continue;
         }
 
@@ -140,7 +153,7 @@ async fn do_garbage_collect_phase2(
         }
 
         let path = get_blob_path(images_directory, &entry.digest);
-        if !cleanup_object(images_directory, path) {
+        if !cleanup_object(images_directory, path).await {
             continue;
         }
 
@@ -161,10 +174,14 @@ async fn do_garbage_collect_phase2(
     }
 }
 
-pub async fn do_garbage_collect(machine: &Machine, state: &RegistryState, image_directory: &str) {
+pub async fn do_garbage_collect(
+    machine: Arc<Machine>,
+    state: Arc<RegistryState>,
+    image_directory: String,
+) {
     loop {
-        do_garbage_collect_phase1(machine, state).await;
-        do_garbage_collect_phase2(machine, state, image_directory).await;
+        do_garbage_collect_phase1(&machine, &state).await;
+        do_garbage_collect_phase2(&machine, &state, &image_directory).await;
         sleep(Duration::from_secs(60)).await;
     }
 }
