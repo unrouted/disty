@@ -5,6 +5,7 @@ mod extractor;
 mod garbage;
 mod headers;
 mod machine;
+mod mirror;
 mod prometheus;
 mod registry;
 mod token;
@@ -87,10 +88,12 @@ fn start_registry_service(
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
     runtime.spawn(crate::garbage::do_garbage_collect(
-        machine,
+        machine.clone(),
         state.clone(),
         repository_path,
     ));
+
+    crate::mirror::start_mirroring(runtime, machine, state.clone());
 
     runtime.spawn(
         rocket::build()

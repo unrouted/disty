@@ -3,7 +3,6 @@ use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
-use log::info;
 use pyo3::prelude::*;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
 use std::future::Future;
