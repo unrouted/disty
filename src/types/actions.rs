@@ -10,6 +10,8 @@ use super::RepositoryName;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum RegistryAction {
+    Empty {},
+
     // A given sha256 blob was committed to disk and should be replicated
     //BLOB_STORED = "blob-stored"
     BlobStored {
@@ -130,6 +132,7 @@ pub enum RegistryAction {
 impl IntoPy<PyObject> for RegistryAction {
     fn into_py(self, py: Python) -> PyObject {
         match self {
+            RegistryAction::Empty {} => PyDict::new(py).into(),
             RegistryAction::BlobStored {
                 timestamp,
                 digest,
@@ -347,7 +350,7 @@ impl FromPyObject<'_> for RegistryAction {
                 Ok(extracted) => extracted,
                 _ => return PyResult::Err(PyValueError::new_err("Extraction of 'type' failed")),
             },
-            _ => return PyResult::Err(PyValueError::new_err("Key 'type' missing")),
+            _ => return Ok(RegistryAction::Empty {}),
         };
 
         let timestamp: pyo3_chrono::NaiveDateTime = match dict.get_item("timestamp") {

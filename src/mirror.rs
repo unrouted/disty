@@ -124,21 +124,6 @@ class Mirrorer:
                 config["mirroring"]["password"].get(str),
             )
 
-        self._futures = {}
-
-    async def wait_for_blob(self, digest):
-        if self.identifier in self.state.graph.nodes[digest][ATTR_LOCATIONS]:
-            return get_blob_path(self.image_directory, digest)
-
-        fut = asyncio.Future()
-        self._futures.setdefault(digest, []).append(fut)
-        logger.warning("Waiting for %s", digest)
-        return await fut
-
-    async def close(self):
-        await self.pool.close()
-        await self.session.close()
-
     async def _do_transfer(self, hash, repo, urls, destination):
         if destination.exists():
             logger.debug("%s already exists, not requesting", destination)
@@ -187,9 +172,6 @@ class Mirrorer:
             return False
 
         os.rename(temporary_path, destination)
-
-        for fut in self._futures.get(hash, []):
-            fut.set_result(destination)
 
         return True
 
@@ -322,28 +304,4 @@ class Mirrorer:
             return False
 
         return True
-
-    def dispatch_entries(self, state, entries):
-        manifests = set()
-        blobs = set()
-
-        for term, entry in entries:
-            if "type" not in entry:
-                continue
-
-            if entry["type"] == RegistryActions.BLOB_STORED:
-                hash = entry["hash"]
-                if self.download_needed(hash):
-                    blobs.add(hash)
-
-            elif entry["type"] == RegistryActions.MANIFEST_STORED:
-                hash = entry["hash"]
-                if self.download_needed(hash):
-                    manifests.add(hash)
-
-        for blob in blobs:
-            self.pool.spawn(self.do_download_blob(blob))
-
-        for manifest in manifests:
-            self.pool.spawn(self.do_download_manifest(manifest))
 */
