@@ -60,8 +60,6 @@ async def main(argv=None, config=None):
 
     raft = HttpRaft(config, machine, storage, reducers)
 
-    # reducers.add_side_effects(mirrorer.dispatch_entries)
-
     services = [
         raft.run_forever(),
     ]
@@ -96,6 +94,7 @@ async def main(argv=None, config=None):
         token_config,
         machine,
         machine.identifier,
+        reducers,
         asyncio.get_running_loop(),
     ):
         return

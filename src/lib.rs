@@ -57,6 +57,7 @@ fn start_registry_service(
     token_config: TokenConfig,
     machine: PyObject,
     machine_identifier: String,
+    reducers: PyObject,
     event_loop: PyObject,
 ) -> bool {
     if !create_dir(&repository_path, "uploads")
@@ -94,6 +95,7 @@ fn start_registry_service(
     ));
 
     crate::mirror::start_mirroring(runtime, machine, state.clone());
+    // reducers.add_side_effects(mirrorer.dispatch_entries)
 
     runtime.spawn(
         rocket::build()
