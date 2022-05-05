@@ -1,4 +1,6 @@
 use chrono::prelude::*;
+use chrono::{DateTime, Utc};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use serde::{Deserialize, Serialize};
@@ -335,5 +337,179 @@ impl IntoPy<PyObject> for RegistryAction {
                 dict.into()
             }
         }
+    }
+}
+
+impl FromPyObject<'_> for RegistryAction {
+    fn extract(dict: &'_ PyAny) -> PyResult<Self> {
+        let action_type: String = match dict.get_item("type") {
+            Ok(value) => match value.extract() {
+                Ok(extracted) => extracted,
+                _ => return PyResult::Err(PyValueError::new_err("Extraction of 'type' failed")),
+            },
+            _ => return PyResult::Err(PyValueError::new_err("Key 'type' missing")),
+        };
+
+        let timestamp: pyo3_chrono::NaiveDateTime = match dict.get_item("timestamp") {
+            Ok(value) => match value.extract() {
+                Ok(extracted) => extracted,
+                _ => {
+                    return PyResult::Err(PyValueError::new_err("Extraction of 'timestamp' failed"))
+                }
+            },
+            _ => return PyResult::Err(PyValueError::new_err("Key 'timestamp' missing")),
+        };
+        let timestamp = DateTime::from_utc(timestamp.into(), Utc);
+
+        let digest: Digest = dict.get_item("hash")?.extract()?;
+
+        let action = match action_type.as_str() {
+            "blob-stored" => {
+                let location: String = dict.get_item("location")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::BlobStored {
+                    timestamp,
+                    digest,
+                    location,
+                    user,
+                }
+            }
+            "blob-unstored" => {
+                let location: String = dict.get_item("location")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::BlobUnstored {
+                    timestamp,
+                    digest,
+                    location,
+                    user,
+                }
+            }
+            "blob-mounted" => {
+                let repository: RepositoryName = dict.get_item("repository")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::BlobMounted {
+                    timestamp,
+                    digest,
+                    repository,
+                    user,
+                }
+            }
+            "blob-unmounted" => {
+                let repository: RepositoryName = dict.get_item("repository")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::BlobUnmounted {
+                    timestamp,
+                    digest,
+                    repository,
+                    user,
+                }
+            }
+            "blob-info" => {
+                let dependencies: Vec<Digest> = dict.get_item("dependencies")?.extract()?;
+                let content_type: String = dict.get_item("content_type")?.extract()?;
+
+                RegistryAction::BlobInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                }
+            }
+            "blob-stat" => {
+                let size: u64 = dict.get_item("size")?.extract()?;
+
+                RegistryAction::BlobStat {
+                    timestamp,
+                    digest,
+                    size,
+                }
+            }
+            "manifest-stored" => {
+                let location: String = dict.get_item("location")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::ManifestStored {
+                    timestamp,
+                    digest,
+                    location,
+                    user,
+                }
+            }
+            "manifest-unstored" => {
+                let location: String = dict.get_item("location")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::ManifestUnstored {
+                    timestamp,
+                    digest,
+                    location,
+                    user,
+                }
+            }
+            "manifest-mounted" => {
+                let repository: RepositoryName = dict.get_item("repository")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::ManifestMounted {
+                    timestamp,
+                    digest,
+                    repository,
+                    user,
+                }
+            }
+            "manifest-unmounted" => {
+                let repository: RepositoryName = dict.get_item("repository")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::ManifestUnmounted {
+                    timestamp,
+                    digest,
+                    repository,
+                    user,
+                }
+            }
+            "manifest-info" => {
+                let dependencies: Vec<Digest> = dict.get_item("dependencies")?.extract()?;
+                let content_type: String = dict.get_item("content_type")?.extract()?;
+
+                RegistryAction::ManifestInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                }
+            }
+            "manifest-stat" => {
+                let size: u64 = dict.get_item("size")?.extract()?;
+
+                RegistryAction::ManifestStat {
+                    timestamp,
+                    digest,
+                    size,
+                }
+            }
+            "hash-tagged" => {
+                let repository: RepositoryName = dict.get_item("repository")?.extract()?;
+                let tag: String = dict.get_item("tag")?.extract()?;
+                let user: String = dict.get_item("user")?.extract()?;
+
+                RegistryAction::HashTagged {
+                    timestamp,
+                    digest,
+                    repository,
+                    tag,
+                    user,
+                }
+            }
+            _ => {
+                panic!("Unhandled action type");
+            }
+        };
+
+        Ok(action)
     }
 }

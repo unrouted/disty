@@ -1,8 +1,12 @@
 use crate::{
     machine::Machine,
-    types::{Digest, RegistryState, RepositoryName},
+    types::{Digest, RegistryAction, RegistryState, RepositoryName},
 };
 use log::debug;
+use pyo3::{
+    prelude::*,
+    types::{self, PyDict, PyTuple},
+};
 use reqwest;
 use std::str::FromStr;
 use std::{collections::HashSet, sync::Arc};
@@ -54,6 +58,49 @@ pub(crate) fn start_mirroring(
     runtime.spawn(do_mirroring(machine, state, rx));
 
     tx
+}
+
+fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<Digest>) {
+    for entry in &entries {
+        match entry {
+            RegistryAction::BlobStored {
+                timestamp,
+                digest,
+                location,
+                user,
+            } => {
+                tx.blocking_send(digest.clone()).unwrap();
+            }
+            RegistryAction::ManifestStored {
+                timestamp,
+                digest,
+                location,
+                user,
+            } => {
+                tx.blocking_send(digest.clone()).unwrap();
+            }
+            _ => {}
+        }
+    }
+}
+
+pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<Digest>) {
+    Python::with_gil(|py| {
+        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
+            let entries: Vec<RegistryAction> = args.get_item(1)?.extract()?;
+            info!("{:?}", entries);
+            dispatch_entries(entries, tx.clone());
+            Ok(true)
+        };
+        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
+
+        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
+
+        match result {
+            Err(_) => panic!("Boot failure: Could not setup mirroring side effects"),
+            _ => {}
+        }
+    })
 }
 
 /*

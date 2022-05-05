@@ -94,8 +94,8 @@ fn start_registry_service(
         repository_path,
     ));
 
-    crate::mirror::start_mirroring(runtime, machine, state.clone());
-    // reducers.add_side_effects(mirrorer.dispatch_entries)
+    let tx = crate::mirror::start_mirroring(runtime, machine, state.clone());
+    crate::mirror::add_side_effect(reducers, tx);
 
     runtime.spawn(
         rocket::build()
