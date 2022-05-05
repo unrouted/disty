@@ -16,10 +16,61 @@ use tokio::{
 };
 use tokio::{runtime::Runtime, select};
 
-async fn do_transfer(images_directory: &str, client: reqwest::Client) -> bool {
-    let url = "http://localhost/v2/*/manifests/sha256:abcdefgh";
+#[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
+pub enum MirrorRequest {
+    Blob { digest: Digest },
+    Manifest { digest: Digest },
+}
 
-    let mut resp = match client.get(url).send().await {
+async fn do_transfer(
+    images_directory: &str,
+    state: Arc<RegistryState>,
+    machine: Arc<Machine>,
+    client: reqwest::Client,
+    request: MirrorRequest,
+) -> bool {
+    let digest = match request {
+        MirrorRequest::Blob { digest } => {
+            match state.get_blob(&RepositoryName::from_str("*").unwrap(), &digest) {
+                Some(blob) => {
+                    if blob.locations.contains(&machine.identifier) {
+                        debug!(
+                            "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
+                        );
+                        return false;
+                    }
+
+                    digest
+                }
+                None => {
+                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                    return false;
+                }
+            }
+        }
+        MirrorRequest::Manifest { digest } => {
+            match state.get_manifest(&RepositoryName::from_str("*").unwrap(), &digest) {
+                Some(manifest) => {
+                    if manifest.locations.contains(&machine.identifier) {
+                        debug!(
+                            "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
+                        );
+                        return false;
+                    }
+
+                    digest
+                }
+                None => {
+                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                    return false;
+                }
+            }
+        }
+    };
+
+    let url = format!("http://localhost/v2/*/manifests/{digest}");
+
+    let mut resp = match client.get(&url).send().await {
         Ok(resp) => resp,
         Err(err) => {
             warn!("Mirroring: Unable to fetch {url}: {err}");
@@ -68,38 +119,27 @@ async fn do_transfer(images_directory: &str, client: reqwest::Client) -> bool {
     true
 }
 
-async fn do_mirroring(machine: Arc<Machine>, state: Arc<RegistryState>, mut rx: Receiver<Digest>) {
-    let _client = reqwest::Client::builder()
+async fn do_mirroring(
+    machine: Arc<Machine>,
+    state: Arc<RegistryState>,
+    mut rx: Receiver<MirrorRequest>,
+) {
+    let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
         .unwrap();
 
-    let mut digests = HashSet::<Digest>::new();
+    let mut requests = HashSet::<MirrorRequest>::new();
 
     loop {
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(digest) = rx.recv() => {digests.insert(digest); }
+            Some(request) = rx.recv() => {requests.insert(request); }
         };
 
-        digests.retain(|digest| {
-            match state.get_blob(&RepositoryName::from_str("MEH").unwrap(), digest) {
-                Some(blob) => {
-                    if blob.locations.contains(&machine.identifier) {
-                        debug!(
-                            "Mirroring: {digest}: Already downloaded by this node; nothing to do"
-                        );
-                        return false;
-                    }
-                }
-                None => {
-                    debug!("Mirroring: {digest}: missing from graph; nothing to mirror");
-                    return false;
-                }
-            }
-
-            true
-        });
+        // requests.retain(|request| {
+        //    do_transfer("", state.clone(), machine.clone(), client, request).await;
+        //});
     }
 }
 
@@ -107,15 +147,15 @@ pub(crate) fn start_mirroring(
     runtime: &Runtime,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
-) -> Sender<Digest> {
-    let (tx, rx) = channel::<Digest>(500);
+) -> Sender<MirrorRequest> {
+    let (tx, rx) = channel::<MirrorRequest>(500);
 
     runtime.spawn(do_mirroring(machine, state, rx));
 
     tx
 }
 
-fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<Digest>) {
+fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<MirrorRequest>) {
     for entry in &entries {
         match entry {
             RegistryAction::BlobStored {
@@ -124,7 +164,10 @@ fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<Digest>) {
                 location: _,
                 user: _,
             } => {
-                tx.blocking_send(digest.clone()).unwrap();
+                tx.blocking_send(MirrorRequest::Blob {
+                    digest: digest.clone(),
+                })
+                .unwrap();
             }
             RegistryAction::ManifestStored {
                 timestamp: _,
@@ -132,14 +175,17 @@ fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<Digest>) {
                 location: _,
                 user: _,
             } => {
-                tx.blocking_send(digest.clone()).unwrap();
+                tx.blocking_send(MirrorRequest::Manifest {
+                    digest: digest.clone(),
+                })
+                .unwrap();
             }
             _ => {}
         }
     }
 }
 
-pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<Digest>) {
+pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<MirrorRequest>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
             let entries: Vec<RegistryAction> = args.get_item(1)?.extract()?;
