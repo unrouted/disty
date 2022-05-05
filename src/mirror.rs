@@ -7,14 +7,14 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
-use reqwest;
+
 use std::str::FromStr;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::{runtime::Runtime, select};
 
 async fn do_mirroring(machine: Arc<Machine>, state: Arc<RegistryState>, mut rx: Receiver<Digest>) {
-    let client = reqwest::Client::builder()
+    let _client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
         .unwrap();
@@ -24,11 +24,11 @@ async fn do_mirroring(machine: Arc<Machine>, state: Arc<RegistryState>, mut rx: 
     loop {
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(digest) = rx.recv() => {digests.insert(digest); ()}
+            Some(digest) = rx.recv() => {digests.insert(digest); }
         };
 
         digests.retain(|digest| {
-            match state.get_blob(&RepositoryName::from_str("MEH").unwrap(), &digest) {
+            match state.get_blob(&RepositoryName::from_str("MEH").unwrap(), digest) {
                 Some(blob) => {
                     if blob.locations.contains(&machine.identifier) {
                         debug!(
@@ -64,18 +64,18 @@ fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<Digest>) {
     for entry in &entries {
         match entry {
             RegistryAction::BlobStored {
-                timestamp,
+                timestamp: _,
                 digest,
-                location,
-                user,
+                location: _,
+                user: _,
             } => {
                 tx.blocking_send(digest.clone()).unwrap();
             }
             RegistryAction::ManifestStored {
-                timestamp,
+                timestamp: _,
                 digest,
-                location,
-                user,
+                location: _,
+                user: _,
             } => {
                 tx.blocking_send(digest.clone()).unwrap();
             }
@@ -96,10 +96,7 @@ pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<Digest>) {
 
         let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
 
-        match result {
-            Err(_) => panic!("Boot failure: Could not setup mirroring side effects"),
-            _ => {}
-        }
+        if let Err(_) = result { panic!("Boot failure: Could not setup mirroring side effects") }
     })
 }
 

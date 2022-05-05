@@ -151,7 +151,7 @@ pub(crate) async fn put(
 
     match std::fs::rename(filename.clone(), dest.clone()) {
         Ok(_) => {}
-        Err(e) => {
+        Err(_e) => {
             return Responses::UploadInvalid {};
         }
     }
