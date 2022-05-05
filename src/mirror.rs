@@ -2,7 +2,7 @@ use crate::{
     machine::Machine,
     types::{Digest, RegistryAction, RegistryState, RepositoryName},
 };
-use log::debug;
+use log::{debug, warn};
 use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
@@ -10,8 +10,61 @@ use pyo3::{
 
 use std::str::FromStr;
 use std::{collections::HashSet, sync::Arc};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::{
+    io::AsyncWriteExt,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 use tokio::{runtime::Runtime, select};
+
+async fn do_transfer(client: reqwest::Client) -> bool {
+    let url = "http://localhost/v2/*/manifests/sha256:abcdefgh";
+
+    let mut resp = match client.get(url).send().await {
+        Ok(resp) => resp,
+        Err(err) => {
+            warn!("Mirroring: Unable to fetch {url}: {err}");
+            return false;
+        }
+    };
+
+    let status_code = resp.status();
+
+    if status_code != reqwest::StatusCode::OK {
+        warn!("Mirroring: Unable to fetch {url}: {status_code}");
+        return false;
+    }
+
+    let mut file = match tokio::fs::File::create("/tmp/out_file").await {
+        Ok(file) => file,
+        Err(err) => {
+            warn!("Mirroring: Failed creating output file for {url}: {err}");
+            return false;
+        }
+    };
+
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                if let Err(err) = file.write(&chunk).await {
+                    warn!("Mirroring: Failed write output chunk for {url}: {err}");
+                    return false;
+                }
+            }
+            Ok(None) => break,
+            Err(err) => {
+                warn!("Mirroring: Failed reading chunk for {url}: {err}");
+                return false;
+            }
+        };
+    }
+
+    if let Err(err) = file.flush().await {
+        warn!("Mirroring: Failed to flush output file for {url}: {err}");
+        return false;
+    }
+
+    true
+}
 
 async fn do_mirroring(machine: Arc<Machine>, state: Arc<RegistryState>, mut rx: Receiver<Digest>) {
     let _client = reqwest::Client::builder()
@@ -96,7 +149,9 @@ pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<Digest>) {
 
         let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
 
-        if let Err(_) = result { panic!("Boot failure: Could not setup mirroring side effects") }
+        if let Err(_) = result {
+            panic!("Boot failure: Could not setup mirroring side effects")
+        }
     })
 }
 
@@ -151,19 +206,6 @@ class Mirrorer:
         if self.token_getter:
             token = await self.token_getter.get_token(repo, ["pull"])
             headers["Authorization"] = f"Bearer {token}"
-
-        async with self.session.get(url, headers=headers) as resp:
-            if resp.status != 200:
-                logger.error("Failed to retrieve: %s, status %s", url, resp.status)
-                return False
-            async with AIOFile(temporary_path, "wb") as fp:
-                writer = Writer(fp)
-                chunk = await resp.content.read(1024 * 1024)
-                while chunk:
-                    await writer(chunk)
-                    digest.update(chunk)
-                    chunk = await resp.content.read(1024 * 1024)
-                await fp.fsync()
 
         mirrored_hash = "sha256:" + digest.hexdigest()
 
