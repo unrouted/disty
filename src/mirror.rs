@@ -16,7 +16,7 @@ use tokio::{
 };
 use tokio::{runtime::Runtime, select};
 
-async fn do_transfer(client: reqwest::Client) -> bool {
+async fn do_transfer(images_directory: &str, client: reqwest::Client) -> bool {
     let url = "http://localhost/v2/*/manifests/sha256:abcdefgh";
 
     let mut resp = match client.get(url).send().await {
@@ -34,7 +34,9 @@ async fn do_transfer(client: reqwest::Client) -> bool {
         return false;
     }
 
-    let mut file = match tokio::fs::File::create("/tmp/out_file").await {
+    let file_name = crate::utils::get_temp_mirror_path(images_directory);
+
+    let mut file = match tokio::fs::File::create(file_name).await {
         Ok(file) => file,
         Err(err) => {
             warn!("Mirroring: Failed creating output file for {url}: {err}");
