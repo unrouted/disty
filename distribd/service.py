@@ -8,7 +8,6 @@ import confuse
 import verboselogs
 
 from .machine import Machine
-from .mirror import Mirrorer
 from .raft import HttpRaft
 from .reducers import Reducers
 from .state import RegistryState
@@ -61,16 +60,7 @@ async def main(argv=None, config=None):
 
     raft = HttpRaft(config, machine, storage, reducers)
 
-    mirrorer = Mirrorer(
-        config,
-        raft.peers,
-        images_directory,
-        machine.identifier,
-        registry_state,
-        raft.append,
-    )
-
-    reducers.add_side_effects(mirrorer.dispatch_entries)
+    # reducers.add_side_effects(mirrorer.dispatch_entries)
 
     services = [
         raft.run_forever(),
