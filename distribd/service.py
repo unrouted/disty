@@ -87,7 +87,7 @@ async def main(argv=None, config=None):
         token_config = {"enabled": False}
 
     mint_server = config["mirroring"]
-    if mint_server["enabled"].get(bool):
+    if mint_server["realm"].exists():
         mint_config = {
             "enabled": True,
             "realm": mint_server["realm"].get(str),
