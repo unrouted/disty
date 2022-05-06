@@ -74,7 +74,7 @@ impl Mint {
                             return Err("");
                         }
 
-                        let payload: MintResponse = match response.json().await {
+                        let MintResponse { access_code } = match response.json().await {
                             Ok(resp) => resp,
                             Err(err) => {
                                 warn!("Mint: Failed to mint pull token for {repository}: {err}");
@@ -82,7 +82,7 @@ impl Mint {
                             }
                         };
 
-                        Ok(builder.header("Authorization", payload.access_code))
+                        Ok(builder.header("Authorization", format!("Bearer {access_code}")))
                     }
                     Err(err) => {
                         warn!("Mint: Failed to mint pull token for {repository}: {err}");
