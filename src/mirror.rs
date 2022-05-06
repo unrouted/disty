@@ -67,14 +67,17 @@ async fn do_transfer(
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
-    let digest = match request {
+    let (digest, repository, object_type) = match request {
         MirrorRequest::Blob { ref digest } => {
             match state.get_blob(&RepositoryName::from_str("*").unwrap(), digest) {
                 Some(blob) => {
-                    if blob.repositories.is_empty() {
-                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                        return MirrorResult::None;
-                    }
+                    let repository = match blob.repositories.iter().next() {
+                        Some(repository) => repository.clone(),
+                        None => {
+                            debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
+                            return MirrorResult::None;
+                        }
+                    };
                     if blob.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
@@ -82,7 +85,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
 
-                    digest
+                    (digest, repository, "blobs")
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -93,10 +96,13 @@ async fn do_transfer(
         MirrorRequest::Manifest { ref digest } => {
             match state.get_manifest(&RepositoryName::from_str("*").unwrap(), digest) {
                 Some(manifest) => {
-                    if manifest.repositories.is_empty() {
-                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                        return MirrorResult::None;
-                    }
+                    let repository = match manifest.repositories.iter().next() {
+                        Some(repository) => repository.clone(),
+                        None => {
+                            debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
+                            return MirrorResult::None;
+                        }
+                    };
                     if manifest.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
@@ -104,7 +110,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
 
-                    digest
+                    (digest, repository, "manifests")
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -114,7 +120,7 @@ async fn do_transfer(
         }
     };
 
-    let url = format!("http://localhost/v2/*/manifests/{digest:?}");
+    let url = format!("http://localhost/v2/{repository}/{object_type}/{digest:?}");
 
     let mut resp = match client.get(&url).send().await {
         Ok(resp) => resp,
@@ -305,93 +311,10 @@ class Mirrorer:
                 config["mirroring"]["password"].get(str),
             )
 
-    async def _do_transfer(self, hash, repo, urls, destination):
-        if destination.exists():
-            logger.debug("%s already exists, not requesting", destination)
-            return True
-
-        if not urls:
-            logger.debug("No urls for hash %s yet", hash)
-            return False
-
-        url = random.choice(urls)
-        logger.critical("Starting download from %s to %s", url, destination)
-
-        if not destination.parent.exists():
-            os.makedirs(destination.parent)
-
         # If auth is turned on we need to supply a JWT token
         if self.token_getter:
             token = await self.token_getter.get_token(repo, ["pull"])
             headers["Authorization"] = f"Bearer {token}"
 
-        os.rename(temporary_path, destination)
-
         return True
-
-    def urls_for_blob(self, hash):
-        node = self.state.graph.nodes[hash]
-
-        repo = next(iter(node[ATTR_REPOSITORIES]))
-
-        urls = []
-
-        for location in node[ATTR_LOCATIONS]:
-            if location not in self.peers:
-                continue
-
-            address = self.peers[location]["address"]
-            port = self.peers[location]["port"]
-            url = f"http://{address}:{port}"
-            urls.append(f"{url}/v2/{repo}/blobs/{hash}")
-
-        return repo, urls
-
-    async def do_download_blob(self, hash, retry_count=0):
-        if not self.download_needed(hash):
-            return
-
-        try:
-            destination = get_blob_path(self.image_directory, hash)
-            repo, urls = self.urls_for_blob(hash)
-            if await self._do_transfer(hash, repo, urls, destination):
-                return
-
-        except asyncio.CancelledError:
-            pass
-
-        except Exception:
-            logger.exception("Unhandled error whilst processing blob download %r", hash)
-
-    def urls_for_manifest(self, hash):
-        node = self.state.graph.nodes[hash]
-
-        repo = next(iter(node[ATTR_REPOSITORIES]))
-
-        urls = []
-
-        for location in node[ATTR_LOCATIONS]:
-            if location not in self.peers:
-                continue
-
-            address = self.peers[location]["address"]
-            port = self.peers[location]["port"]
-            url = f"http://{address}:{port}"
-            urls.append(f"{url}/v2/{repo}/manifests/{hash}")
-
-        return repo, urls
-
-    async def do_download_manifest(self, hash, retry_count=0):
-        if not self.download_needed(hash):
-            return
-
-        try:
-            destination = get_manifest_path(self.image_directory, hash)
-            repo, urls = self.urls_for_manifest(hash)
-            if await self._do_transfer(hash, repo, urls, destination):
-                return
-
-        except Exception:
-            logger.exception("Unhandled error whilst processing blob download %r", hash)
-
 */
