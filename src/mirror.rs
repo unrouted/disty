@@ -2,6 +2,7 @@ use crate::{
     machine::Machine,
     types::{Digest, RegistryAction, RegistryState, RepositoryName},
 };
+use chrono::Utc;
 use log::{debug, warn};
 use pyo3::{
     prelude::*,
@@ -21,13 +22,40 @@ pub enum MirrorRequest {
     Manifest { digest: Digest },
 }
 
+pub enum MirrorResult {
+    Retry { request: MirrorRequest },
+    Success { action: RegistryAction },
+    None,
+}
+
+impl MirrorRequest {
+    pub fn success(&self, location: String) -> MirrorResult {
+        let action = match self {
+            MirrorRequest::Blob { digest } => RegistryAction::BlobStored {
+                timestamp: Utc::now(),
+                digest: digest.clone(),
+                location,
+                user: String::from("$internal"),
+            },
+            MirrorRequest::Manifest { digest } => RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                digest: digest.clone(),
+                location,
+                user: String::from("$internal"),
+            },
+        };
+
+        MirrorResult::Success { action }
+    }
+}
+
 async fn do_transfer(
     images_directory: &str,
     state: Arc<RegistryState>,
     machine: Arc<Machine>,
     client: reqwest::Client,
     request: MirrorRequest,
-) -> Option<MirrorRequest> {
+) -> MirrorResult {
     let digest = match request {
         MirrorRequest::Blob { ref digest } => {
             match state.get_blob(&RepositoryName::from_str("*").unwrap(), &digest) {
@@ -36,14 +64,14 @@ async fn do_transfer(
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
                         );
-                        return None;
+                        return MirrorResult::None;
                     }
 
                     digest
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                    return None;
+                    return MirrorResult::None;
                 }
             }
         }
@@ -54,14 +82,14 @@ async fn do_transfer(
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
                         );
-                        return None;
+                        return MirrorResult::None;
                     }
 
                     digest
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                    return None;
+                    return MirrorResult::None;
                 }
             }
         }
@@ -73,7 +101,7 @@ async fn do_transfer(
         Ok(resp) => resp,
         Err(err) => {
             warn!("Mirroring: Unable to fetch {url}: {err}");
-            return Some(request);
+            return MirrorResult::Retry { request };
         }
     };
 
@@ -81,7 +109,7 @@ async fn do_transfer(
 
     if status_code != reqwest::StatusCode::OK {
         warn!("Mirroring: Unable to fetch {url}: {status_code}");
-        return Some(request);
+        return MirrorResult::Retry { request };
     }
 
     let file_name = crate::utils::get_temp_mirror_path(images_directory);
@@ -90,7 +118,7 @@ async fn do_transfer(
         Ok(file) => file,
         Err(err) => {
             warn!("Mirroring: Failed creating output file for {url}: {err}");
-            return Some(request);
+            return MirrorResult::Retry { request };
         }
     };
 
@@ -101,7 +129,7 @@ async fn do_transfer(
             Ok(Some(chunk)) => {
                 if let Err(err) = file.write(&chunk).await {
                     warn!("Mirroring: Failed write output chunk for {url}: {err}");
-                    return Some(request);
+                    return MirrorResult::Retry { request };
                 }
 
                 hasher.update(&chunk);
@@ -109,24 +137,24 @@ async fn do_transfer(
             Ok(None) => break,
             Err(err) => {
                 warn!("Mirroring: Failed reading chunk for {url}: {err}");
-                return Some(request);
+                return MirrorResult::Retry { request };
             }
         };
     }
 
     if let Err(err) = file.flush().await {
         warn!("Mirroring: Failed to flush output file for {url}: {err}");
-        return Some(request);
+        return MirrorResult::Retry { request };
     }
 
     let download_digest = Digest::from_sha256(&hasher.finish());
 
     if digest != &download_digest {
         warn!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
-        return Some(request);
+        return MirrorResult::Retry { request };
     }
 
-    None
+    request.success(String::from("temp"))
 }
 
 async fn do_mirroring(
@@ -155,8 +183,14 @@ async fn do_mirroring(
             let client = client.clone();
             let result = do_transfer("", state.clone(), machine.clone(), client, task).await;
 
-            if let Some(request) = result {
-                requests.insert(request);
+            match result {
+                MirrorResult::Retry { request } => {
+                    requests.insert(request);
+                }
+                MirrorResult::Success { action } => {
+                    info!("{:?}", action);
+                }
+                MirrorResult::None => {}
             }
         }
     }
