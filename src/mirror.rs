@@ -1,4 +1,4 @@
-use crate::mint::Mint;
+use crate::mint::{Mint, MintConfig};
 use crate::{
     machine::Machine,
     types::{Digest, RegistryAction, RegistryState, RepositoryName},
@@ -51,11 +51,9 @@ impl MirrorRequest {
 
     pub fn storage_path(&self, images_directory: &str) -> PathBuf {
         match self {
-            MirrorRequest::Blob { digest } => {
-                crate::utils::get_blob_path(images_directory, &digest)
-            }
+            MirrorRequest::Blob { digest } => crate::utils::get_blob_path(images_directory, digest),
             MirrorRequest::Manifest { digest } => {
-                crate::utils::get_manifest_path(images_directory, &digest)
+                crate::utils::get_manifest_path(images_directory, digest)
             }
         }
     }
@@ -250,10 +248,11 @@ pub(crate) fn start_mirroring(
     runtime: &Runtime,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
+    mint_config: MintConfig,
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
-    let mint = Mint::new();
+    let mint = Mint::new(mint_config);
 
     runtime.spawn(do_mirroring(machine, state, mint, rx));
 
@@ -307,35 +306,3 @@ pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<MirrorRequest>) {
         }
     })
 }
-
-/*
-class Mirrorer:
-    def __init__(self, config, peers, image_directory, identifier, state, send_action):
-        self.peers = {}
-        for peer in config["peers"].get(list):
-            self.peers[peer["name"]] = {
-                "address": peer["registry"]["address"],
-                "port": peer["registry"]["port"],
-            }
-        self.image_directory = image_directory
-        self.identifier = identifier
-        self.state = state
-        self.send_action = send_action
-
-        self.token_getter = None
-        if config["mirroring"]["realm"].exists():
-            self.token_getter = TokenGetter(
-                self.session,
-                config["mirroring"]["realm"].get(str),
-                config["mirroring"]["service"].get(str),
-                config["mirroring"]["username"].get(str),
-                config["mirroring"]["password"].get(str),
-            )
-
-        # If auth is turned on we need to supply a JWT token
-        if self.token_getter:
-            token = await self.token_getter.get_token(repo, ["pull"])
-            headers["Authorization"] = f"Bearer {token}"
-
-        return True
-*/

@@ -17,6 +17,7 @@ mod webhook;
 
 use std::sync::Arc;
 
+use crate::mint::MintConfig;
 use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
@@ -56,6 +57,7 @@ fn start_registry_service(
     repository_path: String,
     webhooks: Vec<WebhookConfig>,
     token_config: TokenConfig,
+    mint_config: MintConfig,
     machine: PyObject,
     machine_identifier: String,
     reducers: PyObject,
@@ -95,7 +97,7 @@ fn start_registry_service(
         repository_path,
     ));
 
-    let tx = crate::mirror::start_mirroring(runtime, machine, state.clone());
+    let tx = crate::mirror::start_mirroring(runtime, machine, state.clone(), mint_config);
     crate::mirror::add_side_effect(reducers, tx);
 
     runtime.spawn(

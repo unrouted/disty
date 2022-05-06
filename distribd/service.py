@@ -86,12 +86,26 @@ async def main(argv=None, config=None):
     else:
         token_config = {"enabled": False}
 
+    mint_server = config["mirroring"]
+    if mint_server["enabled"].get(bool):
+        mint_config = {
+            "enabled": True,
+            "realm": mint_server["realm"].get(str),
+            "service": mint_server["service"].get(str),
+            "username": mint_server["username"].get(str),
+            "password": mint_server["password"].get(str),
+        }
+
+    else:
+        mint_config = {"enabled": False}
+
     if not start_registry_service(
         registry_state,
         raft.append,
         str(images_directory),
         webhooks,
         token_config,
+        mint_config,
         machine,
         machine.identifier,
         reducers,
