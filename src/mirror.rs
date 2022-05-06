@@ -58,7 +58,7 @@ async fn do_transfer(
 ) -> MirrorResult {
     let digest = match request {
         MirrorRequest::Blob { ref digest } => {
-            match state.get_blob(&RepositoryName::from_str("*").unwrap(), &digest) {
+            match state.get_blob(&RepositoryName::from_str("*").unwrap(), digest) {
                 Some(blob) => {
                     if blob.repositories.is_empty() {
                         debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
@@ -80,7 +80,7 @@ async fn do_transfer(
             }
         }
         MirrorRequest::Manifest { ref digest } => {
-            match state.get_manifest(&RepositoryName::from_str("*").unwrap(), &digest) {
+            match state.get_manifest(&RepositoryName::from_str("*").unwrap(), digest) {
                 Some(manifest) => {
                     if manifest.repositories.is_empty() {
                         debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
@@ -258,7 +258,7 @@ pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<MirrorRequest>) {
 
         let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
 
-        if let Err(_) = result {
+        if result.is_err() {
             panic!("Boot failure: Could not setup mirroring side effects")
         }
     })
