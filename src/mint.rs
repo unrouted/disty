@@ -90,7 +90,7 @@ impl Mint {
                     }
                 }
             }
-            MintConfig::None { enabled } => Ok(builder),
+            MintConfig::None { enabled: _ } => Ok(builder),
         }
     }
 }
