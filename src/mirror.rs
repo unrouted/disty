@@ -60,6 +60,10 @@ async fn do_transfer(
         MirrorRequest::Blob { ref digest } => {
             match state.get_blob(&RepositoryName::from_str("*").unwrap(), &digest) {
                 Some(blob) => {
+                    if blob.repositories.is_empty() {
+                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
+                        return MirrorResult::None;
+                    }
                     if blob.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
@@ -78,6 +82,10 @@ async fn do_transfer(
         MirrorRequest::Manifest { ref digest } => {
             match state.get_manifest(&RepositoryName::from_str("*").unwrap(), &digest) {
                 Some(manifest) => {
+                    if manifest.repositories.is_empty() {
+                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
+                        return MirrorResult::None;
+                    }
                     if manifest.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
@@ -295,24 +303,10 @@ class Mirrorer:
         if not destination.parent.exists():
             os.makedirs(destination.parent)
 
-        temporary_path = self.image_directory / "uploads" / str(uuid.uuid4())
-        if not temporary_path.parent.exists():
-            os.makedirs(temporary_path.parent)
-
-        digest = hashlib.sha256()
-
-        headers = {}
-
         # If auth is turned on we need to supply a JWT token
         if self.token_getter:
             token = await self.token_getter.get_token(repo, ["pull"])
             headers["Authorization"] = f"Bearer {token}"
-
-        mirrored_hash = "sha256:" + digest.hexdigest()
-
-        if mirrored_hash != hash:
-            os.unlink(temporary_path)
-            return False
 
         os.rename(temporary_path, destination)
 
@@ -344,19 +338,6 @@ class Mirrorer:
             destination = get_blob_path(self.image_directory, hash)
             repo, urls = self.urls_for_blob(hash)
             if await self._do_transfer(hash, repo, urls, destination):
-                await self.send_action(
-                    [
-                        {
-                            "type": RegistryActions.BLOB_STORED,
-                            "timestamp": datetime.datetime.now(
-                                datetime.timezone.utc
-                            ).isoformat(),
-                            "hash": hash,
-                            "location": self.identifier,
-                            "user": "$internal",
-                        }
-                    ]
-                )
                 return
 
         except asyncio.CancelledError:
@@ -364,15 +345,6 @@ class Mirrorer:
 
         except Exception:
             logger.exception("Unhandled error whilst processing blob download %r", hash)
-
-        logger.info("Scheduling retry for blob download %s", hash)
-        loop = asyncio.get_event_loop()
-        loop.call_later(
-            retry_count,
-            lambda: self.pool.spawn(
-                self.do_download_blob(hash, retry_count=retry_count + 1)
-            ),
-        )
 
     def urls_for_manifest(self, hash):
         node = self.state.graph.nodes[hash]
@@ -400,51 +372,9 @@ class Mirrorer:
             destination = get_manifest_path(self.image_directory, hash)
             repo, urls = self.urls_for_manifest(hash)
             if await self._do_transfer(hash, repo, urls, destination):
-                await self.send_action(
-                    [
-                        {
-                            "type": RegistryActions.MANIFEST_STORED,
-                            "timestamp": datetime.datetime.now(
-                                datetime.timezone.utc
-                            ).isoformat(),
-                            "hash": hash,
-                            "location": self.identifier,
-                            "user": "$internal",
-                        }
-                    ]
-                )
                 return
 
         except Exception:
             logger.exception("Unhandled error whilst processing blob download %r", hash)
 
-        logger.info("Scheduling retry for manifest download %s", hash)
-        loop = asyncio.get_event_loop()
-        loop.call_later(
-            retry_count,
-            lambda: self.pool.spawn(
-                self.do_download_manifest(hash, retry_count=retry_count + 1)
-            ),
-        )
-
-    def download_needed(self, hash):
-        if hash not in self.state.graph.nodes:
-            # It was deleted or never existed in the first place
-            return False
-
-        node = self.state.graph.nodes[hash]
-
-        if len(node[ATTR_REPOSITORIES]) == 0:
-            # It's pending deletion
-            return False
-
-        if len(node[ATTR_LOCATIONS]) == 0:
-            # It's not available for download anywhere
-            return False
-
-        if self.identifier in node[ATTR_LOCATIONS]:
-            # Already downloaded it
-            return False
-
-        return True
 */
