@@ -1,3 +1,4 @@
+use crate::mint::Mint;
 use crate::{
     machine::Machine,
     types::{Digest, RegistryAction, RegistryState, RepositoryName},
@@ -8,8 +9,8 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
-use std::{str::FromStr, path::PathBuf};
 use std::{collections::HashSet, sync::Arc};
+use std::{path::PathBuf, str::FromStr};
 use tokio::{
     io::AsyncWriteExt,
     sync::mpsc::{channel, Receiver, Sender},
@@ -52,7 +53,7 @@ impl MirrorRequest {
         match self {
             MirrorRequest::Blob { digest } => {
                 crate::utils::get_blob_path(images_directory, &digest)
-            },
+            }
             MirrorRequest::Manifest { digest } => {
                 crate::utils::get_manifest_path(images_directory, &digest)
             }
@@ -64,6 +65,7 @@ async fn do_transfer(
     images_directory: &str,
     state: Arc<RegistryState>,
     machine: Arc<Machine>,
+    mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
@@ -122,7 +124,15 @@ async fn do_transfer(
 
     let url = format!("http://localhost/v2/{repository}/{object_type}/{digest:?}");
 
-    let mut resp = match client.get(&url).send().await {
+    let builder = match mint.enrich_request(client.get(&url), repository).await {
+        Ok(builder) => builder,
+        Err(err) => {
+            warn!("Mirroring: Unable to fetch {url} as minting failed: {err}");
+            return MirrorResult::Retry { request };
+        }
+    };
+
+    let mut resp = match builder.send().await {
         Ok(resp) => resp,
         Err(err) => {
             warn!("Mirroring: Unable to fetch {url}: {err}");
@@ -191,6 +201,7 @@ async fn do_transfer(
 async fn do_mirroring(
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
+    mint: Mint,
     mut rx: Receiver<MirrorRequest>,
 ) {
     let client = reqwest::Client::builder()
@@ -212,7 +223,15 @@ async fn do_mirroring(
         let tasks: Vec<MirrorRequest> = requests.drain().collect();
         for task in tasks {
             let client = client.clone();
-            let result = do_transfer("", state.clone(), machine.clone(), client, task).await;
+            let result = do_transfer(
+                "",
+                state.clone(),
+                machine.clone(),
+                mint.clone(),
+                client,
+                task,
+            )
+            .await;
 
             match result {
                 MirrorResult::Retry { request } => {
@@ -234,7 +253,9 @@ pub(crate) fn start_mirroring(
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
-    runtime.spawn(do_mirroring(machine, state, rx));
+    let mint = Mint::new();
+
+    runtime.spawn(do_mirroring(machine, state, mint, rx));
 
     tx
 }

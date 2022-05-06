@@ -5,6 +5,7 @@ mod extractor;
 mod garbage;
 mod headers;
 mod machine;
+mod mint;
 mod mirror;
 mod prometheus;
 mod registry;
