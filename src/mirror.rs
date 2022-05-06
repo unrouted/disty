@@ -8,7 +8,7 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
-use std::str::FromStr;
+use std::{str::FromStr, path::PathBuf};
 use std::{collections::HashSet, sync::Arc};
 use tokio::{
     io::AsyncWriteExt,
@@ -46,6 +46,17 @@ impl MirrorRequest {
         };
 
         MirrorResult::Success { action }
+    }
+
+    pub fn storage_path(&self, images_directory: &str) -> PathBuf {
+        match self {
+            MirrorRequest::Blob { digest } => {
+                crate::utils::get_blob_path(images_directory, &digest)
+            },
+            MirrorRequest::Manifest { digest } => {
+                crate::utils::get_manifest_path(images_directory, &digest)
+            }
+        }
     }
 }
 
@@ -122,7 +133,7 @@ async fn do_transfer(
 
     let file_name = crate::utils::get_temp_mirror_path(images_directory);
 
-    let mut file = match tokio::fs::File::create(file_name).await {
+    let mut file = match tokio::fs::File::create(&file_name).await {
         Ok(file) => file,
         Err(err) => {
             warn!("Mirroring: Failed creating output file for {url}: {err}");
@@ -159,6 +170,12 @@ async fn do_transfer(
 
     if digest != &download_digest {
         warn!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
+        return MirrorResult::Retry { request };
+    }
+
+    let storage_path = request.storage_path(images_directory);
+    if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
+        warn!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
     }
 
