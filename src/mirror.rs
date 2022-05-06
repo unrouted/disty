@@ -94,6 +94,8 @@ async fn do_transfer(
         }
     };
 
+    let mut hasher = ring::digest::Context::new(&ring::digest::SHA256);
+
     loop {
         match resp.chunk().await {
             Ok(Some(chunk)) => {
@@ -101,6 +103,8 @@ async fn do_transfer(
                     warn!("Mirroring: Failed write output chunk for {url}: {err}");
                     return Some(request);
                 }
+
+                hasher.update(&chunk);
             }
             Ok(None) => break,
             Err(err) => {
@@ -112,6 +116,13 @@ async fn do_transfer(
 
     if let Err(err) = file.flush().await {
         warn!("Mirroring: Failed to flush output file for {url}: {err}");
+        return Some(request);
+    }
+
+    let download_digest = Digest::from_sha256(&hasher.finish());
+
+    if digest != &download_digest {
+        warn!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
         return Some(request);
     }
 
