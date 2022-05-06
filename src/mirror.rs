@@ -7,7 +7,6 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
-
 use std::str::FromStr;
 use std::{collections::HashSet, sync::Arc};
 use tokio::{
@@ -28,53 +27,53 @@ async fn do_transfer(
     machine: Arc<Machine>,
     client: reqwest::Client,
     request: MirrorRequest,
-) -> bool {
+) -> Option<MirrorRequest> {
     let digest = match request {
-        MirrorRequest::Blob { digest } => {
+        MirrorRequest::Blob { ref digest } => {
             match state.get_blob(&RepositoryName::from_str("*").unwrap(), &digest) {
                 Some(blob) => {
                     if blob.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
                         );
-                        return false;
+                        return None;
                     }
 
                     digest
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                    return false;
+                    return None;
                 }
             }
         }
-        MirrorRequest::Manifest { digest } => {
+        MirrorRequest::Manifest { ref digest } => {
             match state.get_manifest(&RepositoryName::from_str("*").unwrap(), &digest) {
                 Some(manifest) => {
                     if manifest.locations.contains(&machine.identifier) {
                         debug!(
                             "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
                         );
-                        return false;
+                        return None;
                     }
 
                     digest
                 }
                 None => {
                     debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                    return false;
+                    return None;
                 }
             }
         }
     };
 
-    let url = format!("http://localhost/v2/*/manifests/{digest}");
+    let url = format!("http://localhost/v2/*/manifests/{digest:?}");
 
     let mut resp = match client.get(&url).send().await {
         Ok(resp) => resp,
         Err(err) => {
             warn!("Mirroring: Unable to fetch {url}: {err}");
-            return false;
+            return Some(request);
         }
     };
 
@@ -82,7 +81,7 @@ async fn do_transfer(
 
     if status_code != reqwest::StatusCode::OK {
         warn!("Mirroring: Unable to fetch {url}: {status_code}");
-        return false;
+        return Some(request);
     }
 
     let file_name = crate::utils::get_temp_mirror_path(images_directory);
@@ -91,7 +90,7 @@ async fn do_transfer(
         Ok(file) => file,
         Err(err) => {
             warn!("Mirroring: Failed creating output file for {url}: {err}");
-            return false;
+            return Some(request);
         }
     };
 
@@ -100,23 +99,23 @@ async fn do_transfer(
             Ok(Some(chunk)) => {
                 if let Err(err) = file.write(&chunk).await {
                     warn!("Mirroring: Failed write output chunk for {url}: {err}");
-                    return false;
+                    return Some(request);
                 }
             }
             Ok(None) => break,
             Err(err) => {
                 warn!("Mirroring: Failed reading chunk for {url}: {err}");
-                return false;
+                return Some(request);
             }
         };
     }
 
     if let Err(err) = file.flush().await {
         warn!("Mirroring: Failed to flush output file for {url}: {err}");
-        return false;
+        return Some(request);
     }
 
-    true
+    None
 }
 
 async fn do_mirroring(
@@ -134,12 +133,21 @@ async fn do_mirroring(
     loop {
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(request) = rx.recv() => {requests.insert(request); }
+            Some(request) = rx.recv() => {requests.insert(request);}
         };
 
-        // requests.retain(|request| {
-        //    do_transfer("", state.clone(), machine.clone(), client, request).await;
-        //});
+        // FIXME: Ideally we'd have some worker pool here are download a bunch
+        // of objects in parallel.
+
+        let tasks: Vec<MirrorRequest> = requests.drain().collect();
+        for task in tasks {
+            let client = client.clone();
+            let result = do_transfer("", state.clone(), machine.clone(), client, task).await;
+
+            if let Some(request) = result {
+                requests.insert(request);
+            }
+        }
     }
 }
 
