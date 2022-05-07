@@ -114,7 +114,7 @@ fn start_registry_service(
             }))
             .manage(state)
             .manage(extractor)
-            .manage(config.token_server.clone())
+            .manage(config.token_server)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),
