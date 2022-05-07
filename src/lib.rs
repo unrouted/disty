@@ -14,6 +14,7 @@ mod types;
 mod utils;
 mod views;
 mod webhook;
+mod config;
 
 use std::sync::Arc;
 
@@ -70,6 +71,8 @@ fn start_registry_service(
         return false;
     }
 
+    let config = crate::config::config();
+
     let mut registry = <prometheus_client::registry::Registry>::default();
 
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
@@ -99,6 +102,7 @@ fn start_registry_service(
 
     let tx = crate::mirror::start_mirroring(
         runtime,
+        config,
         machine,
         state.clone(),
         mint_config,

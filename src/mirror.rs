@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::mint::{Mint, MintConfig};
 use crate::{
     machine::Machine,
@@ -249,6 +250,7 @@ async fn do_mirroring(
 
 pub(crate) fn start_mirroring(
     runtime: &Runtime,
+    config: Configuration,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
     mint_config: MintConfig,
