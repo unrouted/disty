@@ -25,20 +25,20 @@ pub enum MirrorRequest {
 
 pub enum MirrorResult {
     Retry { request: MirrorRequest },
-    Success { action: RegistryAction },
+    Success { request: MirrorRequest, action: RegistryAction },
     None,
 }
 
 impl MirrorRequest {
-    pub fn success(&self, location: String) -> MirrorResult {
+    pub fn success(self, location: String) -> MirrorResult {
         let action = match self {
-            MirrorRequest::Blob { digest } => RegistryAction::BlobStored {
+            MirrorRequest::Blob { ref digest } => RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 digest: digest.clone(),
                 location,
                 user: String::from("$internal"),
             },
-            MirrorRequest::Manifest { digest } => RegistryAction::ManifestStored {
+            MirrorRequest::Manifest { ref digest } => RegistryAction::ManifestStored {
                 timestamp: Utc::now(),
                 digest: digest.clone(),
                 location,
@@ -46,7 +46,7 @@ impl MirrorRequest {
             },
         };
 
-        MirrorResult::Success { action }
+        MirrorResult::Success { request: self, action }
     }
 
     pub fn storage_path(&self, images_directory: &str) -> PathBuf {
@@ -236,8 +236,10 @@ async fn do_mirroring(
                 MirrorResult::Retry { request } => {
                     requests.insert(request);
                 }
-                MirrorResult::Success { action } => {
-                    state.send_actions(vec![action]).await;
+                MirrorResult::Success { action, request } => {
+                    if !state.send_actions(vec![action]).await {
+                        requests.insert(request);
+                    };
                 }
                 MirrorResult::None => {}
             }
