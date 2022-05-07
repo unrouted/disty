@@ -237,7 +237,7 @@ async fn do_mirroring(
                     requests.insert(request);
                 }
                 MirrorResult::Success { action } => {
-                    info!("{:?}", action);
+                    state.send_actions(vec![action]).await;
                 }
                 MirrorResult::None => {}
             }
