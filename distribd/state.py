@@ -68,6 +68,14 @@ class RegistryState(Reducer):
 
         return blob
 
+    def get_blob_directly(self, hash):
+        blob = self.graph.nodes[hash]
+
+        if blob[ATTR_TYPE] != TYPE_BLOB:
+            raise KeyError("No such hash")
+
+        return blob
+
     def is_manifest_available(self, repository, hash):
         if hash not in self.graph.nodes:
             return False
@@ -92,6 +100,17 @@ class RegistryState(Reducer):
             raise KeyError("No such hash")
 
         if repository not in self.graph.nodes[hash][ATTR_REPOSITORIES]:
+            raise KeyError("No such hash")
+
+        manifest = dict(manifest)
+        manifest["dependencies"] = []
+
+        return manifest
+
+    def get_manifest_directly(self, hash):
+        manifest = self.graph.nodes[hash]
+
+        if manifest[ATTR_TYPE] != TYPE_MANIFEST:
             raise KeyError("No such hash")
 
         manifest = dict(manifest)

@@ -24,8 +24,13 @@ pub enum MirrorRequest {
 }
 
 pub enum MirrorResult {
-    Retry { request: MirrorRequest },
-    Success { request: MirrorRequest, action: RegistryAction },
+    Retry {
+        request: MirrorRequest,
+    },
+    Success {
+        request: MirrorRequest,
+        action: RegistryAction,
+    },
     None,
 }
 
@@ -46,7 +51,10 @@ impl MirrorRequest {
             },
         };
 
-        MirrorResult::Success { request: self, action }
+        MirrorResult::Success {
+            request: self,
+            action,
+        }
     }
 
     pub fn storage_path(&self, images_directory: &str) -> PathBuf {
@@ -68,56 +76,48 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => {
-            match state.get_blob(&RepositoryName::from_str("*").unwrap(), digest) {
-                Some(blob) => {
-                    let repository = match blob.repositories.iter().next() {
-                        Some(repository) => repository.clone(),
-                        None => {
-                            debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                            return MirrorResult::None;
-                        }
-                    };
-                    if blob.locations.contains(&machine.identifier) {
-                        debug!(
-                            "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
-                        );
+        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest) {
+            Some(blob) => {
+                let repository = match blob.repositories.iter().next() {
+                    Some(repository) => repository.clone(),
+                    None => {
+                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
                         return MirrorResult::None;
                     }
-
-                    (digest, repository, "blobs")
-                }
-                None => {
-                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                };
+                if blob.locations.contains(&machine.identifier) {
+                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
+
+                (digest, repository, "blobs")
             }
-        }
-        MirrorRequest::Manifest { ref digest } => {
-            match state.get_manifest(&RepositoryName::from_str("*").unwrap(), digest) {
-                Some(manifest) => {
-                    let repository = match manifest.repositories.iter().next() {
-                        Some(repository) => repository.clone(),
-                        None => {
-                            debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                            return MirrorResult::None;
-                        }
-                    };
-                    if manifest.locations.contains(&machine.identifier) {
-                        debug!(
-                            "Mirroring: {digest:?}: Already downloaded by this node; nothing to do"
-                        );
+            None => {
+                debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                return MirrorResult::None;
+            }
+        },
+        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest) {
+            Some(manifest) => {
+                let repository = match manifest.repositories.iter().next() {
+                    Some(repository) => repository.clone(),
+                    None => {
+                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
                         return MirrorResult::None;
                     }
-
-                    (digest, repository, "manifests")
-                }
-                None => {
-                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                };
+                if manifest.locations.contains(&machine.identifier) {
+                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
+
+                (digest, repository, "manifests")
             }
-        }
+            None => {
+                debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
+                return MirrorResult::None;
+            }
+        },
     };
 
     let url = format!("http://localhost/v2/{repository}/{object_type}/{digest:?}");

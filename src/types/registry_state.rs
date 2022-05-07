@@ -104,6 +104,22 @@ impl RegistryState {
             }
         })
     }
+
+    pub fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
+        Python::with_gil(|py| {
+            let retval = self
+                .state
+                .call_method1(py, "get_blob_directly", (hash.to_string(),));
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => Some(extracted),
+                    _ => None,
+                },
+                _ => None,
+            }
+        })
+    }
+
     pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
         Python::with_gil(|py| {
             let retval = self.state.call_method1(
@@ -120,6 +136,22 @@ impl RegistryState {
             }
         })
     }
+
+    pub fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
+        Python::with_gil(|py| {
+            let retval = self
+                .state
+                .call_method1(py, "get_manifest_directly", (hash.to_string(),));
+            match retval {
+                Ok(inner) => match inner.extract(py) {
+                    Ok(extracted) => Some(extracted),
+                    _ => None,
+                },
+                _ => None,
+            }
+        })
+    }
+
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         Python::with_gil(|py| {
             let retval =
