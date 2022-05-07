@@ -200,6 +200,7 @@ async fn do_mirroring(
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
     mint: Mint,
+    images_directory: String,
     mut rx: Receiver<MirrorRequest>,
 ) {
     let client = reqwest::Client::builder()
@@ -222,7 +223,7 @@ async fn do_mirroring(
         for task in tasks {
             let client = client.clone();
             let result = do_transfer(
-                "",
+                &images_directory,
                 state.clone(),
                 machine.clone(),
                 mint.clone(),
@@ -249,12 +250,13 @@ pub(crate) fn start_mirroring(
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
     mint_config: MintConfig,
+    images_directory: String,
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
     let mint = Mint::new(mint_config);
 
-    runtime.spawn(do_mirroring(machine, state, mint, rx));
+    runtime.spawn(do_mirroring(machine, state, mint, images_directory, rx));
 
     tx
 }

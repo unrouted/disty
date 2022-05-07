@@ -94,10 +94,16 @@ fn start_registry_service(
     runtime.spawn(crate::garbage::do_garbage_collect(
         machine.clone(),
         state.clone(),
-        repository_path,
+        repository_path.clone(),
     ));
 
-    let tx = crate::mirror::start_mirroring(runtime, machine, state.clone(), mint_config);
+    let tx = crate::mirror::start_mirroring(
+        runtime,
+        machine,
+        state.clone(),
+        mint_config,
+        repository_path,
+    );
     crate::mirror::add_side_effect(reducers, tx);
 
     runtime.spawn(
