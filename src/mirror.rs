@@ -10,8 +10,8 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
+use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
-use std::{path::PathBuf};
 use tokio::{
     io::AsyncWriteExt,
     sync::mpsc::{channel, Receiver, Sender},

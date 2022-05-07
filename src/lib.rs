@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+mod config;
 mod extractor;
 mod garbage;
 mod headers;
@@ -14,7 +15,6 @@ mod types;
 mod utils;
 mod views;
 mod webhook;
-mod config;
 
 use std::sync::Arc;
 
