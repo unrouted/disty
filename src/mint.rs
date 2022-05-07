@@ -1,26 +1,8 @@
-use pyo3::prelude::*;
 use reqwest::{self, RequestBuilder};
 use serde::Deserialize;
 
+use crate::config::MintConfig;
 use crate::types::RepositoryName;
-
-#[derive(Clone, FromPyObject)]
-pub enum MintConfig {
-    Minter {
-        #[pyo3(item)]
-        realm: String,
-        #[pyo3(item)]
-        service: String,
-        #[pyo3(item)]
-        username: String,
-        #[pyo3(item)]
-        password: String,
-    },
-    None {
-        #[pyo3(item)]
-        enabled: bool,
-    },
-}
 
 #[derive(Deserialize)]
 struct MintResponse {
@@ -30,11 +12,11 @@ struct MintResponse {
 #[derive(Clone)]
 pub(crate) struct Mint {
     client: reqwest::Client,
-    config: MintConfig,
+    config: Option<MintConfig>,
 }
 
 impl Mint {
-    pub fn new(config: MintConfig) -> Self {
+    pub fn new(config: Option<MintConfig>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("distribd/mint")
             .build()
@@ -51,12 +33,12 @@ impl Mint {
         let scope = "repository:{repository}:pull".to_string();
 
         match &self.config {
-            MintConfig::Minter {
+            Some(MintConfig {
                 realm,
                 service,
                 username,
                 password,
-            } => {
+            }) => {
                 let response = self
                     .client
                     .get(realm.clone())
@@ -91,7 +73,7 @@ impl Mint {
                     }
                 }
             }
-            MintConfig::None { enabled: _ } => Ok(builder),
+            None => Ok(builder),
         }
     }
 }

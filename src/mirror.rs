@@ -1,5 +1,5 @@
 use crate::config::Configuration;
-use crate::mint::{Mint, MintConfig};
+use crate::mint::Mint;
 use crate::{
     machine::Machine,
     types::{Digest, RegistryAction, RegistryState},
@@ -253,12 +253,11 @@ pub(crate) fn start_mirroring(
     config: Configuration,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
-    mint_config: MintConfig,
     images_directory: String,
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
-    let mint = Mint::new(mint_config);
+    let mint = Mint::new(config.mirroring);
 
     runtime.spawn(do_mirroring(machine, state, mint, images_directory, rx));
 

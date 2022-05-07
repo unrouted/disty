@@ -65,14 +65,23 @@ pub struct PeerConfig {
     pub registry: RegistryConfig,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+pub struct MintConfig {
+    pub realm: String,
+    pub service: String,
+    pub username: String,
+    pub password: String,
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct Configuration {
-    raft: RaftConfig,
-    registry: RegistryConfig,
-    prometheus: PrometheusConfig,
-    token_server: Option<TokenConfig>,
-    storage: String,
-    peers: Vec<PeerConfig>,
+    pub raft: RaftConfig,
+    pub registry: RegistryConfig,
+    pub prometheus: PrometheusConfig,
+    pub token_server: Option<TokenConfig>,
+    pub mirroring: Option<MintConfig>,
+    pub storage: String,
+    pub peers: Vec<PeerConfig>,
 }
 
 impl Default for Configuration {
@@ -82,6 +91,7 @@ impl Default for Configuration {
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),
             token_server: None,
+            mirroring: None,
             storage: "var".to_string(),
             peers: vec![],
         }
