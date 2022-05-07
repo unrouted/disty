@@ -1,7 +1,7 @@
 use crate::mint::{Mint, MintConfig};
 use crate::{
     machine::Machine,
-    types::{Digest, RegistryAction, RegistryState, RepositoryName},
+    types::{Digest, RegistryAction, RegistryState},
 };
 use chrono::Utc;
 use log::{debug, warn};
@@ -10,7 +10,7 @@ use pyo3::{
     types::{self, PyDict, PyTuple},
 };
 use std::{collections::HashSet, sync::Arc};
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf};
 use tokio::{
     io::AsyncWriteExt,
     sync::mpsc::{channel, Receiver, Sender},
