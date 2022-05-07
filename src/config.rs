@@ -5,7 +5,7 @@ use figment::{
 use platform_dirs::AppDirs;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RaftConfig {
     pub address: String,
     pub port: u32,
@@ -20,7 +20,7 @@ impl Default for RaftConfig {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RegistryConfig {
     pub address: String,
     pub port: u32,
@@ -35,7 +35,7 @@ impl Default for RegistryConfig {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct PrometheusConfig {
     pub address: String,
     pub port: u32,
@@ -50,7 +50,7 @@ impl Default for PrometheusConfig {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct TokenConfig {
     pub issuer: String,
     pub service: String,
@@ -58,7 +58,7 @@ pub struct TokenConfig {
     pub public_key: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct PeerConfig {
     pub name: String,
     pub raft: RaftConfig,
@@ -73,7 +73,7 @@ pub struct MintConfig {
     pub password: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Configuration {
     pub raft: RaftConfig,
     pub registry: RegistryConfig,

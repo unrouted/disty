@@ -1,4 +1,4 @@
-use crate::token::TokenConfig;
+use crate::config::TokenConfig;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
 use rocket::http::Status;
@@ -190,21 +190,24 @@ impl<'r> FromRequest<'r> for Token {
     type Error = TokenError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let config = match req.rocket().state::<TokenConfig>() {
+        let config = match req.rocket().state::<Option<TokenConfig>>() {
             Some(value) => value,
             _ => return Outcome::Failure((Status::BadGateway, TokenError::Missing)),
         };
 
-        if !config.enabled {
-            return Outcome::Success(Token {
-                access: vec![],
-                sub: "anonymous".to_string(),
-                admin: true,
-                validated_token: true,
-                service: config.service.clone(),
-                realm: config.realm.clone(),
-            });
-        }
+        let config = match config {
+            None => {
+                return Outcome::Success(Token {
+                    access: vec![],
+                    sub: "anonymous".to_string(),
+                    admin: true,
+                    validated_token: true,
+                    service: None,
+                    realm: None,
+                });
+            }
+            Some(config) => config,
+        };
 
         let header = match req.headers().get_one("authorization") {
             Some(header) => header.to_string(),
@@ -214,8 +217,8 @@ impl<'r> FromRequest<'r> for Token {
                     sub: "anonymous".to_string(),
                     admin: false,
                     validated_token: false,
-                    service: config.service.clone(),
-                    realm: config.realm.clone(),
+                    service: Some(config.service.clone()),
+                    realm: Some(config.realm.clone()),
                 });
             }
         };
@@ -230,10 +233,7 @@ impl<'r> FromRequest<'r> for Token {
             return Outcome::Failure((Status::Forbidden, TokenError::Missing));
         }
 
-        let pub_key = config.public_key.as_ref().unwrap();
-        info!("{pub_key}");
-
-        let key = match ES256PublicKey::from_pem(config.public_key.as_ref().unwrap()) {
+        let key = match ES256PublicKey::from_pem(&config.public_key) {
             Ok(key) => key,
             _ => {
                 info!("Could not load key from PEM");
@@ -247,9 +247,9 @@ impl<'r> FromRequest<'r> for Token {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[config.issuer.clone().unwrap()])),
+            allowed_issuers: Some(HashSet::from_strings(&[config.issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[config.service.clone().unwrap()])),
+            allowed_audiences: Some(HashSet::from_strings(&[config.service.clone()])),
             ..Default::default()
         };
 
@@ -276,8 +276,8 @@ impl<'r> FromRequest<'r> for Token {
             sub: subject,
             admin: false,
             validated_token: true,
-            service: config.service.clone(),
-            realm: config.realm.clone(),
+            service: Some(config.service.clone()),
+            realm: Some(config.realm.clone()),
         })
     }
 }

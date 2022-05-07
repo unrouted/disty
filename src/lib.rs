@@ -10,7 +10,6 @@ mod mint;
 mod mirror;
 mod prometheus;
 mod registry;
-mod token;
 mod types;
 mod utils;
 mod views;
@@ -22,7 +21,6 @@ use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
-use token::TokenConfig;
 use webhook::{start_webhook_worker, WebhookConfig};
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
@@ -56,7 +54,6 @@ fn start_registry_service(
     send_action: PyObject,
     repository_path: String,
     webhooks: Vec<WebhookConfig>,
-    token_config: TokenConfig,
     machine: PyObject,
     machine_identifier: String,
     reducers: PyObject,
@@ -98,8 +95,13 @@ fn start_registry_service(
         repository_path.clone(),
     ));
 
-    let tx =
-        crate::mirror::start_mirroring(runtime, config, machine, state.clone(), repository_path);
+    let tx = crate::mirror::start_mirroring(
+        runtime,
+        config.clone(),
+        machine,
+        state.clone(),
+        repository_path,
+    );
     crate::mirror::add_side_effect(reducers, tx);
 
     runtime.spawn(
@@ -112,7 +114,7 @@ fn start_registry_service(
             }))
             .manage(state)
             .manage(extractor)
-            .manage(token_config)
+            .manage(config.token_server.clone())
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),
