@@ -67,9 +67,10 @@ impl Mint {
 
                 match response {
                     Ok(response) => {
-                        if response.status() != 200 {
+                        let status_code = response.status();
+                        if status_code != reqwest::StatusCode::OK {
                             warn!(
-                                "Mint: Failed to mint pull token for {repository}: status code 000"
+                                "Mint: Failed to mint pull token for {repository}: status code {status_code}"
                             );
                             return Err("");
                         }
