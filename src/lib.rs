@@ -93,12 +93,7 @@ fn start_registry_service(
         state.clone(),
     ));
 
-    let tx = crate::mirror::start_mirroring(
-        runtime,
-        config.clone(),
-        machine,
-        state.clone(),
-    );
+    let tx = crate::mirror::start_mirroring(runtime, config.clone(), machine, state.clone());
     crate::mirror::add_side_effect(reducers, tx);
 
     runtime.spawn(

@@ -446,6 +446,7 @@ dependencies = [
  "pyo3-asyncio",
  "pyo3-build-config",
  "pyo3-chrono",
+ "rand",
  "regex",
  "reqwest",
  "ring",

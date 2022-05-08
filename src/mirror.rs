@@ -10,6 +10,7 @@ use pyo3::{
     prelude::*,
     types::{self, PyDict, PyTuple},
 };
+use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
 use tokio::{
@@ -69,14 +70,14 @@ impl MirrorRequest {
 }
 
 async fn do_transfer(
-    images_directory: &str,
+    config: Configuration,
     state: Arc<RegistryState>,
     machine: Arc<Machine>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
-    let (digest, repository, object_type) = match request {
+    let (digest, repository, locations, object_type) = match request {
         MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest) {
             Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
@@ -91,7 +92,7 @@ async fn do_transfer(
                     return MirrorResult::None;
                 }
 
-                (digest, repository, "blobs")
+                (digest, repository, blob.locations, "blobs")
             }
             None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -112,7 +113,7 @@ async fn do_transfer(
                     return MirrorResult::None;
                 }
 
-                (digest, repository, "manifests")
+                (digest, repository, manifest.locations, "manifests")
             }
             None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -121,9 +122,28 @@ async fn do_transfer(
         },
     };
 
-    let url = format!("http://localhost/v2/{repository}/{object_type}/{digest:?}");
+    let mut urls = vec![];
+    for peer in &config.peers {
+        if !locations.contains(&peer.name) {
+            continue;
+        }
 
-    let builder = match mint.enrich_request(client.get(&url), repository).await {
+        let address = &peer.registry.address;
+        let port = &peer.registry.port;
+
+        let url = format!("http://{address}:{port}/v2/{repository}/{object_type}/{digest:?}");
+        urls.push(url);
+    }
+
+    let url = match urls.choose(&mut rand::thread_rng()) {
+        Some(url) => url,
+        None => {
+            debug!("Mirroring: {digest:?}: Failed to pick a node to mirror from");
+            return MirrorResult::None;
+        }
+    };
+
+    let builder = match mint.enrich_request(client.get(url), repository).await {
         Ok(builder) => builder,
         Err(err) => {
             warn!("Mirroring: Unable to fetch {url} as minting failed: {err}");
@@ -146,7 +166,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    let file_name = crate::utils::get_temp_mirror_path(images_directory);
+    let file_name = crate::utils::get_temp_mirror_path(&config.storage);
 
     let mut file = match tokio::fs::File::create(&file_name).await {
         Ok(file) => file,
@@ -188,7 +208,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    let storage_path = request.storage_path(images_directory);
+    let storage_path = request.storage_path(&config.storage);
     if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
         warn!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
@@ -201,7 +221,7 @@ async fn do_mirroring(
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
     mint: Mint,
-    images_directory: String,
+    configuration: Configuration,
     mut rx: Receiver<MirrorRequest>,
 ) {
     let client = reqwest::Client::builder()
@@ -224,7 +244,7 @@ async fn do_mirroring(
         for task in tasks {
             let client = client.clone();
             let result = do_transfer(
-                &images_directory,
+                configuration.clone(),
                 state.clone(),
                 machine.clone(),
                 mint.clone(),
@@ -256,9 +276,9 @@ pub(crate) fn start_mirroring(
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
-    let mint = Mint::new(config.mirroring);
+    let mint = Mint::new(config.mirroring.clone());
 
-    runtime.spawn(do_mirroring(machine, state, mint, config.storage, rx));
+    runtime.spawn(do_mirroring(machine, state, mint, config, rx));
 
     tx
 }
@@ -297,7 +317,7 @@ pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<MirrorRequest>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
             let entries: Vec<RegistryAction> = args.get_item(1)?.extract()?;
-            info!("{:?}", entries);
+            info!("side_effect: {:?}", entries);
             dispatch_entries(entries, tx.clone());
             Ok(true)
         };

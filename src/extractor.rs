@@ -1,4 +1,7 @@
-use crate::{types::{Digest, RegistryAction, RegistryState, RepositoryName}, config::Configuration};
+use crate::{
+    config::Configuration,
+    types::{Digest, RegistryAction, RegistryState, RepositoryName},
+};
 use chrono::prelude::*;
 use jsonschema::JSONSchema;
 use log::debug;

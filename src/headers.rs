@@ -1,4 +1,4 @@
-use crate::config::{Configuration};
+use crate::config::Configuration;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
 use rocket::http::Status;
@@ -245,7 +245,11 @@ impl<'r> FromRequest<'r> for Token {
             ..Default::default()
         };
 
-        let claims = match config.public_key.public_key.verify_token::<AdditionalClaims>(token_bytes, Some(options)) {
+        let claims = match config
+            .public_key
+            .public_key
+            .verify_token::<AdditionalClaims>(token_bytes, Some(options))
+        {
             Ok(claims) => claims,
             Err(error) => {
                 info!("Could not verify token: {error}");
