@@ -157,4 +157,23 @@ mod test {
         assert_eq!(defaults.raft.address, "127.0.0.1");
         assert!(defaults.peers.is_empty());
     }
+
+    #[test]
+    fn token_config() {
+        let data = r#"
+        {
+            "issuer": "Test Issuer",
+            "realm": "testrealm",
+            "service": "myservice",
+            "public_key": "tests/fixtures/token.pub"
+        }"#;
+
+        let t: TokenConfig = serde_json::from_str(data).unwrap();
+
+        assert_eq!(t.issuer, "Test Issuer");
+        assert_eq!(t.realm, "testrealm");
+        assert_eq!(t.service, "myservice");
+        assert_eq!(t.public_key.path, "tests/fixtures/token.pub");
+        assert_eq!(t.public_key.public_key.to_pem().unwrap(), "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n");
+    }
 }
