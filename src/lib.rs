@@ -52,26 +52,25 @@ pub fn rewrite_urls(url: &str) -> String {
 fn start_registry_service(
     registry_state: PyObject,
     send_action: PyObject,
-    repository_path: String,
     webhooks: Vec<WebhookConfig>,
     machine: PyObject,
     machine_identifier: String,
     reducers: PyObject,
     event_loop: PyObject,
 ) -> bool {
-    if !create_dir(&repository_path, "uploads")
-        || !create_dir(&repository_path, "manifests")
-        || !create_dir(&repository_path, "blobs")
+    let config = crate::config::config();
+
+    if !create_dir(&config.storage, "uploads")
+        || !create_dir(&config.storage, "manifests")
+        || !create_dir(&config.storage, "blobs")
     {
         return false;
     }
 
-    let config = crate::config::config();
-
     let mut registry = <prometheus_client::registry::Registry>::default();
 
     let webhook_send = start_webhook_worker(webhooks, &mut registry);
-    let extractor = crate::extractor::Extractor::new();
+    let extractor = crate::extractor::Extractor::new(config.clone());
 
     let machine = Arc::new(Machine::new(
         &mut registry,
@@ -81,7 +80,6 @@ fn start_registry_service(
     let state = Arc::new(crate::types::RegistryState::new(
         registry_state,
         send_action,
-        repository_path.clone(),
         webhook_send,
         machine_identifier,
         event_loop,
@@ -90,9 +88,9 @@ fn start_registry_service(
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
     runtime.spawn(crate::garbage::do_garbage_collect(
+        config.clone(),
         machine.clone(),
         state.clone(),
-        repository_path.clone(),
     ));
 
     let tx = crate::mirror::start_mirroring(
@@ -100,7 +98,6 @@ fn start_registry_service(
         config.clone(),
         machine,
         state.clone(),
-        repository_path,
     );
     crate::mirror::add_side_effect(reducers, tx);
 
@@ -112,9 +109,9 @@ fn start_registry_service(
                     req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
                 })
             }))
+            .manage(config)
             .manage(state)
             .manage(extractor)
-            .manage(config.token_server)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),

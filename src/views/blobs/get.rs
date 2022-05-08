@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryState;
@@ -92,9 +93,11 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -129,7 +132,7 @@ pub(crate) async fn get(
         }
     };
 
-    let path = get_blob_path(&state.repository_path, &digest);
+    let path = get_blob_path(&config.storage, &digest);
     if !path.is_file() {
         info!("Blob was not present on disk");
         return Responses::BlobNotFound {};

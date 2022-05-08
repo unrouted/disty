@@ -2,8 +2,9 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
     Figment,
 };
+use jwt_simple::prelude::ES256PublicKey;
 use platform_dirs::AppDirs;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct RaftConfig {
@@ -50,12 +51,41 @@ impl Default for PrometheusConfig {
     }
 }
 
+#[derive(Clone)]
+pub struct PublicKey {
+    pub path: String,
+    pub public_key: ES256PublicKey,
+}
+
+impl Serialize for PublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.path)
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: &str = Deserialize::deserialize(deserializer)?;
+        let pem = std::fs::read_to_string(s).unwrap();
+        Ok(PublicKey {
+            path: String::from(s),
+            public_key: ES256PublicKey::from_pem(&pem).unwrap(),
+        })
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct TokenConfig {
     pub issuer: String,
     pub service: String,
     pub realm: String,
-    pub public_key: String,
+    pub public_key: PublicKey,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

@@ -253,13 +253,12 @@ pub(crate) fn start_mirroring(
     config: Configuration,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
-    images_directory: String,
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
     let mint = Mint::new(config.mirroring);
 
-    runtime.spawn(do_mirroring(machine, state, mint, images_directory, rx));
+    runtime.spawn(do_mirroring(machine, state, mint, config.storage, rx));
 
     tx
 }

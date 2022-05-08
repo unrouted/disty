@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
@@ -105,10 +106,12 @@ pub(crate) async fn put(
     repository: RepositoryName,
     upload_id: String,
     digest: Digest,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -125,7 +128,7 @@ pub(crate) async fn put(
         return Responses::UploadInvalid {};
     }
 
-    let filename = get_upload_path(&state.repository_path, &upload_id);
+    let filename = get_upload_path(&config.storage, &upload_id);
 
     if !filename.is_file() {
         return Responses::UploadInvalid {};
@@ -140,7 +143,7 @@ pub(crate) async fn put(
         return Responses::DigestInvalid {};
     }
 
-    let dest = get_blob_path(&state.repository_path, &digest);
+    let dest = get_blob_path(&config.storage, &digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,

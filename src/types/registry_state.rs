@@ -20,7 +20,6 @@ pub fn into_future_with_loop(
 }
 
 pub struct RegistryState {
-    pub repository_path: String,
     pub machine_identifier: String,
     send_action: PyObject,
     state: PyObject,
@@ -32,7 +31,6 @@ impl RegistryState {
     pub fn new(
         state: PyObject,
         send_action: PyObject,
-        repository_path: String,
         webhook_send: tokio::sync::mpsc::Sender<Event>,
         machine_identifier: String,
         event_loop: PyObject,
@@ -40,7 +38,6 @@ impl RegistryState {
         RegistryState {
             state,
             send_action,
-            repository_path,
             webhook_send,
             machine_identifier,
             event_loop,

@@ -10,6 +10,7 @@ use log::info;
 use tokio::fs::remove_file;
 use tokio::time::{sleep, Duration};
 
+use crate::config::Configuration;
 use crate::{
     machine::Machine,
     types::{RegistryAction, RegistryState},
@@ -175,13 +176,13 @@ async fn do_garbage_collect_phase2(
 }
 
 pub async fn do_garbage_collect(
+    config: Configuration,
     machine: Arc<Machine>,
     state: Arc<RegistryState>,
-    image_directory: String,
 ) {
     loop {
         do_garbage_collect_phase1(&machine, &state).await;
-        do_garbage_collect_phase2(&machine, &state, &image_directory).await;
+        do_garbage_collect_phase2(&machine, &state, &config.storage).await;
         sleep(Duration::from_secs(60)).await;
     }
 }

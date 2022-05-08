@@ -74,7 +74,6 @@ async def main(argv=None, config=None):
     if not start_registry_service(
         registry_state,
         raft.append,
-        str(images_directory),
         webhooks,
         mint_config,
         machine,

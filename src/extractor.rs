@@ -1,4 +1,4 @@
-use crate::types::{Digest, RegistryAction, RegistryState, RepositoryName};
+use crate::{types::{Digest, RegistryAction, RegistryState, RepositoryName}, config::Configuration};
 use chrono::prelude::*;
 use jsonschema::JSONSchema;
 use log::debug;
@@ -49,6 +49,7 @@ enum Manifest {
 
 #[derive(Clone)]
 pub struct Extractor {
+    config: Configuration,
     schemas: HashMap<String, Value>,
 }
 
@@ -63,7 +64,7 @@ struct Extraction {
 }
 
 impl Extractor {
-    pub fn new() -> Self {
+    pub fn new(config: Configuration) -> Self {
         let mut schemas: HashMap<String, Value> = HashMap::new();
 
         // Load all schemas into a hashmap
@@ -113,7 +114,7 @@ impl Extractor {
                 .unwrap(),
         );
 
-        Extractor { schemas }
+        Extractor { config, schemas }
     }
 
     fn validate(&self, content_type: &str, data: &str) -> bool {
@@ -256,7 +257,7 @@ impl Extractor {
 
                 // Lookup extraction.digest in blob store
                 let data = tokio::fs::read_to_string(crate::utils::get_blob_path(
-                    &state.repository_path,
+                    &self.config.storage,
                     &extraction.digest,
                 ))
                 .await;
@@ -304,7 +305,8 @@ mod tests {
 
     #[test]
     fn wrong_schema() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/json".to_string();
         let data = r#"
@@ -331,7 +333,8 @@ mod tests {
 
     #[test]
     fn empty_string() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -343,7 +346,8 @@ mod tests {
 
     #[test]
     fn partial() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -380,7 +384,8 @@ mod tests {
 
     #[test]
     fn manifest_list_v2() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -419,7 +424,8 @@ mod tests {
 
     #[test]
     fn manifestv2() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/vnd.docker.distribution.manifest.v2+json".to_string();
         let data = r#"
@@ -456,7 +462,8 @@ mod tests {
 
     #[test]
     fn signed_v2_1_manifest() {
-        let extractor = Extractor::new();
+        let config = Configuration::default();
+        let extractor = Extractor::new(config);
 
         let content_type = "application/vnd.docker.distribution.manifest.v1+prettyjws".to_string();
         let data = r#"

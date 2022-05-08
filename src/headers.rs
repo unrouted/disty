@@ -1,4 +1,4 @@
-use crate::config::TokenConfig;
+use crate::config::{Configuration};
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
 use rocket::http::Status;
@@ -190,12 +190,12 @@ impl<'r> FromRequest<'r> for Token {
     type Error = TokenError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let config = match req.rocket().state::<Option<TokenConfig>>() {
+        let config = match req.rocket().state::<Configuration>() {
             Some(value) => value,
             _ => return Outcome::Failure((Status::BadGateway, TokenError::Missing)),
         };
 
-        let config = match config {
+        let config = match &config.token_server {
             None => {
                 return Outcome::Success(Token {
                     access: vec![],
@@ -233,14 +233,6 @@ impl<'r> FromRequest<'r> for Token {
             return Outcome::Failure((Status::Forbidden, TokenError::Missing));
         }
 
-        let key = match ES256PublicKey::from_pem(&config.public_key) {
-            Ok(key) => key,
-            _ => {
-                info!("Could not load key from PEM");
-                return Outcome::Failure((Status::Forbidden, TokenError::Missing));
-            }
-        };
-
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
             time_tolerance: Some(Duration::from_mins(15)),
@@ -253,7 +245,7 @@ impl<'r> FromRequest<'r> for Token {
             ..Default::default()
         };
 
-        let claims = match key.verify_token::<AdditionalClaims>(token_bytes, Some(options)) {
+        let claims = match config.public_key.public_key.verify_token::<AdditionalClaims>(token_bytes, Some(options)) {
             Ok(claims) => claims,
             Err(error) => {
                 info!("Could not verify token: {error}");

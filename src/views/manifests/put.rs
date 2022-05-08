@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::extractor::Extractor;
 use crate::headers::ContentType;
 use crate::headers::Token;
@@ -94,12 +95,14 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     extractor: &State<Extractor>,
     content_type: ContentType,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
     let extractor: &Extractor = extractor.inner();
 
@@ -113,7 +116,7 @@ pub(crate) async fn put(
         return Responses::AccessDenied {};
     }
 
-    let upload_path = crate::utils::get_temp_path(&state.repository_path);
+    let upload_path = crate::utils::get_temp_path(&config.storage);
 
     if !crate::views::utils::upload_part(&upload_path, body).await {
         return Responses::UploadInvalid {};
@@ -178,7 +181,7 @@ pub(crate) async fn put(
         user: token.sub.clone(),
     }]);
 
-    let dest = get_manifest_path(&state.repository_path, &digest);
+    let dest = get_manifest_path(&config.storage, &digest);
 
     match std::fs::rename(upload_path, dest) {
         Ok(_) => {}
