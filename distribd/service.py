@@ -75,7 +75,6 @@ async def main(argv=None, config=None):
         registry_state,
         raft.append,
         webhooks,
-        mint_config,
         machine,
         machine.identifier,
         reducers,
