@@ -352,7 +352,7 @@ impl FromPyObject<'_> for RegistryAction {
             _ => return Ok(RegistryAction::Empty {}),
         };
 
-        let timestamp: pyo3_chrono::NaiveDateTime = match dict.get_item("timestamp") {
+        let timestamp: String = match dict.get_item("timestamp") {
             Ok(value) => match value.extract() {
                 Ok(extracted) => extracted,
                 _ => {
@@ -361,7 +361,14 @@ impl FromPyObject<'_> for RegistryAction {
             },
             _ => return PyResult::Err(PyValueError::new_err("Key 'timestamp' missing")),
         };
-        let timestamp = DateTime::from_utc(timestamp.into(), Utc);
+        let timestamp = match DateTime::parse_from_rfc3339(&timestamp) {
+            Ok(timestamp) => timestamp.with_timezone(&Utc),
+            Err(err) => {
+                return PyResult::Err(PyValueError::new_err(format!(
+                    "Parse of 'timestamp' failed: {err:?}"
+                )))
+            }
+        };
 
         let digest: Digest = dict.get_item("hash")?.extract()?;
 
