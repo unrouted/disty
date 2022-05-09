@@ -6,7 +6,7 @@ use crate::types::RepositoryName;
 
 #[derive(Deserialize)]
 struct MintResponse {
-    access_code: String,
+    access_token: String,
 }
 
 #[derive(Clone)]
@@ -57,7 +57,7 @@ impl Mint {
                             return Err("");
                         }
 
-                        let MintResponse { access_code } = match response.json().await {
+                        let MintResponse { access_token } = match response.json().await {
                             Ok(resp) => resp,
                             Err(err) => {
                                 warn!("Mint: Failed to mint pull token for {repository}: {err}");
@@ -65,7 +65,7 @@ impl Mint {
                             }
                         };
 
-                        Ok(builder.header("Authorization", format!("Bearer {access_code}")))
+                        Ok(builder.header("Authorization", format!("Bearer {access_token}")))
                     }
                     Err(err) => {
                         warn!("Mint: Failed to mint pull token for {repository}: {err}");
