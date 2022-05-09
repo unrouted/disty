@@ -86,14 +86,15 @@ impl RegistryState {
 
         let (tx, rx) = oneshot::channel::<()>();
 
-        let values = waiters.entry(digest.clone()).or_insert_with(|| vec![]);
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
         values.push(tx);
 
         match rx.await {
-            Ok(_) => return,
+            Ok(_) => (),
             Err(err) => {
                 warn!("Failure whilst waiting for blob to be downloaded: {digest}: {err}");
-                return;
             }
         }
     }
@@ -128,14 +129,15 @@ impl RegistryState {
 
         let (tx, rx) = oneshot::channel::<()>();
 
-        let values = waiters.entry(digest.clone()).or_insert_with(|| vec![]);
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
         values.push(tx);
 
         match rx.await {
-            Ok(_) => return,
+            Ok(_) => (),
             Err(err) => {
                 warn!("Failure whilst waiting for manifest to be downloaded: {digest}: {err}");
-                return;
             }
         }
     }
@@ -328,7 +330,7 @@ impl RegistryState {
                     user: _,
                 } => {
                     if location == &self.machine_identifier {
-                        self.blob_available(&digest);
+                        self.blob_available(digest);
                     }
                 }
                 RegistryAction::ManifestStored {
@@ -338,7 +340,7 @@ impl RegistryState {
                     user: _,
                 } => {
                     if location == &self.machine_identifier {
-                        self.manifest_available(&digest);
+                        self.manifest_available(digest);
                     }
                 }
                 _ => {}

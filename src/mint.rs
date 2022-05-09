@@ -30,7 +30,7 @@ impl Mint {
         builder: RequestBuilder,
         repository: RepositoryName,
     ) -> Result<RequestBuilder, &str> {
-        let scope = format!("repository:{repository}:pull").to_string();
+        let scope = format!("repository:{repository}:pull");
 
         match &self.config {
             Some(MintConfig {
