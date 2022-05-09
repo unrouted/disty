@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use figment::{
     providers::{Env, Format, Serialized, Yaml},
     Figment,
@@ -71,10 +73,17 @@ impl<'de> Deserialize<'de> for PublicKey {
     where
         D: Deserializer<'de>,
     {
-        let s: &str = Deserialize::deserialize(deserializer)?;
-        let pem = std::fs::read_to_string(s).unwrap();
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let mut p = PathBuf::from(s.clone());
+        if p.is_relative() {
+            let app_dirs = AppDirs::new(Some("distribd"), true).unwrap();
+            let config_dir = app_dirs.config_dir;
+            p = config_dir.join(p);
+        }
+        println!("Loading token verification key: {p:?}");
+        let pem = std::fs::read_to_string(&p).unwrap();
         Ok(PublicKey {
-            path: String::from(s),
+            path: s,
             public_key: ES256PublicKey::from_pem(&pem).unwrap(),
         })
     }
@@ -131,7 +140,7 @@ impl Default for Configuration {
 pub fn config() -> Configuration {
     let mut config = Figment::from(Serialized::defaults(Configuration::default()));
 
-    let app_dirs = AppDirs::new(Some("distribd"), false).unwrap();
+    let app_dirs = AppDirs::new(Some("distribd"), true).unwrap();
     let config_dir = app_dirs.config_dir;
     let config_path = config_dir.join("config.yaml");
 
@@ -160,12 +169,17 @@ mod test {
 
     #[test]
     fn token_config() {
+        std::env::set_var(
+            "XDG_CONFIG_HOME",
+            std::env::current_dir().unwrap().as_os_str(),
+        );
+
         let data = r#"
         {
             "issuer": "Test Issuer",
             "realm": "testrealm",
             "service": "myservice",
-            "public_key": "tests/fixtures/token.pub"
+            "public_key": "../tests/fixtures/token.pub"
         }"#;
 
         let t: TokenConfig = serde_json::from_str(data).unwrap();
@@ -173,7 +187,7 @@ mod test {
         assert_eq!(t.issuer, "Test Issuer");
         assert_eq!(t.realm, "testrealm");
         assert_eq!(t.service, "myservice");
-        assert_eq!(t.public_key.path, "tests/fixtures/token.pub");
+        assert_eq!(t.public_key.path, "../tests/fixtures/token.pub");
         assert_eq!(t.public_key.public_key.to_pem().unwrap(), "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n");
     }
 }
