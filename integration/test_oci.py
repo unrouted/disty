@@ -63,3 +63,52 @@ def test_skopeo(
         print(line.decode("utf-8"))
 
     assert container.wait()["StatusCode"] == 0
+
+
+def test_mirrors(
+    request, cluster, skopeo, temporary_network, docker_client: DockerClient
+):
+    container = docker_client.containers.run(
+        skopeo.id,
+        network=temporary_network.id,
+        hostname="skopeo",
+        command=[
+            "copy",
+            "--dest-tls-verify=false",
+            "--dest-creds",
+            "admin:badmin",
+            "docker://alpine:3.15",
+            "docker://node1:8000/alpine:3.15",
+        ],
+        detach=True,
+    )
+    request.addfinalizer(container.remove)
+
+    for line in container.logs(stream=True):
+        print(line.decode("utf-8"))
+
+    assert container.wait()["StatusCode"] == 0
+
+    container = docker_client.containers.run(
+        skopeo.id,
+        network=temporary_network.id,
+        hostname="skopeo",
+        command=[
+            "copy",
+            "--src-tls-verify=false",
+            "--src-creds",
+            "admin:badmin",
+            "--dest-tls-verify=false",
+            "--dest-creds",
+            "admin:badmin",
+            "docker://node2:8000/alpine:3.15",
+            "docker://node3:8000/alpine-copy1:3.15",
+        ],
+        detach=True,
+    )
+    request.addfinalizer(container.remove)
+
+    for line in container.logs(stream=True):
+        print(line.decode("utf-8"))
+
+    assert container.wait()["StatusCode"] == 0
