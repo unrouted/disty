@@ -201,7 +201,11 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
+    drop(file);
+
     let download_digest = Digest::from_sha256(&hasher.finish());
+
+    warn!("Mirroring: Comparing {download_digest} to {digest}");
 
     if digest != &download_digest {
         warn!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
@@ -214,7 +218,9 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    request.success(String::from("temp"))
+    warn!("Mirroring: Mirrored {digest}");
+
+    request.success(machine.identifier.clone())
 }
 
 async fn do_mirroring(
