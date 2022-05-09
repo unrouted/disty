@@ -56,16 +56,21 @@ impl RegistryState {
         }
     }
 
-    // FIXME: Call this
     pub fn blob_available(&self, digest: &Digest) {
         let mut waiters = self.blob_waiters.blocking_lock();
 
         if let Some(blobs) = waiters.remove(digest) {
+            info!(
+                "State: Wait for blob: {digest} now available. {} waiters to process",
+                blobs.len()
+            );
             for sender in blobs {
                 if sender.send(()).is_err() {
                     warn!("Some blob waiters may have failed: {digest}");
                 }
             }
+        } else {
+            info!("State: Wait for blob: {digest} now available - no active waiters");
         }
     }
 
@@ -75,6 +80,7 @@ impl RegistryState {
         if let Some(blob) = self.get_blob_directly(digest) {
             if blob.locations.contains(&self.machine_identifier) {
                 // Blob already exists at this endpoint, no need to wait
+                info!("State: Wait for blob: {digest} already available");
                 return;
             }
         }
@@ -91,15 +97,18 @@ impl RegistryState {
             .or_insert_with(std::vec::Vec::new);
         values.push(tx);
 
+        info!("State: Wait for blob: Waiting for {digest} to download");
+
         match rx.await {
-            Ok(_) => (),
+            Ok(_) => {
+                info!("State: Wait for blob: {digest}: Download complete");
+            }
             Err(err) => {
-                warn!("Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+                warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
             }
         }
     }
 
-    // FIXME: Call this
     pub fn manifest_available(&self, digest: &Digest) {
         let mut waiters = self.manifest_waiters.blocking_lock();
 
