@@ -18,7 +18,7 @@ def test_oci(
         network=temporary_network.id,
         hostname="conformance",
         environment={
-            "OCI_ROOT_URL": "http://node1:8000",
+            "OCI_ROOT_URL": "http://node1:9080",
             "OCI_NAMESPACE": "example3/example4",
             "OCI_USERNAME": "admin",
             "OCI_PASSWORD": "badmin",
@@ -53,7 +53,7 @@ def test_skopeo(
             "--dest-creds",
             "admin:badmin",
             "docker://alpine:3.15",
-            "docker://node1:8000/alpine:3.15",
+            "docker://node1:9080/alpine:3.15",
         ],
         detach=True,
     )
@@ -78,7 +78,7 @@ def test_mirrors(
             "--dest-creds",
             "admin:badmin",
             "docker://alpine:3.15",
-            "docker://node1:8000/alpine:3.15",
+            "docker://node1:9080/alpine:3.15",
         ],
         detach=True,
     )
@@ -101,8 +101,8 @@ def test_mirrors(
             "--dest-tls-verify=false",
             "--dest-creds",
             "admin:badmin",
-            "docker://node2:8000/alpine:3.15",
-            "docker://node3:8000/alpine-copy1:3.15",
+            "docker://node2:9080/alpine:3.15",
+            "docker://node3:9080/alpine-copy1:3.15",
         ],
         detach=True,
     )

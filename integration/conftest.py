@@ -23,6 +23,12 @@ token_server:
     issuer: "Acme auth server"
     public_key: token_server.pub
 
+mirroring:
+    realm: http://docker_auth:5001/auth
+    service: My registry
+    username: admin
+    password: badmin
+
 prometheus:
     address: 0.0.0.0
     port: 7080
@@ -179,6 +185,7 @@ node2 = container(
     command=["/app/bin/python", "-m", "distribd", "--name", "node2"],
     environment={
         "ROCKET_ADDRESS": "0.0.0.0",
+        "ROCKET_LOG_LEVEL": "debug",
     },
     volumes={
         "{distribd_config.name}": {"bind": "/root/.config/distribd"},
@@ -196,6 +203,7 @@ node3 = container(
     command=["/app/bin/python", "-m", "distribd", "--name", "node3"],
     environment={
         "ROCKET_ADDRESS": "0.0.0.0",
+        "ROCKET_LOG_LEVEL": "debug",
     },
     volumes={
         "{distribd_config.name}": {"bind": "/root/.config/distribd"},
