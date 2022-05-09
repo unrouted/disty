@@ -131,7 +131,7 @@ async fn do_transfer(
         let address = &peer.registry.address;
         let port = &peer.registry.port;
 
-        let url = format!("http://{address}:{port}/v2/{repository}/{object_type}/{digest:?}");
+        let url = format!("http://{address}:{port}/v2/{repository}/{object_type}/{digest}");
         urls.push(url);
     }
 
