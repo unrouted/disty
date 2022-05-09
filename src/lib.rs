@@ -96,15 +96,17 @@ fn start_registry_service(
     let tx = crate::mirror::start_mirroring(runtime, config.clone(), machine, state.clone());
     crate::mirror::add_side_effect(reducers, tx);
 
+    let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
+
     runtime.spawn(
-        rocket::build()
+        rocket::custom(registry_conf)
             .attach(AdHoc::on_request("URL Rewriter", |req, _| {
                 Box::pin(async move {
                     let origin = req.uri().to_string();
                     req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
                 })
             }))
-            .manage(config)
+            .manage(config.clone())
             .manage(state)
             .manage(extractor)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
@@ -112,7 +114,7 @@ fn start_registry_service(
             .launch(),
     );
 
-    let prometheus_conf = rocket::Config::figment().merge(("port", 7080));
+    let prometheus_conf = rocket::Config::figment().merge(("port", config.prometheus.port));
 
     runtime.spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
 
