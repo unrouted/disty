@@ -4,7 +4,7 @@ mod blob_entry;
 mod digest;
 mod manifest;
 mod manifest_entry;
-mod registry_state;
+pub mod registry_state;
 mod repository;
 mod repository_name;
 

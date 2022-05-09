@@ -1,11 +1,19 @@
+use crate::reducer::ReducerDispatch;
 use crate::types::Blob;
 use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use pyo3::prelude::*;
+use pyo3::types;
+use pyo3::types::PyDict;
+use pyo3::types::PyTuple;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
+use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use tokio::sync::Mutex;
 
 use super::{BlobEntry, ManifestEntry};
 
@@ -25,6 +33,8 @@ pub struct RegistryState {
     state: PyObject,
     webhook_send: tokio::sync::mpsc::Sender<Event>,
     event_loop: PyObject,
+    manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
 }
 
 impl RegistryState {
@@ -41,6 +51,92 @@ impl RegistryState {
             webhook_send,
             machine_identifier,
             event_loop,
+            manifest_waiters: Mutex::new(HashMap::new()),
+            blob_waiters: Mutex::new(HashMap::new()),
+        }
+    }
+
+    // FIXME: Call this
+    pub fn blob_available(&self, digest: &Digest) {
+        let mut waiters = self.blob_waiters.blocking_lock();
+
+        if let Some(blobs) = waiters.remove(digest) {
+            for sender in blobs {
+                if sender.send(()).is_err() {
+                    warn!("Some blob waiters may have failed: {digest}");
+                }
+            }
+        }
+    }
+
+    pub async fn wait_for_blob(&self, digest: &Digest) {
+        let mut waiters = self.blob_waiters.lock().await;
+
+        if let Some(blob) = self.get_blob_directly(digest) {
+            if blob.locations.contains(&self.machine_identifier) {
+                // Blob already exists at this endpoint, no need to wait
+                return;
+            }
+        }
+
+        // FIXME: There is a tiny race that we need to fix after registry state is rust native
+        // Can the registry state update already be in flight so we won't get a tx but the blob
+        // store won't be up to date yet?
+        // We can be certain of this when the whole struct is in rust and we can wrap it in a lock.
+
+        let (tx, rx) = oneshot::channel::<()>();
+
+        let values = waiters.entry(digest.clone()).or_insert_with(|| vec![]);
+        values.push(tx);
+
+        match rx.await {
+            Ok(_) => return,
+            Err(err) => {
+                warn!("Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+                return;
+            }
+        }
+    }
+
+    // FIXME: Call this
+    pub fn manifest_available(&self, digest: &Digest) {
+        let mut waiters = self.manifest_waiters.blocking_lock();
+
+        if let Some(manifests) = waiters.remove(digest) {
+            for sender in manifests {
+                if sender.send(()).is_err() {
+                    warn!("Some manifest waiters may have failed: {digest}");
+                }
+            }
+        }
+    }
+
+    pub async fn wait_for_manifest(&self, digest: &Digest) {
+        let mut waiters = self.manifest_waiters.lock().await;
+
+        if let Some(manifest) = self.get_manifest_directly(digest) {
+            if manifest.locations.contains(&self.machine_identifier) {
+                // manifest already exists at this endpoint, no need to wait
+                return;
+            }
+        }
+
+        // FIXME: There is a tiny race that we need to fix after registry state is rust native
+        // Can the registry state update already be in flight so we won't get a tx but the manifest
+        // store won't be up to date yet?
+        // We can be certain of this when the whole struct is in rust and we can wrap it in a lock.
+
+        let (tx, rx) = oneshot::channel::<()>();
+
+        let values = waiters.entry(digest.clone()).or_insert_with(|| vec![]);
+        values.push(tx);
+
+        match rx.await {
+            Ok(_) => return,
+            Err(err) => {
+                warn!("Failure whilst waiting for manifest to be downloaded: {digest}: {err}");
+                return;
+            }
         }
     }
 
@@ -221,4 +317,49 @@ impl RegistryState {
             }
         })
     }
+
+    pub fn dispatch_entries(&self, entries: Vec<crate::reducer::ReducerDispatch>) {
+        for entry in &entries {
+            match &entry.1 {
+                RegistryAction::BlobStored {
+                    timestamp: _,
+                    digest,
+                    location,
+                    user: _,
+                } => {
+                    if location == &self.machine_identifier {
+                        self.blob_available(&digest);
+                    }
+                }
+                RegistryAction::ManifestStored {
+                    timestamp: _,
+                    digest,
+                    location,
+                    user: _,
+                } => {
+                    if location == &self.machine_identifier {
+                        self.manifest_available(&digest);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+pub(crate) fn add_side_effect(reducers: &PyObject, state: Arc<RegistryState>) {
+    Python::with_gil(|py| {
+        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
+            let entries: Vec<ReducerDispatch> = args.get_item(1)?.extract()?;
+            state.dispatch_entries(entries);
+            Ok(true)
+        };
+        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
+
+        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
+
+        if result.is_err() {
+            panic!("Boot failure: Could not registry state side effects")
+        }
+    })
 }

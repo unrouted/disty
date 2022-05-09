@@ -9,6 +9,7 @@ mod machine;
 mod mint;
 mod mirror;
 mod prometheus;
+mod reducer;
 mod registry;
 mod types;
 mod utils;
@@ -84,6 +85,7 @@ fn start_registry_service(
         machine_identifier,
         event_loop,
     ));
+    crate::types::registry_state::add_side_effect(&reducers, state.clone());
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
@@ -94,7 +96,7 @@ fn start_registry_service(
     ));
 
     let tx = crate::mirror::start_mirroring(runtime, config.clone(), machine, state.clone());
-    crate::mirror::add_side_effect(reducers, tx);
+    crate::mirror::add_side_effect(&reducers, tx);
 
     let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
 

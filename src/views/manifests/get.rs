@@ -126,6 +126,8 @@ pub(crate) async fn get(
         return Responses::ManifestNotFound {};
     }
 
+    state.wait_for_manifest(&digest).await;
+
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
         _ => {
@@ -195,6 +197,8 @@ pub(crate) async fn get_by_tag(
         debug!("Manifest not known to graph");
         return Responses::ManifestNotFound {};
     }
+
+    state.wait_for_manifest(&digest).await;
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
