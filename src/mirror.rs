@@ -237,6 +237,8 @@ async fn do_mirroring(
             Some(request) = rx.recv() => {requests.insert(request);}
         };
 
+        info!("Mirroring: There are {} mirroring tasks", requests.len());
+
         // FIXME: Ideally we'd have some worker pool here are download a bunch
         // of objects in parallel.
 
@@ -283,9 +285,9 @@ pub(crate) fn start_mirroring(
     tx
 }
 
-fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<MirrorRequest>) {
+fn dispatch_entries(entries: Vec<ReducerDispatch>, tx: Sender<MirrorRequest>) {
     for entry in &entries {
-        match entry {
+        match &entry.1 {
             RegistryAction::BlobStored {
                 timestamp: _,
                 digest,
@@ -313,11 +315,14 @@ fn dispatch_entries(entries: Vec<RegistryAction>, tx: Sender<MirrorRequest>) {
     }
 }
 
+#[derive(Debug, FromPyObject)]
+struct ReducerDispatch(u64, RegistryAction);
+
 pub(crate) fn add_side_effect(reducers: PyObject, tx: Sender<MirrorRequest>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<RegistryAction> = args.get_item(1)?.extract()?;
-            info!("side_effect: {:?}", entries);
+            let entries: Vec<ReducerDispatch> = args.get_item(1)?.extract()?;
+            println!("side_effect: {:?}", entries);
             dispatch_entries(entries, tx.clone());
             Ok(true)
         };
