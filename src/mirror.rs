@@ -151,6 +151,8 @@ async fn do_transfer(
         }
     };
 
+    info!("Mirroring: Will download: {url}");
+
     let mut resp = match builder.send().await {
         Ok(resp) => resp,
         Err(err) => {
@@ -169,7 +171,10 @@ async fn do_transfer(
     let file_name = crate::utils::get_temp_mirror_path(&config.storage);
 
     let mut file = match tokio::fs::File::create(&file_name).await {
-        Ok(file) => file,
+        Ok(file) => {
+            debug!("Mirroring: {file_name:?}: Created new file for writing");
+            file
+        }
         Err(err) => {
             warn!("Mirroring: Failed creating output file for {url}: {err}");
             return MirrorResult::Retry { request };
@@ -181,44 +186,64 @@ async fn do_transfer(
     loop {
         match resp.chunk().await {
             Ok(Some(chunk)) => {
-                if let Err(err) = file.write(&chunk).await {
-                    warn!("Mirroring: Failed write output chunk for {url}: {err}");
+                if let Err(err) = file.write_all(&chunk).await {
+                    debug!("Mirroring: Failed write output chunk for {url}: {err}");
                     return MirrorResult::Retry { request };
                 }
 
+                debug!("Mirroring: Downloaded {} bytes", chunk.len());
                 hasher.update(&chunk);
             }
-            Ok(None) => break,
+            Ok(None) => {
+                debug!("Mirroring: Finished streaming");
+                break;
+            }
             Err(err) => {
-                warn!("Mirroring: Failed reading chunk for {url}: {err}");
+                debug!("Mirroring: Failed reading chunk for {url}: {err}");
                 return MirrorResult::Retry { request };
             }
         };
     }
 
     if let Err(err) = file.flush().await {
-        warn!("Mirroring: Failed to flush output file for {url}: {err}");
+        debug!("Mirroring: Failed to flush output file for {url}: {err}");
         return MirrorResult::Retry { request };
     }
+
+    debug!("Mirroring: Output flushed");
+
+    if let Err(err) = file.sync_all().await {
+        debug!("Mirroring: Failed to sync_all output file for {url}: {err}");
+        return MirrorResult::Retry { request };
+    }
+
+    debug!("Mirroring: Output synced");
 
     drop(file);
 
+    debug!("Mirroring: File handle dropped");
+
     let download_digest = Digest::from_sha256(&hasher.finish());
 
-    warn!("Mirroring: Comparing {download_digest} to {digest}");
-
     if digest != &download_digest {
-        warn!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
+        debug!("Mirroring: Download of {url} complete but wrong digest: {download_digest}");
         return MirrorResult::Retry { request };
     }
+
+    debug!("Mirroring: Download has correct hash ({download_digest} vs {digest})");
+
+    if !crate::views::utils::validate_hash(&file_name, digest).await {
+        debug!("Mirroring: Downloaded file for {url} is corrupt");
+        return MirrorResult::Retry { request };
+    };
 
     let storage_path = request.storage_path(&config.storage);
     if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
-        warn!("Mirroring: Failed to store file for {url}: {err}");
+        debug!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
     }
 
-    warn!("Mirroring: Mirrored {digest}");
+    debug!("Mirroring: Mirrored {digest}");
 
     request.success(machine.identifier.clone())
 }
@@ -268,6 +293,9 @@ async fn do_mirroring(
                 MirrorResult::Success { action, request } => {
                     if !state.send_actions(vec![action]).await {
                         requests.insert(request);
+                        debug!("Mirroring: Raft transaction failed");
+                    } else {
+                        debug!("Mirroring: Download logged to raft");
                     };
                 }
                 MirrorResult::None => {}

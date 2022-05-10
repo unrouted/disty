@@ -78,6 +78,8 @@ impl<'r> Responder<'r, 'static> for Responses {
                 let content_type = Header::new("Content-Type", content_type);
                 let digest = Header::new("Docker-Content-Digest", digest.to_string());
 
+                debug!("Starting stream of {digest} with size {content_length}");
+
                 Response::build()
                     .header(content_type)
                     .header(digest)
