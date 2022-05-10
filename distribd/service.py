@@ -66,15 +66,9 @@ async def main(argv=None, config=None):
 
     from distribd.distribd import start_registry_service
 
-    try:
-        webhooks = config["webhooks"].get(list)
-    except confuse.exceptions.NotFoundError:
-        webhooks = []
-
     if not start_registry_service(
         registry_state,
         raft.append,
-        webhooks,
         machine,
         machine.identifier,
         reducers,

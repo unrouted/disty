@@ -22,7 +22,7 @@ use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
-use webhook::{start_webhook_worker, WebhookConfig};
+use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -53,7 +53,6 @@ pub fn rewrite_urls(url: &str) -> String {
 fn start_registry_service(
     registry_state: PyObject,
     send_action: PyObject,
-    webhooks: Vec<WebhookConfig>,
     machine: PyObject,
     machine_identifier: String,
     reducers: PyObject,
@@ -70,7 +69,7 @@ fn start_registry_service(
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let webhook_send = start_webhook_worker(webhooks, &mut registry);
+    let webhook_send = start_webhook_worker(config.webhooks.clone(), &mut registry);
     let extractor = crate::extractor::Extractor::new(config.clone());
 
     let machine = Arc::new(Machine::new(
