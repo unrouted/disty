@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryState;
@@ -104,9 +105,11 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -122,6 +125,8 @@ pub(crate) async fn get(
     if !state.is_manifest_available(&repository, &digest) {
         return Responses::ManifestNotFound {};
     }
+
+    state.wait_for_manifest(&digest).await;
 
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
@@ -142,7 +147,7 @@ pub(crate) async fn get(
         _ => return Responses::ManifestNotFound {},
     };
 
-    let path = get_manifest_path(&state.repository_path, &digest);
+    let path = get_manifest_path(&config.storage, &digest);
     if !path.is_file() {
         return Responses::ManifestNotFound {};
     }
@@ -162,9 +167,11 @@ pub(crate) async fn get(
 pub(crate) async fn get_by_tag(
     repository: RepositoryName,
     tag: String,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -191,6 +198,8 @@ pub(crate) async fn get_by_tag(
         return Responses::ManifestNotFound {};
     }
 
+    state.wait_for_manifest(&digest).await;
+
     let manifest = match state.get_manifest(&repository, &digest) {
         Some(manifest) => manifest,
         _ => {
@@ -215,7 +224,7 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let path = get_manifest_path(&state.repository_path, &digest);
+    let path = get_manifest_path(&config.storage, &digest);
     if !path.is_file() {
         debug!("Expected manifest file does not exist");
         return Responses::ManifestNotFound {};

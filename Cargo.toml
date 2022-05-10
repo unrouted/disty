@@ -31,6 +31,10 @@ urlencoding = "2.1.0"
 chrono = {version = "0.4", features=["serde"]}
 pyo3-chrono = "0.4.0"
 prometheus-client = "0.15.1"
+figment = { version="0.10.6", features=["yaml"]}
+platform-dirs = "0.3.0"
+rand = "0.8.5"
+serde_regex = "1.1.0"
 
 [build-dependencies]
 pyo3-build-config = "*"

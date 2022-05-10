@@ -1,30 +1,12 @@
+use crate::config::WebhookConfig;
 use crate::types::{Digest, RepositoryName};
 use prometheus_client::encoding::text::Encode;
 use prometheus_client::registry::Registry;
-use pyo3::prelude::*;
-use regex::Regex;
 
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use serde_json::json;
 use tokio::sync::mpsc;
-#[derive(Debug)]
-pub struct WebhookConfig {
-    pub url: String,
-    pub matcher: Regex,
-}
-
-impl FromPyObject<'_> for WebhookConfig {
-    fn extract(dict: &'_ PyAny) -> PyResult<Self> {
-        // FIXME: This should send nice errors back to python if any of the unwraps fail...
-        let url: String = dict.get_item("url").unwrap().extract().unwrap();
-        let matcher: &str = dict.get_item("matcher").unwrap().extract().unwrap();
-        Ok(WebhookConfig {
-            url,
-            matcher: Regex::new(matcher).unwrap(),
-        })
-    }
-}
 
 pub struct Event {
     pub repository: RepositoryName,

@@ -1,13 +1,16 @@
 #[macro_use]
 extern crate rocket;
 
+mod config;
 mod extractor;
 mod garbage;
 mod headers;
 mod machine;
+mod mint;
+mod mirror;
 mod prometheus;
+mod reducer;
 mod registry;
-mod token;
 mod types;
 mod utils;
 mod views;
@@ -19,8 +22,7 @@ use machine::Machine;
 use pyo3::prelude::*;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
-use token::TokenConfig;
-use webhook::{start_webhook_worker, WebhookConfig};
+use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -51,24 +53,24 @@ pub fn rewrite_urls(url: &str) -> String {
 fn start_registry_service(
     registry_state: PyObject,
     send_action: PyObject,
-    repository_path: String,
-    webhooks: Vec<WebhookConfig>,
-    token_config: TokenConfig,
     machine: PyObject,
     machine_identifier: String,
+    reducers: PyObject,
     event_loop: PyObject,
 ) -> bool {
-    if !create_dir(&repository_path, "uploads")
-        || !create_dir(&repository_path, "manifests")
-        || !create_dir(&repository_path, "blobs")
+    let config = crate::config::config();
+
+    if !create_dir(&config.storage, "uploads")
+        || !create_dir(&config.storage, "manifests")
+        || !create_dir(&config.storage, "blobs")
     {
         return false;
     }
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let webhook_send = start_webhook_worker(webhooks, &mut registry);
-    let extractor = crate::extractor::Extractor::new();
+    let webhook_send = start_webhook_worker(config.webhooks.clone(), &mut registry);
+    let extractor = crate::extractor::Extractor::new(config.clone());
 
     let machine = Arc::new(Machine::new(
         &mut registry,
@@ -78,37 +80,42 @@ fn start_registry_service(
     let state = Arc::new(crate::types::RegistryState::new(
         registry_state,
         send_action,
-        repository_path.clone(),
         webhook_send,
         machine_identifier,
         event_loop,
     ));
+    crate::types::registry_state::add_side_effect(&reducers, state.clone());
 
     let runtime = pyo3_asyncio::tokio::get_runtime();
 
     runtime.spawn(crate::garbage::do_garbage_collect(
-        machine,
+        config.clone(),
+        machine.clone(),
         state.clone(),
-        repository_path,
     ));
 
+    let tx = crate::mirror::start_mirroring(runtime, config.clone(), machine, state.clone());
+    crate::mirror::add_side_effect(&reducers, tx);
+
+    let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
+
     runtime.spawn(
-        rocket::build()
+        rocket::custom(registry_conf)
             .attach(AdHoc::on_request("URL Rewriter", |req, _| {
                 Box::pin(async move {
                     let origin = req.uri().to_string();
                     req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
                 })
             }))
+            .manage(config.clone())
             .manage(state)
             .manage(extractor)
-            .manage(token_config)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),
     );
 
-    let prometheus_conf = rocket::Config::figment().merge(("port", 7080));
+    let prometheus_conf = rocket::Config::figment().merge(("port", config.prometheus.port));
 
     runtime.spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
 

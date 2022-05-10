@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::headers::Access;
 use crate::headers::Token;
 use crate::types::Digest;
@@ -135,10 +136,12 @@ pub(crate) async fn post(
     mount: Option<Digest>,
     from: Option<RepositoryName>,
     digest: Option<Digest>,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -195,7 +198,7 @@ pub(crate) async fn post(
 
     match digest {
         Some(digest) => {
-            let filename = get_upload_path(&state.repository_path, &upload_id);
+            let filename = get_upload_path(&config.storage, &upload_id);
 
             if !crate::views::utils::upload_part(&filename, body).await {
                 return Responses::UploadInvalid {};
@@ -206,7 +209,7 @@ pub(crate) async fn post(
                 return Responses::DigestInvalid {};
             }
 
-            let dest = get_blob_path(&state.repository_path, &digest);
+            let dest = get_blob_path(&config.storage, &digest);
 
             let stat = match tokio::fs::metadata(&filename).await {
                 Ok(result) => result,
@@ -250,7 +253,7 @@ pub(crate) async fn post(
         }
         _ => {
             // Nothing was uploaded, but a session was started...
-            let filename = get_upload_path(&state.repository_path, &upload_id);
+            let filename = get_upload_path(&config.storage, &upload_id);
 
             match tokio::fs::OpenOptions::new()
                 .create(true)

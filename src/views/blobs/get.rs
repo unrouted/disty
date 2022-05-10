@@ -1,3 +1,4 @@
+use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryState;
@@ -77,6 +78,8 @@ impl<'r> Responder<'r, 'static> for Responses {
                 let content_type = Header::new("Content-Type", content_type);
                 let digest = Header::new("Docker-Content-Digest", digest.to_string());
 
+                debug!("Starting stream of {digest} with size {content_length}");
+
                 Response::build()
                     .header(content_type)
                     .header(digest)
@@ -92,9 +95,11 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
+    config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
     token: Token,
 ) -> Responses {
+    let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
 
     if !token.validated_token {
@@ -116,6 +121,8 @@ pub(crate) async fn get(
         }
     };
 
+    state.wait_for_blob(&digest).await;
+
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
         _ => "application/octet-steam".to_string(),
@@ -129,7 +136,7 @@ pub(crate) async fn get(
         }
     };
 
-    let path = get_blob_path(&state.repository_path, &digest);
+    let path = get_blob_path(&config.storage, &digest);
     if !path.is_file() {
         info!("Blob was not present on disk");
         return Responses::BlobNotFound {};

@@ -18,7 +18,7 @@ def test_oci(
         network=temporary_network.id,
         hostname="conformance",
         environment={
-            "OCI_ROOT_URL": "http://node1:8000",
+            "OCI_ROOT_URL": "http://node1:9080",
             "OCI_NAMESPACE": "example3/example4",
             "OCI_USERNAME": "admin",
             "OCI_PASSWORD": "badmin",
@@ -53,7 +53,56 @@ def test_skopeo(
             "--dest-creds",
             "admin:badmin",
             "docker://alpine:3.15",
-            "docker://node1:8000/alpine:3.15",
+            "docker://node1:9080/alpine:3.15",
+        ],
+        detach=True,
+    )
+    request.addfinalizer(container.remove)
+
+    for line in container.logs(stream=True):
+        print(line.decode("utf-8"))
+
+    assert container.wait()["StatusCode"] == 0
+
+
+def test_mirrors(
+    request, cluster, skopeo, temporary_network, docker_client: DockerClient
+):
+    container = docker_client.containers.run(
+        skopeo.id,
+        network=temporary_network.id,
+        hostname="skopeo",
+        command=[
+            "copy",
+            "--dest-tls-verify=false",
+            "--dest-creds",
+            "admin:badmin",
+            "docker://alpine:3.15",
+            "docker://node1:9080/alpine:3.15",
+        ],
+        detach=True,
+    )
+    request.addfinalizer(container.remove)
+
+    for line in container.logs(stream=True):
+        print(line.decode("utf-8"))
+
+    assert container.wait()["StatusCode"] == 0
+
+    container = docker_client.containers.run(
+        skopeo.id,
+        network=temporary_network.id,
+        hostname="skopeo",
+        command=[
+            "copy",
+            "--src-tls-verify=false",
+            "--src-creds",
+            "admin:badmin",
+            "--dest-tls-verify=false",
+            "--dest-creds",
+            "admin:badmin",
+            "docker://node2:9080/alpine:3.15",
+            "docker://node3:9080/alpine-copy1:3.15",
         ],
         detach=True,
     )

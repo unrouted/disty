@@ -8,7 +8,6 @@ import confuse
 import verboselogs
 
 from .machine import Machine
-from .mirror import Mirrorer
 from .raft import HttpRaft
 from .reducers import Reducers
 from .state import RegistryState
@@ -61,51 +60,18 @@ async def main(argv=None, config=None):
 
     raft = HttpRaft(config, machine, storage, reducers)
 
-    mirrorer = Mirrorer(
-        config,
-        raft.peers,
-        images_directory,
-        machine.identifier,
-        registry_state,
-        raft.append,
-    )
-
-    reducers.add_side_effects(mirrorer.dispatch_entries)
-
     services = [
         raft.run_forever(),
     ]
 
     from distribd.distribd import start_registry_service
 
-    try:
-        webhooks = config["webhooks"].get(list)
-    except confuse.exceptions.NotFoundError:
-        webhooks = []
-
-    token_server = config["token_server"]
-    if token_server["enabled"].get(bool):
-        token_config = {
-            "enabled": True,
-            "realm": token_server["realm"].get(str),
-            "service": token_server["service"].get(str),
-            "issuer": token_server["issuer"].get(str),
-        }
-        public_key_path = token_server["public_key"].as_path()
-        with open(public_key_path, "r") as fp:
-            token_config["public_key"] = fp.read()
-
-    else:
-        token_config = {"enabled": False}
-
     if not start_registry_service(
         registry_state,
         raft.append,
-        str(images_directory),
-        webhooks,
-        token_config,
         machine,
         machine.identifier,
+        reducers,
         asyncio.get_running_loop(),
     ):
         return
@@ -117,4 +83,4 @@ async def main(argv=None, config=None):
         pass
 
     finally:
-        await asyncio.gather(raft.close(), storage.close(), mirrorer.close())
+        await asyncio.gather(raft.close(), storage.close())
