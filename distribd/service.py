@@ -67,7 +67,6 @@ async def main(argv=None, config=None):
     from distribd.distribd import start_registry_service
 
     if not start_registry_service(
-        registry_state,
         raft.append,
         machine,
         machine.identifier,
