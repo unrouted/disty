@@ -6,6 +6,7 @@ use figment::{
 };
 use jwt_simple::prelude::ES256PublicKey;
 use platform_dirs::AppDirs;
+use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -80,7 +81,7 @@ impl<'de> Deserialize<'de> for PublicKey {
             let config_dir = app_dirs.config_dir;
             p = config_dir.join(p);
         }
-        println!("Loading token verification key: {p:?}");
+        debug!("Loading token verification key: {p:?}");
         let pem = std::fs::read_to_string(&p).unwrap();
         Ok(PublicKey {
             path: s,
@@ -113,6 +114,14 @@ pub struct MintConfig {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+pub struct WebhookConfig {
+    pub url: String,
+
+    #[serde(with = "serde_regex")]
+    pub matcher: Regex,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Configuration {
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
@@ -121,6 +130,7 @@ pub struct Configuration {
     pub mirroring: Option<MintConfig>,
     pub storage: String,
     pub peers: Vec<PeerConfig>,
+    pub webhooks: Vec<WebhookConfig>,
 }
 
 impl Default for Configuration {
@@ -133,6 +143,7 @@ impl Default for Configuration {
             mirroring: None,
             storage: "var".to_string(),
             peers: vec![],
+            webhooks: vec![],
         }
     }
 }
@@ -189,5 +200,20 @@ mod test {
         assert_eq!(t.service, "myservice");
         assert_eq!(t.public_key.path, "../tests/fixtures/token.pub");
         assert_eq!(t.public_key.public_key.to_pem().unwrap(), "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n");
+    }
+
+    #[test]
+    fn webhook_config() {
+        let data = r#"
+        {
+            "url": "http://localhost:1234",
+            "matcher": "matcher.*"
+        }"#;
+
+        let t: WebhookConfig = serde_json::from_str(data).unwrap();
+
+        assert_eq!(t.url, "http://localhost:1234");
+        assert!(!t.matcher.is_match("testrealm"));
+        assert!(t.matcher.is_match("matcherZ"));
     }
 }
