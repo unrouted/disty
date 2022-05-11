@@ -355,7 +355,7 @@ struct ReducerDispatch(u64, RegistryAction);
 pub(crate) fn add_side_effect(reducers: &PyObject, tx: Sender<MirrorRequest>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(1)?.extract()?;
+            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
             println!("side_effect: {:?}", entries);
             dispatch_entries(entries, tx.clone());
             Ok(true)
