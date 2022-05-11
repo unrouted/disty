@@ -30,17 +30,11 @@ pub fn into_future_with_loop(
     )
 }
 
-#[derive(PartialEq, Eq, Hash)]
-struct Tag {
-    repository: RepositoryName,
-    tag: String,
-}
-
 #[derive(Default)]
 struct Store {
     blobs: HashMap<Digest, Blob>,
     manifests: HashMap<Digest, Manifest>,
-    tags: HashMap<Tag, Digest>,
+    tags: HashMap<RepositoryName, HashMap<String, Digest>>,
 }
 
 impl Store {
@@ -304,18 +298,21 @@ impl RegistryState {
     }
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         let store = self.state.blocking_lock();
-        store
-            .tags
-            .get(&Tag {
-                repository: repository.clone(),
-                tag: tag.to_string(),
-            })
-            .cloned()
+        match store.tags.get(repository) {
+            Some(repository) => match repository.get(tag) {
+                Some(digest) => Some(digest.clone()),
+                None => None,
+            },
+            None => None,
+        }
     }
 
-    pub fn get_tags(&self, _repository: &RepositoryName) -> Option<Vec<String>> {
-        // FIXME: Implement this
-        Some(vec![])
+    pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+        let store = self.state.blocking_lock();
+        match store.tags.get(repository) {
+            Some(repository) => Some(repository.keys().cloned().collect()),
+            None => None,
+        }
     }
 
     pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
@@ -471,7 +468,11 @@ impl RegistryState {
                     repository,
                     tag,
                 } => {
-                    store.tags.insert(Tag { repository, tag }, digest);
+                    let mut repository = store
+                        .tags
+                        .entry(repository)
+                        .or_insert_with(|| HashMap::new());
+                    repository.insert(tag, digest);
                 }
             }
         }
@@ -532,12 +533,7 @@ mod tests {
         let send_action = evloop.clone();
         let (tx, _) = tokio::sync::mpsc::channel::<crate::webhook::Event>(100);
 
-        RegistryState::new(
-            send_action,
-            tx,
-            "foo".to_string(),
-            evloop,
-        )
+        RegistryState::new(send_action, tx, "foo".to_string(), evloop)
     }
 
     // BLOB TESTS
