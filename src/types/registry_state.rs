@@ -298,7 +298,10 @@ impl RegistryState {
 
     pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
         let store = self.state.blocking_lock();
-        store.tags.get(repository).map(|repository| repository.keys().cloned().collect())
+        store
+            .tags
+            .get(repository)
+            .map(|repository| repository.keys().cloned().collect())
     }
 
     pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
@@ -454,10 +457,7 @@ impl RegistryState {
                     repository,
                     tag,
                 } => {
-                    let repository = store
-                        .tags
-                        .entry(repository)
-                        .or_insert_with(HashMap::new);
+                    let repository = store.tags.entry(repository).or_insert_with(HashMap::new);
                     repository.insert(tag, digest);
                 }
             }
