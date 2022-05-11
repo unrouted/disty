@@ -256,10 +256,7 @@ impl RegistryState {
 
     pub fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
         let store = self.state.blocking_lock();
-        match store.blobs.get(hash) {
-            None => None,
-            Some(blob) => Some(blob.clone()),
-        }
+        store.blobs.get(hash).cloned()
     }
 
     pub fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
@@ -277,12 +274,7 @@ impl RegistryState {
 
     pub fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
         let store = self.state.blocking_lock();
-        match store.manifests.get(hash) {
-            None => None,
-            Some(manifest) => {
-                return Some(manifest.clone());
-            }
-        }
+        store.manifests.get(hash).cloned()
     }
     pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
         let store = self.state.blocking_lock();
@@ -299,20 +291,14 @@ impl RegistryState {
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         let store = self.state.blocking_lock();
         match store.tags.get(repository) {
-            Some(repository) => match repository.get(tag) {
-                Some(digest) => Some(digest.clone()),
-                None => None,
-            },
+            Some(repository) => repository.get(tag).cloned(),
             None => None,
         }
     }
 
     pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
         let store = self.state.blocking_lock();
-        match store.tags.get(repository) {
-            Some(repository) => Some(repository.keys().cloned().collect()),
-            None => None,
-        }
+        store.tags.get(repository).map(|repository| repository.keys().cloned().collect())
     }
 
     pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
@@ -468,10 +454,10 @@ impl RegistryState {
                     repository,
                     tag,
                 } => {
-                    let mut repository = store
+                    let repository = store
                         .tags
                         .entry(repository)
-                        .or_insert_with(|| HashMap::new());
+                        .or_insert_with(HashMap::new);
                     repository.insert(tag, digest);
                 }
             }
@@ -558,8 +544,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -580,12 +566,12 @@ mod tests {
             RegistryAction::BlobMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                repository: repository.clone(),
+                repository,
                 digest: digest.clone(),
             },
             RegistryAction::BlobInfo {
                 timestamp: Utc::now(),
-                digest: digest,
+                digest,
                 content_type: "application/json".to_string(),
                 dependencies: vec![dependency],
             },
@@ -611,15 +597,15 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state.dispatch_actions(vec![RegistryAction::BlobStat {
             timestamp: Utc::now(),
-            digest: digest,
+            digest,
             size: 1234,
         }]);
 
@@ -639,8 +625,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -649,8 +635,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobUnmounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -670,8 +656,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Make node unavailable
@@ -681,8 +667,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobUnmounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Make node available again
@@ -692,8 +678,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::BlobMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Should be visible...
@@ -725,8 +711,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -745,8 +731,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let digest = "sha256:abcdefg".parse().unwrap();
@@ -754,7 +740,7 @@ mod tests {
 
         state.dispatch_actions(vec![RegistryAction::ManifestInfo {
             timestamp: Utc::now(),
-            digest: digest,
+            digest,
             content_type: "application/json".to_string(),
             dependencies: vec![dependency],
         }]);
@@ -779,15 +765,15 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state.dispatch_actions(vec![RegistryAction::ManifestStat {
             timestamp: Utc::now(),
-            digest: digest,
+            digest,
             size: 1234,
         }]);
 
@@ -807,8 +793,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -817,8 +803,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestUnmounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         let repository = "myrepo".parse().unwrap();
@@ -838,8 +824,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Make node unavailable
@@ -849,8 +835,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestUnmounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Make node available again
@@ -860,8 +846,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::ManifestMounted {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
         }]);
 
         // Should be visible...
@@ -882,8 +868,8 @@ mod tests {
         state.dispatch_actions(vec![RegistryAction::HashTagged {
             timestamp: Utc::now(),
             user: "test".to_string(),
-            repository: repository,
-            digest: digest,
+            repository,
+            digest,
             tag: "latest".to_string(),
         }]);
 
