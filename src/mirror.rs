@@ -78,7 +78,7 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest) {
+        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest).await {
             Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -99,7 +99,7 @@ async fn do_transfer(
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest) {
+        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest).await {
             Some(manifest) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),

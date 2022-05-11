@@ -122,7 +122,7 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    match state.get_tags(&repository) {
+    match state.get_tags(&repository).await {
         Some(mut tags) => {
             tags.sort();
 

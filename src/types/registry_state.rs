@@ -11,6 +11,7 @@ use pyo3::types;
 use pyo3::types::PyDict;
 use pyo3::types::PyTuple;
 use pyo3_asyncio::{into_future_with_locals, TaskLocals};
+use rocket::futures::executor::block_on;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::Future;
@@ -125,8 +126,8 @@ impl RegistryState {
         }
     }
 
-    pub fn blob_available(&self, digest: &Digest) {
-        let mut waiters = self.blob_waiters.blocking_lock();
+    async fn blob_available(&self, digest: &Digest) {
+        let mut waiters = self.blob_waiters.lock().await;
 
         if let Some(blobs) = waiters.remove(digest) {
             info!(
@@ -146,7 +147,7 @@ impl RegistryState {
     pub async fn wait_for_blob(&self, digest: &Digest) {
         let mut waiters = self.blob_waiters.lock().await;
 
-        if let Some(blob) = self.get_blob_directly(digest) {
+        if let Some(blob) = self.get_blob_directly(digest).await {
             if blob.locations.contains(&self.machine_identifier) {
                 // Blob already exists at this endpoint, no need to wait
                 info!("State: Wait for blob: {digest} already available");
@@ -178,8 +179,8 @@ impl RegistryState {
         }
     }
 
-    pub fn manifest_available(&self, digest: &Digest) {
-        let mut waiters = self.manifest_waiters.blocking_lock();
+    async fn manifest_available(&self, digest: &Digest) {
+        let mut waiters = self.manifest_waiters.lock().await;
 
         if let Some(manifests) = waiters.remove(digest) {
             for sender in manifests {
@@ -193,7 +194,7 @@ impl RegistryState {
     pub async fn wait_for_manifest(&self, digest: &Digest) {
         let mut waiters = self.manifest_waiters.lock().await;
 
-        if let Some(manifest) = self.get_manifest_directly(digest) {
+        if let Some(manifest) = self.get_manifest_directly(digest).await {
             if manifest.locations.contains(&self.machine_identifier) {
                 // manifest already exists at this endpoint, no need to wait
                 return;
@@ -246,21 +247,21 @@ impl RegistryState {
         }
     }
 
-    pub fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let store = self.state.blocking_lock();
+    pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+        let store = self.state.lock().await;
         match store.blobs.get(hash) {
             None => false,
             Some(blob) => blob.repositories.contains(repository),
         }
     }
 
-    pub fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
-        let store = self.state.blocking_lock();
+    pub async fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
+        let store = self.state.lock().await;
         store.blobs.get(hash).cloned()
     }
 
-    pub fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
-        let store = self.state.blocking_lock();
+    pub async fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
+        let store = self.state.lock().await;
         match store.blobs.get(hash) {
             None => None,
             Some(blob) => {
@@ -272,12 +273,16 @@ impl RegistryState {
         }
     }
 
-    pub fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
-        let store = self.state.blocking_lock();
+    pub async fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
+        let store = self.state.lock().await;
         store.manifests.get(hash).cloned()
     }
-    pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
-        let store = self.state.blocking_lock();
+    pub async fn get_manifest(
+        &self,
+        repository: &RepositoryName,
+        hash: &Digest,
+    ) -> Option<Manifest> {
+        let store = self.state.lock().await;
         match store.manifests.get(hash) {
             None => None,
             Some(manifest) => {
@@ -288,24 +293,24 @@ impl RegistryState {
             }
         }
     }
-    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
-        let store = self.state.blocking_lock();
+    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
+        let store = self.state.lock().await;
         match store.tags.get(repository) {
             Some(repository) => repository.get(tag).cloned(),
             None => None,
         }
     }
 
-    pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
-        let store = self.state.blocking_lock();
+    pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+        let store = self.state.lock().await;
         store
             .tags
             .get(repository)
             .map(|repository| repository.keys().cloned().collect())
     }
 
-    pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let store = self.state.blocking_lock();
+    pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+        let store = self.state.lock().await;
         match store.manifests.get(hash) {
             None => false,
             Some(manifest) => manifest.repositories.contains(repository),
@@ -322,11 +327,11 @@ impl RegistryState {
         vec![]
     }
 
-    pub fn dispatch_actions(&self, actions: Vec<RegistryAction>) {
-        let mut store = self.state.blocking_lock();
+    pub async fn dispatch_entries(&self, actions: Vec<ReducerDispatch>) {
+        let mut store = self.state.lock().await;
 
         for action in actions {
-            match action {
+            match action.1 {
                 RegistryAction::Empty {} => {}
                 RegistryAction::BlobStored {
                     timestamp,
@@ -334,8 +339,12 @@ impl RegistryState {
                     digest,
                     location,
                 } => {
-                    let blob = store.get_or_insert_blob(digest, timestamp);
-                    blob.locations.insert(location);
+                    let blob = store.get_or_insert_blob(digest.clone(), timestamp);
+                    blob.locations.insert(location.clone());
+
+                    if location == self.machine_identifier {
+                        self.blob_available(&digest).await;
+                    }
                 }
                 RegistryAction::BlobUnstored {
                     timestamp,
@@ -395,8 +404,12 @@ impl RegistryState {
                     digest,
                     location,
                 } => {
-                    let manifest = store.get_or_insert_manifest(digest, timestamp);
-                    manifest.locations.insert(location);
+                    let manifest = store.get_or_insert_manifest(digest.clone(), timestamp);
+                    manifest.locations.insert(location.clone());
+
+                    if location == self.machine_identifier {
+                        self.manifest_available(&digest).await;
+                    }
                 }
                 RegistryAction::ManifestUnstored {
                     timestamp,
@@ -463,41 +476,13 @@ impl RegistryState {
             }
         }
     }
-
-    pub fn dispatch_entries(&self, entries: Vec<crate::reducer::ReducerDispatch>) {
-        for entry in &entries {
-            match &entry.1 {
-                RegistryAction::BlobStored {
-                    timestamp: _,
-                    digest,
-                    location,
-                    user: _,
-                } => {
-                    if location == &self.machine_identifier {
-                        self.blob_available(digest);
-                    }
-                }
-                RegistryAction::ManifestStored {
-                    timestamp: _,
-                    digest,
-                    location,
-                    user: _,
-                } => {
-                    if location == &self.machine_identifier {
-                        self.manifest_available(digest);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
 }
 
 pub(crate) fn add_side_effect(reducers: &PyObject, state: Arc<RegistryState>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
             let entries: Vec<ReducerDispatch> = args.get_item(1)?.extract()?;
-            state.dispatch_entries(entries);
+            block_on(state.dispatch_entries(entries));
             Ok(true)
         };
         let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
@@ -524,62 +509,75 @@ mod tests {
 
     // BLOB TESTS
 
-    #[test]
-    fn blob_not_available_initially() {
+    #[tokio::test]
+    async fn blob_not_available_initially() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(!state.is_blob_available(&repository, &digest))
+        assert!(!state.is_blob_available(&repository, &digest).await)
     }
 
-    #[test]
-    fn blob_becomes_available() {
+    #[tokio::test]
+    async fn blob_becomes_available() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(state.is_blob_available(&repository, &digest));
+        assert!(state.is_blob_available(&repository, &digest).await);
     }
 
-    #[test]
-    fn blob_metadata() {
+    #[tokio::test]
+    async fn blob_metadata() {
         let state = setup_state();
 
         let repository: RepositoryName = "myrepo".parse().unwrap();
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
         let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
 
-        state.dispatch_actions(vec![
-            RegistryAction::BlobMounted {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                repository,
-                digest: digest.clone(),
-            },
-            RegistryAction::BlobInfo {
-                timestamp: Utc::now(),
-                digest,
-                content_type: "application/json".to_string(),
-                dependencies: vec![dependency],
-            },
-        ]);
+        state
+            .dispatch_entries(vec![
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository,
+                        digest: digest.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobInfo {
+                        timestamp: Utc::now(),
+                        digest,
+                        content_type: "application/json".to_string(),
+                        dependencies: vec![dependency],
+                    },
+                ),
+            ])
+            .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
 
-        let item = state.get_blob_directly(&digest).unwrap();
+        let item = state.get_blob_directly(&digest).await.unwrap();
         assert_eq!(item.content_type, Some("application/json".to_string()));
         assert_eq!(item.dependencies.as_ref().unwrap().len(), 1);
 
@@ -587,166 +585,216 @@ mod tests {
         assert_eq!(item.dependencies, Some(dependencies));
     }
 
-    #[test]
-    fn blob_size() {
+    #[tokio::test]
+    async fn blob_size() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobStat {
-            timestamp: Utc::now(),
-            digest,
-            size: 1234,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobStat {
+                    timestamp: Utc::now(),
+                    digest,
+                    size: 1234,
+                },
+            )])
+            .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
-        let item = state.get_blob_directly(&digest).unwrap();
+        let item = state.get_blob_directly(&digest).await.unwrap();
 
         assert_eq!(item.size, Some(1234));
     }
 
-    #[test]
-    fn blob_becomes_unavailable() {
+    #[tokio::test]
+    async fn blob_becomes_unavailable() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobUnmounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobUnmounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(!state.is_blob_available(&repository, &digest));
+        assert!(!state.is_blob_available(&repository, &digest).await);
     }
 
-    #[test]
-    fn blob_becomes_available_again() {
+    #[tokio::test]
+    async fn blob_becomes_available_again() {
         let state = setup_state();
 
         // Create node
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Make node unavailable
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobUnmounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobUnmounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Make node available again
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Should be visible...
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(state.is_blob_available(&repository, &digest));
+        assert!(state.is_blob_available(&repository, &digest).await);
     }
 
     // MANIFEST TESTS
 
-    #[test]
-    fn manifest_not_available_initially() {
+    #[tokio::test]
+    async fn manifest_not_available_initially() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(!state.is_manifest_available(&repository, &digest))
+        assert!(!state.is_manifest_available(&repository, &digest).await)
     }
 
-    #[test]
-    fn manifest_becomes_available() {
+    #[tokio::test]
+    async fn manifest_becomes_available() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(state.is_manifest_available(&repository, &digest));
+        assert!(state.is_manifest_available(&repository, &digest).await);
     }
 
-    #[test]
-    fn manifest_metadata() {
+    #[tokio::test]
+    async fn manifest_metadata() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
         let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestInfo {
-            timestamp: Utc::now(),
-            digest,
-            content_type: "application/json".to_string(),
-            dependencies: vec![dependency],
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestInfo {
+                    timestamp: Utc::now(),
+                    digest,
+                    content_type: "application/json".to_string(),
+                    dependencies: vec![dependency],
+                },
+            )])
+            .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
-        let item = state.get_manifest_directly(&digest).unwrap();
+        let item = state.get_manifest_directly(&digest).await.unwrap();
 
         assert_eq!(item.content_type, Some("application/json".to_string()));
         assert_eq!(item.dependencies.as_ref().unwrap().len(), 1);
@@ -755,130 +803,170 @@ mod tests {
         assert_eq!(item.dependencies, Some(dependencies));
     }
 
-    #[test]
-    fn manifest_size() {
+    #[tokio::test]
+    async fn manifest_size() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestStat {
-            timestamp: Utc::now(),
-            digest,
-            size: 1234,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestStat {
+                    timestamp: Utc::now(),
+                    digest,
+                    size: 1234,
+                },
+            )])
+            .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
-        let item = state.get_manifest_directly(&digest).unwrap();
+        let item = state.get_manifest_directly(&digest).await.unwrap();
 
         assert_eq!(item.size, Some(1234));
     }
 
-    #[test]
-    fn manifest_becomes_unavailable() {
+    #[tokio::test]
+    async fn manifest_becomes_unavailable() {
         let state = setup_state();
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestUnmounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestUnmounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(!state.is_manifest_available(&repository, &digest));
+        assert!(!state.is_manifest_available(&repository, &digest).await);
     }
 
-    #[test]
-    fn manifest_becomes_available_again() {
+    #[tokio::test]
+    async fn manifest_becomes_available_again() {
         let state = setup_state();
 
         // Create node
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Make node unavailable
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestUnmounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestUnmounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Make node available again
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::ManifestMounted {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                },
+            )])
+            .await;
 
         // Should be visible...
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        assert!(state.is_manifest_available(&repository, &digest));
+        assert!(state.is_manifest_available(&repository, &digest).await);
     }
 
-    #[test]
-    fn can_tag_manifest() {
+    #[tokio::test]
+    async fn can_tag_manifest() {
         let state = setup_state();
 
         // Create node
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
-        state.dispatch_actions(vec![RegistryAction::HashTagged {
-            timestamp: Utc::now(),
-            user: "test".to_string(),
-            repository,
-            digest,
-            tag: "latest".to_string(),
-        }]);
+        state
+            .dispatch_entries(vec![ReducerDispatch(
+                1,
+                RegistryAction::HashTagged {
+                    timestamp: Utc::now(),
+                    user: "test".to_string(),
+                    repository,
+                    digest,
+                    tag: "latest".to_string(),
+                },
+            )])
+            .await;
 
         let repository = "myrepo2".parse().unwrap();
-        assert!(matches!(state.get_tags(&repository), None));
+        assert!(matches!(state.get_tags(&repository).await, None));
 
         let repository = "myrepo".parse().unwrap();
         assert_eq!(
-            state.get_tags(&repository).unwrap(),
+            state.get_tags(&repository).await.unwrap(),
             vec!["latest".to_string()]
         );
     }

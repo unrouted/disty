@@ -122,13 +122,13 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest) {
+    if !state.is_manifest_available(&repository, &digest).await {
         return Responses::ManifestNotFound {};
     }
 
     state.wait_for_manifest(&digest).await;
 
-    let manifest = match state.get_manifest(&repository, &digest) {
+    let manifest = match state.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,
         _ => {
             debug!("Failed to return manifest from graph for {digest} (via {repository}");
@@ -185,7 +185,7 @@ pub(crate) async fn get_by_tag(
         return Responses::AccessDenied {};
     }
 
-    let digest = match state.get_tag(&repository, &tag) {
+    let digest = match state.get_tag(&repository, &tag).await {
         Some(tag) => tag,
         None => {
             debug!("No such tag");
@@ -193,14 +193,14 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    if !state.is_manifest_available(&repository, &digest) {
+    if !state.is_manifest_available(&repository, &digest).await {
         debug!("Manifest not known to graph");
         return Responses::ManifestNotFound {};
     }
 
     state.wait_for_manifest(&digest).await;
 
-    let manifest = match state.get_manifest(&repository, &digest) {
+    let manifest = match state.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,
         _ => {
             debug!("Could not retrieve manifest info from graph");

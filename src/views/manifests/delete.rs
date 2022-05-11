@@ -74,7 +74,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest) {
+    if !state.is_manifest_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
@@ -111,12 +111,12 @@ pub(crate) async fn delete_by_tag(
         return Responses::AccessDenied {};
     }
 
-    let digest = match state.get_tag(&repository, &tag) {
+    let digest = match state.get_tag(&repository, &tag).await {
         Some(tag) => tag,
         None => return Responses::NotFound {},
     };
 
-    if !state.is_manifest_available(&repository, &digest) {
+    if !state.is_manifest_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
