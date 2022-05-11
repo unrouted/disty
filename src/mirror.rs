@@ -78,7 +78,7 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest) {
+        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest).await {
             Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -99,7 +99,7 @@ async fn do_transfer(
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest) {
+        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest).await {
             Some(manifest) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -355,7 +355,7 @@ struct ReducerDispatch(u64, RegistryAction);
 pub(crate) fn add_side_effect(reducers: &PyObject, tx: Sender<MirrorRequest>) {
     Python::with_gil(|py| {
         let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(1)?.extract()?;
+            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
             println!("side_effect: {:?}", entries);
             dispatch_entries(entries, tx.clone());
             Ok(true)

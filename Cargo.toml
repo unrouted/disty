@@ -13,7 +13,7 @@ lto = "thin"
 overflow-checks = true
 
 [dependencies]
-pyo3 = "0.16.4"
+pyo3 = { version = "0.16.4", features=["auto-initialize"]}
 pyo3-asyncio = { version = "0.16", features = ["tokio-runtime"] }
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1.4", features = ["full"] }
@@ -29,7 +29,6 @@ jsonschema = "0.15"
 log = "0.4.14"
 urlencoding = "2.1.0"
 chrono = {version = "0.4", features=["serde"]}
-pyo3-chrono = "0.4.0"
 prometheus-client = "0.15.1"
 figment = { version="0.10.6", features=["yaml"]}
 platform-dirs = "0.3.0"

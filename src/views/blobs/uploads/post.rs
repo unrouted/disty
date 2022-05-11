@@ -175,7 +175,7 @@ pub(crate) async fn post(
             return Responses::UploadInvalid {};
         }
 
-        if state.is_blob_available(&from, &mount) {
+        if state.is_blob_available(&from, &mount).await {
             let actions = vec![RegistryAction::BlobMounted {
                 timestamp: Utc::now(),
                 digest: mount.clone(),

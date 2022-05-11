@@ -113,7 +113,7 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    let blob = match state.get_blob(&repository, &digest) {
+    let blob = match state.get_blob(&repository, &digest).await {
         Some(blob) => blob,
         None => {
             info!("get_blob returned no blob found");

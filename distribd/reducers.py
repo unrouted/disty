@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class Reducers:
-    def __init__(self, machine: Machine, state):
+    def __init__(self, machine: Machine):
         # Entries that are safely committed
         self.applied_index = 0
 
@@ -18,7 +18,6 @@ class Reducers:
         self._waiters = []
 
         self.machine = machine
-        self.state = state
 
     def add_side_effects(self, callback):
         self._callbacks.append(callback)
@@ -32,10 +31,8 @@ class Reducers:
 
         entries = self.machine.log[self.applied_index : machine.commit_index + 1]
 
-        self.state.dispatch_entries(entries)
-
         for callback in self._callbacks:
-            callback(self.state, entries)
+            callback(entries)
 
         waiters = []
         for waiter_index, ev in self._waiters:

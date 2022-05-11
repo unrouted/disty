@@ -51,7 +51,6 @@ pub fn rewrite_urls(url: &str) -> String {
 
 #[pyfunction]
 fn start_registry_service(
-    registry_state: PyObject,
     send_action: PyObject,
     machine: PyObject,
     machine_identifier: String,
@@ -78,7 +77,6 @@ fn start_registry_service(
         machine,
     ));
     let state = Arc::new(crate::types::RegistryState::new(
-        registry_state,
         send_action,
         webhook_send,
         machine_identifier,

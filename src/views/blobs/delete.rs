@@ -75,7 +75,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_blob_available(&repository, &digest) {
+    if !state.is_blob_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 

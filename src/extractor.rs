@@ -232,7 +232,7 @@ impl Extractor {
                     continue;
                 }
 
-                match state.get_blob(repository, &extraction.digest) {
+                match state.get_blob(repository, &extraction.digest).await {
                     Some(blob) => {
                         if blob.content_type.is_some() || blob.dependencies.is_some() {
                             // Was already analyzed, don't do it again!

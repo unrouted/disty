@@ -10,7 +10,6 @@ import verboselogs
 from .machine import Machine
 from .raft import HttpRaft
 from .reducers import Reducers
-from .state import RegistryState
 from .storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -54,9 +53,7 @@ async def main(argv=None, config=None):
             machine.add_peer(other_identifier)
 
     machine.start()
-
-    registry_state = RegistryState()
-    reducers = Reducers(machine, registry_state)
+    reducers = Reducers(machine)
 
     raft = HttpRaft(config, machine, storage, reducers)
 
@@ -67,7 +64,6 @@ async def main(argv=None, config=None):
     from distribd.distribd import start_registry_service
 
     if not start_registry_service(
-        registry_state,
         raft.append,
         machine,
         machine.identifier,

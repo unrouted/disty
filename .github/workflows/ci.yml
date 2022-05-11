@@ -31,10 +31,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
 
-      - name: Security audit
-        uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      #- name: Security audit
+      #  uses: actions-rs/audit-check@v1
+      #  with:
+      #    token: ${{ secrets.GITHUB_TOKEN }}
 
   rustfmt:
     name: rustfmt
