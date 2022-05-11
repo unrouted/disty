@@ -322,9 +322,24 @@ impl RegistryState {
         vec![]
     }
 
-    pub fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
-        // FIXME: Implement this
-        vec![]
+    pub async fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
+        let store = self.state.lock().await;
+
+        let manifests: HashSet<Digest> = store.manifests.keys().cloned().collect();
+        let mut tags: HashSet<Digest> = HashSet::new();
+
+        for repo_tags in store.tags.values() {
+            tags.extend(repo_tags.values().cloned());
+        }
+
+        manifests
+            .difference(&tags)
+            .cloned()
+            .map(|digest| ManifestEntry {
+                manifest: store.manifests.get(&digest).unwrap().clone(),
+                digest,
+            })
+            .collect::<Vec<ManifestEntry>>()
     }
 
     pub async fn dispatch_entries(&self, actions: Vec<ReducerDispatch>) {
@@ -975,5 +990,83 @@ mod tests {
             state.get_tags(&repository).await.unwrap(),
             vec!["latest".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn can_collect_orphaned_manifests() {
+        let state = setup_state();
+
+        // Create node
+        let repository: RepositoryName = "myrepo".parse().unwrap();
+        let digest1: Digest = "sha256:abcdefg".parse().unwrap();
+        let digest2: Digest = "sha256:gfedcba".parse().unwrap();
+
+        state
+            .dispatch_entries(vec![
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest1.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest1.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::HashTagged {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest1.clone(),
+                        tag: "latest".to_string(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest2.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest2.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::HashTagged {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository,
+                        digest: digest2.clone(),
+                        tag: "latest".to_string(),
+                    },
+                ),
+            ])
+            .await;
+
+        let collected = state.get_orphaned_manifests().await;
+        assert_eq!(collected.len(), 1);
+
+        let entry = collected.first().unwrap();
+        assert_eq!(entry.digest, digest1);
+        assert!(entry.manifest.locations.contains("test"));
     }
 }
