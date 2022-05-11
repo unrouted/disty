@@ -354,6 +354,10 @@ impl RegistryState {
                 } => {
                     if let Some(blob) = store.get_mut_blob(&digest, timestamp) {
                         blob.locations.remove(&location);
+
+                        if blob.locations.is_empty() {
+                            store.blobs.remove(&digest);
+                        }
                     }
                 }
                 RegistryAction::BlobMounted {
@@ -373,9 +377,6 @@ impl RegistryState {
                 } => {
                     if let Some(blob) = store.get_mut_blob(&digest, timestamp) {
                         blob.repositories.remove(&repository);
-                        if blob.repositories.is_empty() {
-                            store.blobs.remove(&digest);
-                        }
                     }
                 }
                 RegistryAction::BlobInfo {
@@ -419,6 +420,10 @@ impl RegistryState {
                 } => {
                     if let Some(manifest) = store.get_mut_manifest(&digest, timestamp) {
                         manifest.locations.remove(&location);
+
+                        if manifest.locations.is_empty() {
+                            store.manifests.remove(&digest);
+                        }
                     }
                 }
                 RegistryAction::ManifestMounted {
@@ -438,8 +443,9 @@ impl RegistryState {
                 } => {
                     if let Some(manifest) = store.get_mut_manifest(&digest, timestamp) {
                         manifest.repositories.remove(&repository);
-                        if manifest.repositories.is_empty() {
-                            store.manifests.remove(&digest);
+
+                        if let Some(tags) = store.tags.get_mut(&repository) {
+                            tags.retain(|_, value| value != &digest);
                         }
                     }
                 }
