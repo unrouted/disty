@@ -326,11 +326,8 @@ impl RegistryState {
         let mut visiting: HashSet<Digest> = HashSet::new();
 
         for manifest in store.manifests.values() {
-            match &manifest.dependencies {
-                Some(dependencies) => {
-                    visiting.extend(dependencies.iter().cloned());
-                }
-                _ => {}
+            if let Some(dependencies) = &manifest.dependencies {
+                visiting.extend(dependencies.iter().cloned());
             }
         }
 
