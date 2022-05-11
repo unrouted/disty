@@ -344,6 +344,8 @@ impl IntoPy<PyObject> for RegistryAction {
 
 impl FromPyObject<'_> for RegistryAction {
     fn extract(dict: &'_ PyAny) -> PyResult<Self> {
+        let pydict = dict.downcast::<PyDict>()?;
+
         let action_type: String = match dict.get_item("type") {
             Ok(value) => match value.extract() {
                 Ok(extracted) => extracted,
@@ -377,7 +379,10 @@ impl FromPyObject<'_> for RegistryAction {
         let action = match action_type.as_str() {
             "blob-stored" => {
                 let location: String = dict.get_item("location")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::BlobStored {
                     timestamp,
@@ -388,7 +393,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "blob-unstored" => {
                 let location: String = dict.get_item("location")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::BlobUnstored {
                     timestamp,
@@ -399,7 +407,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "blob-mounted" => {
                 let repository: RepositoryName = dict.get_item("repository")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::BlobMounted {
                     timestamp,
@@ -410,7 +421,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "blob-unmounted" => {
                 let repository: RepositoryName = dict.get_item("repository")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::BlobUnmounted {
                     timestamp,
@@ -441,7 +455,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "manifest-stored" => {
                 let location: String = dict.get_item("location")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::ManifestStored {
                     timestamp,
@@ -452,7 +469,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "manifest-unstored" => {
                 let location: String = dict.get_item("location")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::ManifestUnstored {
                     timestamp,
@@ -463,7 +483,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "manifest-mounted" => {
                 let repository: RepositoryName = dict.get_item("repository")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::ManifestMounted {
                     timestamp,
@@ -474,7 +497,10 @@ impl FromPyObject<'_> for RegistryAction {
             }
             "manifest-unmounted" => {
                 let repository: RepositoryName = dict.get_item("repository")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::ManifestUnmounted {
                     timestamp,
@@ -506,7 +532,10 @@ impl FromPyObject<'_> for RegistryAction {
             "hash-tagged" => {
                 let repository: RepositoryName = dict.get_item("repository")?.extract()?;
                 let tag: String = dict.get_item("tag")?.extract()?;
-                let user: String = dict.get_item("user")?.extract()?;
+                let user: String = match pydict.get_item("user") {
+                    Some(user) => user.extract()?,
+                    None => "$internal".to_string(),
+                };
 
                 RegistryAction::HashTagged {
                     timestamp,
