@@ -361,9 +361,7 @@ impl FromPyObject<'_> for RegistryAction {
                     return PyResult::Err(PyValueError::new_err("Extraction of 'timestamp' failed"))
                 }
             },
-            _ => {
-                "2022-04-29T17:03:04.285771+00:00".to_string()
-            },
+            _ => "2022-04-29T17:03:04.285771+00:00".to_string(),
         };
         let timestamp = match DateTime::parse_from_rfc3339(&timestamp) {
             Ok(timestamp) => timestamp.with_timezone(&Utc),
