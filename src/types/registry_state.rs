@@ -317,9 +317,53 @@ impl RegistryState {
         }
     }
 
-    pub fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
-        // FIXME: Implement this
-        vec![]
+    pub async fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
+        let store = self.state.lock().await;
+
+        let blobs: HashSet<Digest> = store.blobs.keys().cloned().collect();
+
+        let mut visited: HashSet<Digest> = HashSet::new();
+        let mut visiting: HashSet<Digest> = HashSet::new();
+
+        for manifest in store.manifests.values() {
+            match &manifest.dependencies {
+                Some(dependencies) => {
+                    visiting.extend(dependencies.iter().cloned());
+                }
+                _ => {}
+            }
+        }
+
+        while let Some(digest) = visiting.iter().next().cloned() {
+            match store.blobs.get(&digest) {
+                Some(blob) => match &blob.dependencies {
+                    Some(dependencies) => {
+                        visiting.extend(
+                            dependencies
+                                .iter()
+                                .cloned()
+                                .filter(|digest| !visited.contains(digest)),
+                        );
+                    }
+                    None => {}
+                },
+                _ => {
+                    warn!("Dangling dependency found: {digest} missing");
+                }
+            }
+
+            visiting.remove(&digest);
+            visited.insert(digest);
+        }
+
+        blobs
+            .difference(&visited)
+            .cloned()
+            .map(|digest| BlobEntry {
+                blob: store.blobs.get(&digest).unwrap().clone(),
+                digest,
+            })
+            .collect::<Vec<BlobEntry>>()
     }
 
     pub async fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
@@ -1068,5 +1112,188 @@ mod tests {
         let entry = collected.first().unwrap();
         assert_eq!(entry.digest, digest1);
         assert!(entry.manifest.locations.contains("test"));
+    }
+
+    #[tokio::test]
+    async fn can_collect_orphaned_blobs() {
+        let state = setup_state();
+
+        // Create node
+        let repository: RepositoryName = "myrepo".parse().unwrap();
+        let digest1: Digest = "sha256:abcdefg".parse().unwrap();
+        let digest2: Digest = "sha256:gfedcba".parse().unwrap();
+        let digest3: Digest = "sha256:aaaaaaa".parse().unwrap();
+        let digest4: Digest = "sha256:bbbbbbb".parse().unwrap();
+        let manifest_digest: Digest = "sha256:ababababababa".parse().unwrap();
+
+        state
+            .dispatch_entries(vec![
+                // BLOB 1 DAG
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest1.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest1.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest2.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest2.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobInfo {
+                        timestamp: Utc::now(),
+                        digest: digest2.clone(),
+                        content_type: "foo".to_string(),
+                        dependencies: vec![digest1.clone()],
+                    },
+                ),
+                // BLOB 2 DAG
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest3.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest3.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: digest4.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: digest4.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::BlobInfo {
+                        timestamp: Utc::now(),
+                        digest: digest4.clone(),
+                        content_type: "foo".to_string(),
+                        dependencies: vec![digest3.clone()],
+                    },
+                ),
+                // MANIFEST DAG
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestStored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: manifest_digest.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestMounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: manifest_digest.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestInfo {
+                        timestamp: Utc::now(),
+                        digest: manifest_digest.clone(),
+                        content_type: "foo".to_string(),
+                        dependencies: vec![digest4.clone()],
+                    },
+                ),
+            ])
+            .await;
+
+        let collected = state.get_orphaned_blobs().await;
+        assert_eq!(collected.len(), 2);
+
+        for blob in collected {
+            match &blob {
+                BlobEntry { blob, digest } if digest == &digest1 => {
+                    assert_eq!(blob.dependencies.as_ref().unwrap().len(), 0);
+                }
+                BlobEntry { blob, digest } if digest == &digest2 => {
+                    assert_eq!(blob.dependencies.as_ref().unwrap().len(), 1);
+                }
+                _ => {
+                    panic!("Unexpected digest was collected")
+                }
+            }
+        }
+
+        // If we delete the manifest all blobs should now be garbage collected
+
+        state
+            .dispatch_entries(vec![
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestUnmounted {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        repository: repository.clone(),
+                        digest: manifest_digest.clone(),
+                    },
+                ),
+                ReducerDispatch(
+                    1,
+                    RegistryAction::ManifestUnstored {
+                        timestamp: Utc::now(),
+                        user: "test".to_string(),
+                        location: "test".to_string(),
+                        digest: manifest_digest.clone(),
+                    },
+                ),
+            ])
+            .await;
+
+        let collected = state.get_orphaned_blobs().await;
+        assert_eq!(collected.len(), 4);
     }
 }

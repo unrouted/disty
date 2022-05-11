@@ -48,7 +48,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
             })
         }
     }
-    for entry in state.get_orphaned_blobs() {
+    for entry in state.get_orphaned_blobs().await {
         if (Utc::now() - entry.blob.created) > minimum_age {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
@@ -144,7 +144,7 @@ async fn do_garbage_collect_phase2(
         });
     }
 
-    for entry in state.get_orphaned_blobs() {
+    for entry in state.get_orphaned_blobs().await {
         if !entry.blob.locations.contains(&machine.identifier) {
             continue;
         }
