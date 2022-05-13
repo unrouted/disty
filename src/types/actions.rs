@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use super::digest::Digest;
 use super::RepositoryName;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum RegistryAction {
-    Empty {},
+    Empty,
 
     // A given sha256 blob was committed to disk and should be replicated
     //BLOB_STORED = "blob-stored"

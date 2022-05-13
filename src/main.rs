@@ -20,10 +20,10 @@ mod webhook;
 use std::sync::Arc;
 
 use machine::Machine;
-use raft::Raft;
+use raft::{Raft};
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast::error::RecvError};
 use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
@@ -71,14 +71,28 @@ async fn main() {
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
 
     let mut raft = Raft::new(config.clone(), machine.clone());
-    tokio::spawn(async move {
-        raft.run().await;
-    });
 
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,
         machine_identifier,
     ));
+
+    let mut events = raft.events.subscribe();
+    let dispatcher = state.clone();
+    tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(event) => {
+                    dispatcher.dispatch_entries(event).await;
+                }
+                Err(RecvError::Closed) => { break; }
+                Err(RecvError::Lagged ( _ )) => {
+                    warn!("Lagged queue handler");
+                }
+            }
+        }
+    });
+
     // FIXME
     // crate::types::registry_state::add_side_effect(&reducers, state.clone());
 
@@ -113,6 +127,10 @@ async fn main() {
     let prometheus_conf = rocket::Config::figment().merge(("port", config.prometheus.port));
 
     tokio::spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
+
+    tokio::spawn(async move {
+        raft.run().await;
+    });
 }
 
 #[cfg(test)]

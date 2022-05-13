@@ -9,7 +9,7 @@ use rocket::form::{FromFormField, ValueField};
 use rocket::request::FromParam;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(try_from = "String", into = "String")]
 pub struct Digest {
     pub algo: String,

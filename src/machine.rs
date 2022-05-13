@@ -6,7 +6,7 @@ use prometheus_client::registry::Registry;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 
-use crate::config::Configuration;
+use crate::{config::Configuration, types::RegistryAction};
 
 const ELECTION_TICK_LOW: u64 = 150;
 const ELECTION_TICK_HIGH: u64 = 300;
@@ -90,13 +90,13 @@ struct Peer {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LogEntry {
-    term: u64,
-    entry: String,
+    pub term: u64,
+    pub entry: RegistryAction,
 }
 
 #[derive(Default)]
-struct Log {
-    entries: Vec<LogEntry>,
+pub struct Log {
+    pub entries: Vec<LogEntry>,
     snapshot_index: Option<u64>,
     snapshot_term: Option<u64>,
     truncate_index: Option<u64>,
@@ -194,9 +194,9 @@ pub struct Machine {
     voted_for: Option<String>,
     pub tick: tokio::time::Instant,
     vote_count: usize,
-    commit_index: u64,
+    pub commit_index: u64,
     obedient: bool,
-    log: Log,
+    pub log: Log,
     last_applied_index: Family<MachineMetricLabels, Gauge>,
     last_committed: Family<MachineMetricLabels, Gauge>,
     last_saved: Family<MachineMetricLabels, Gauge>,
@@ -389,11 +389,11 @@ impl Machine {
             peer.match_index = 0;
         }
 
-        self.append("{}".to_string());
+        self.append(RegistryAction::Empty);
         self.broadcast_entries();
     }
 
-    fn append(&mut self, entry: String) -> bool {
+    fn append(&mut self, entry: RegistryAction) -> bool {
         match self.state {
             PeerState::Leader {} => {
                 self.log.append(LogEntry {
