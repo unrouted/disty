@@ -72,9 +72,9 @@ fn start_registry_service(
     let extractor = crate::extractor::Extractor::new(config.clone());
 
     let machine = Arc::new(Machine::new(
+        config.clone(),
         &mut registry,
         machine_identifier.clone(),
-        machine,
     ));
     let state = Arc::new(crate::types::RegistryState::new(
         send_action,
