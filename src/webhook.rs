@@ -33,8 +33,7 @@ pub fn start_webhook_worker(
 
     let (tx, mut rx) = mpsc::channel::<Event>(100);
 
-    let runtime = pyo3_asyncio::tokio::get_runtime();
-    runtime.spawn(async move {
+    tokio::spawn(async move {
         loop {
             if let Some(Event {
                 repository,

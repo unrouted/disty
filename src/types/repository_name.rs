@@ -3,8 +3,6 @@ use std::fmt;
 
 use std::str::FromStr;
 
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 use rocket::form::{FromFormField, ValueField};
 use serde::{Deserialize, Serialize};
 
@@ -68,16 +66,6 @@ impl From<RepositoryName> for String {
 impl fmt::Display for RepositoryName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)
-    }
-}
-
-impl FromPyObject<'_> for RepositoryName {
-    fn extract(digest: &'_ PyAny) -> PyResult<Self> {
-        let repository_name: String = digest.extract()?;
-        match RepositoryName::from_str(&repository_name) {
-            Ok(value) => Ok(value),
-            Err(_) => Err(PyValueError::new_err("argument is wrong")),
-        }
     }
 }
 

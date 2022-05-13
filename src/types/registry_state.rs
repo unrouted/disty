@@ -6,30 +6,12 @@ use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use chrono::DateTime;
 use chrono::Utc;
-use pyo3::prelude::*;
-use pyo3::types;
-use pyo3::types::PyDict;
-use pyo3::types::PyTuple;
-use pyo3_asyncio::{into_future_with_locals, TaskLocals};
-use rocket::futures::executor::block_on;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::future::Future;
-use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 
 use super::{BlobEntry, ManifestEntry};
-
-pub fn into_future_with_loop(
-    event_loop: &PyAny,
-    awaitable: &PyAny,
-) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send> {
-    into_future_with_locals(
-        &TaskLocals::new(event_loop).copy_context(event_loop.py())?,
-        awaitable,
-    )
-}
 
 #[derive(Default)]
 struct Store {
@@ -101,26 +83,20 @@ impl Store {
 pub struct RegistryState {
     state: Mutex<Store>,
     pub machine_identifier: String,
-    send_action: PyObject,
     webhook_send: tokio::sync::mpsc::Sender<Event>,
-    event_loop: PyObject,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
 }
 
 impl RegistryState {
     pub fn new(
-        send_action: PyObject,
         webhook_send: tokio::sync::mpsc::Sender<Event>,
         machine_identifier: String,
-        event_loop: PyObject,
     ) -> RegistryState {
         RegistryState {
             state: Mutex::new(Store::default()),
-            send_action,
             webhook_send,
             machine_identifier,
-            event_loop,
             manifest_waiters: Mutex::new(HashMap::new()),
             blob_waiters: Mutex::new(HashMap::new()),
         }
@@ -226,25 +202,8 @@ impl RegistryState {
     }
 
     pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
-        let result = Python::with_gil(|py| {
-            let event_loop = self.event_loop.as_ref(py);
-
-            into_future_with_loop(
-                event_loop,
-                self.send_action.call1(py, (actions,))?.as_ref(py),
-            )
-        });
-
-        match result {
-            Ok(result) => match result.await {
-                Ok(value) => match Python::with_gil(|py| value.extract(py)) {
-                    Ok(value) => value,
-                    _ => false,
-                },
-                _ => false,
-            },
-            _ => false,
-        }
+        // FIXME
+        true
     }
 
     pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
@@ -540,33 +499,14 @@ impl RegistryState {
     }
 }
 
-pub(crate) fn add_side_effect(reducers: &PyObject, state: Arc<RegistryState>) {
-    Python::with_gil(|py| {
-        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
-            block_on(state.dispatch_entries(entries));
-            Ok(true)
-        };
-        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
-
-        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
-
-        if result.is_err() {
-            panic!("Boot failure: Could not registry state side effects")
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn setup_state() -> RegistryState {
-        let evloop = Python::with_gil(|py| PyDict::new(py).to_object(py));
-        let send_action = evloop.clone();
         let (tx, _) = tokio::sync::mpsc::channel::<crate::webhook::Event>(100);
 
-        RegistryState::new(send_action, tx, "foo".to_string(), evloop)
+        RegistryState::new(tx, "foo".to_string())
     }
 
     // BLOB TESTS

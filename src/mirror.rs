@@ -3,18 +3,14 @@ use crate::mint::Mint;
 use crate::types::{Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
-use pyo3::{
-    prelude::*,
-    types::{self, PyDict, PyTuple},
-};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
+use tokio::select;
 use tokio::{
     io::AsyncWriteExt,
     sync::mpsc::{channel, Receiver, Sender},
 };
-use tokio::{runtime::Runtime, select};
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -299,7 +295,6 @@ async fn do_mirroring(
 }
 
 pub(crate) fn start_mirroring(
-    runtime: &Runtime,
     config: Configuration,
     state: Arc<RegistryState>,
 ) -> Sender<MirrorRequest> {
@@ -307,7 +302,7 @@ pub(crate) fn start_mirroring(
 
     let mint = Mint::new(config.mirroring.clone());
 
-    runtime.spawn(do_mirroring(state, mint, config, rx));
+    tokio::spawn(do_mirroring(state, mint, config, rx));
 
     tx
 }
@@ -342,23 +337,5 @@ fn dispatch_entries(entries: Vec<ReducerDispatch>, tx: Sender<MirrorRequest>) {
     }
 }
 
-#[derive(Debug, FromPyObject)]
+#[derive(Debug)]
 struct ReducerDispatch(u64, RegistryAction);
-
-pub(crate) fn add_side_effect(reducers: &PyObject, tx: Sender<MirrorRequest>) {
-    Python::with_gil(|py| {
-        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
-            println!("side_effect: {:?}", entries);
-            dispatch_entries(entries, tx.clone());
-            Ok(true)
-        };
-        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
-
-        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
-
-        if result.is_err() {
-            panic!("Boot failure: Could not setup mirroring side effects")
-        }
-    })
-}

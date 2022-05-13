@@ -1,6 +1,4 @@
-use pyo3::FromPyObject;
-
 use crate::types::RegistryAction;
 
-#[derive(Debug, FromPyObject)]
+#[derive(Debug)]
 pub struct ReducerDispatch(pub u64, pub RegistryAction);
