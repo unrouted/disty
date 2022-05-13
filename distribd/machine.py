@@ -198,8 +198,7 @@ class Machine:
     def quorum(self):
         return math.floor(self.cluster_size / 2) + 1
 
-    def is_leader(self):
-        return self.state == NodeState.LEADER
+    
 
     @property
     def leader_active(self):

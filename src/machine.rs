@@ -38,7 +38,6 @@ fn get_next_heartbeat_tick() -> std::time::Instant {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Message {
-    StateChanged {},
     Tick {},
     Vote {
         index: u64,
@@ -69,10 +68,10 @@ pub enum Message {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Envelope {
-    source: String,
-    destination: String,
-    term: u64,
-    message: Message,
+    pub source: String,
+    pub destination: String,
+    pub term: u64,
+    pub message: Message,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -207,7 +206,7 @@ pub struct Machine {
 }
 
 impl Machine {
-    pub fn new(config: Configuration, registry: &mut Registry, identifier: String) -> Self {
+    pub fn new(config: Configuration, registry: &mut Registry) -> Self {
         let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
         registry.register(
             "distribd_last_applied_index",
@@ -252,7 +251,7 @@ impl Machine {
 
         let mut peers = HashMap::new();
         for peer in config.peers {
-            if peer.name != identifier {
+            if peer.name != config.identifier {
                 peers.insert(
                     peer.name.clone(),
                     Peer {
@@ -266,7 +265,7 @@ impl Machine {
 
         Machine {
             log: Log::default(),
-            identifier,
+            identifier: config.identifier.clone(),
             state: PeerState::Follower {},
             leader: None,
             term: 1,
@@ -415,7 +414,7 @@ impl Machine {
         }
     }
 
-    fn leader_actve(&self) -> bool {
+    fn leader_active(&self) -> bool {
         match self.state {
             PeerState::Leader {} => true,
             _ => self.obedient,
@@ -704,7 +703,6 @@ impl Machine {
                     }
                 }
             }
-            _ => {}
         }
 
         Ok(())
@@ -765,20 +763,20 @@ mod tests {
     use super::*;
 
     fn single_node_configuration() -> Configuration {
-        Configuration::default()
+        Configuration {
+            identifier: "node1".to_string(),
+            ..Default::default()
+        }
     }
 
     fn single_node_machine() -> Machine {
         let mut registry = <prometheus_client::registry::Registry>::default();
-        Machine::new(
-            single_node_configuration(),
-            &mut registry,
-            "node1".to_string(),
-        )
+        Machine::new(single_node_configuration(), &mut registry)
     }
 
     fn cluster_node_configuration() -> Configuration {
         Configuration {
+            identifier: "node1".to_string(),
             peers: vec![
                 PeerConfig {
                     name: "node1".to_string(),
@@ -821,11 +819,7 @@ mod tests {
     fn cluster_node_machine() -> Machine {
         let mut registry = <prometheus_client::registry::Registry>::default();
 
-        Machine::new(
-            cluster_node_configuration(),
-            &mut registry,
-            "node1".to_string(),
-        )
+        Machine::new(cluster_node_configuration(), &mut registry)
     }
 
     #[test]

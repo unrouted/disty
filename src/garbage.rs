@@ -8,6 +8,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use log::info;
 use tokio::fs::remove_file;
+use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use crate::config::Configuration;
@@ -19,8 +20,8 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
-    if !machine.is_leader() {
+async fn do_garbage_collect_phase1(machine: &Mutex<Machine>, state: &RegistryState) {
+    if !machine.lock().await.is_leader() {
         info!("Garbage collection: Phase 1: Not leader");
         return;
     }
@@ -114,16 +115,19 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
 }
 
 async fn do_garbage_collect_phase2(
-    machine: &Machine,
+    machine: &Mutex<Machine>,
     state: &RegistryState,
     images_directory: &str,
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
+    // FIXME: This doesn't change - just grab it from Configuration or something
+    let identifier = machine.lock().await.identifier.clone();
+
     let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests().await {
-        if !entry.manifest.locations.contains(&machine.identifier) {
+        if !entry.manifest.locations.contains(&identifier) {
             continue;
         }
 
@@ -139,13 +143,13 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: machine.identifier.clone(),
+            location: identifier.clone(),
             user: "$system".to_string(),
         });
     }
 
     for entry in state.get_orphaned_blobs().await {
-        if !entry.blob.locations.contains(&machine.identifier) {
+        if !entry.blob.locations.contains(&identifier) {
             continue;
         }
 
@@ -161,7 +165,7 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: machine.identifier.clone(),
+            location: identifier.clone(),
             user: "$system".to_string(),
         });
     }
@@ -177,7 +181,7 @@ async fn do_garbage_collect_phase2(
 
 pub async fn do_garbage_collect(
     config: Configuration,
-    machine: Arc<Machine>,
+    machine: Arc<Mutex<Machine>>,
     state: Arc<RegistryState>,
 ) {
     loop {

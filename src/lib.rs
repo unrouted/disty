@@ -9,6 +9,7 @@ mod machine;
 mod mint;
 mod mirror;
 mod prometheus;
+mod raft;
 mod reducer;
 mod registry;
 mod types;
@@ -20,8 +21,10 @@ use std::sync::Arc;
 
 use machine::Machine;
 use pyo3::prelude::*;
+use raft::Raft;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
+use tokio::sync::Mutex;
 use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
@@ -57,6 +60,8 @@ fn start_registry_service(
     reducers: PyObject,
     event_loop: PyObject,
 ) -> bool {
+    let runtime = pyo3_asyncio::tokio::get_runtime();
+
     let config = crate::config::config();
 
     if !create_dir(&config.storage, "uploads")
@@ -71,11 +76,13 @@ fn start_registry_service(
     let webhook_send = start_webhook_worker(config.webhooks.clone(), &mut registry);
     let extractor = crate::extractor::Extractor::new(config.clone());
 
-    let machine = Arc::new(Machine::new(
-        config.clone(),
-        &mut registry,
-        machine_identifier.clone(),
-    ));
+    let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
+
+    let mut raft = Raft::new(machine.clone());
+    runtime.spawn(async move {
+        raft.run().await;
+    });
+
     let state = Arc::new(crate::types::RegistryState::new(
         send_action,
         webhook_send,
@@ -84,15 +91,13 @@ fn start_registry_service(
     ));
     crate::types::registry_state::add_side_effect(&reducers, state.clone());
 
-    let runtime = pyo3_asyncio::tokio::get_runtime();
-
     runtime.spawn(crate::garbage::do_garbage_collect(
         config.clone(),
         machine.clone(),
         state.clone(),
     ));
 
-    let tx = crate::mirror::start_mirroring(runtime, config.clone(), machine, state.clone());
+    let tx = crate::mirror::start_mirroring(runtime, config.clone(), state.clone());
     crate::mirror::add_side_effect(&reducers, tx);
 
     let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));

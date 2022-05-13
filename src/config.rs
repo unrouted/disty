@@ -123,6 +123,7 @@ pub struct WebhookConfig {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Configuration {
+    pub identifier: String,
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
     pub prometheus: PrometheusConfig,
@@ -136,6 +137,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
+            identifier: "localhost".to_string(),
             raft: RaftConfig::default(),
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),

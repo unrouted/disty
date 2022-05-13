@@ -1,9 +1,6 @@
 use crate::config::Configuration;
 use crate::mint::Mint;
-use crate::{
-    machine::Machine,
-    types::{Digest, RegistryAction, RegistryState},
-};
+use crate::types::{Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
 use pyo3::{
@@ -72,7 +69,6 @@ impl MirrorRequest {
 async fn do_transfer(
     config: Configuration,
     state: Arc<RegistryState>,
-    machine: Arc<Machine>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
@@ -87,7 +83,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if blob.locations.contains(&machine.identifier) {
+                if blob.locations.contains(&config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -108,7 +104,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if manifest.locations.contains(&machine.identifier) {
+                if manifest.locations.contains(&config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -245,11 +241,10 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(machine.identifier.clone())
+    request.success(config.identifier.clone())
 }
 
 async fn do_mirroring(
-    machine: Arc<Machine>,
     state: Arc<RegistryState>,
     mint: Mint,
     configuration: Configuration,
@@ -279,7 +274,6 @@ async fn do_mirroring(
             let result = do_transfer(
                 configuration.clone(),
                 state.clone(),
-                machine.clone(),
                 mint.clone(),
                 client,
                 task,
@@ -307,14 +301,13 @@ async fn do_mirroring(
 pub(crate) fn start_mirroring(
     runtime: &Runtime,
     config: Configuration,
-    machine: Arc<Machine>,
     state: Arc<RegistryState>,
 ) -> Sender<MirrorRequest> {
     let (tx, rx) = channel::<MirrorRequest>(500);
 
     let mint = Mint::new(config.mirroring.clone());
 
-    runtime.spawn(do_mirroring(machine, state, mint, config, rx));
+    runtime.spawn(do_mirroring(state, mint, config, rx));
 
     tx
 }
