@@ -206,7 +206,7 @@ impl RegistryState {
         matches!(self.webhook_send.send(event).await, Ok(_))
     }
 
-    pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
+    pub async fn send_actions(&self, _actions: Vec<RegistryAction>) -> bool {
         // FIXME
         true
     }
