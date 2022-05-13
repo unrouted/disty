@@ -52,7 +52,7 @@ pub fn rewrite_urls(url: &str) -> String {
 #[pyfunction]
 fn start_registry_service(
     send_action: PyObject,
-    machine: PyObject,
+    _machine: PyObject,
     machine_identifier: String,
     reducers: PyObject,
     event_loop: PyObject,

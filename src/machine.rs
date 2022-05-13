@@ -27,13 +27,13 @@ fn get_next_election_tick() -> std::time::Instant {
     let mut rng = thread_rng();
     let millis = rng.gen_range(ELECTION_TICK_LOW..ELECTION_TICK_HIGH);
     let duration = std::time::Duration::from_millis(millis);
-    return now + duration;
+    now + duration
 }
 
 fn get_next_heartbeat_tick() -> std::time::Instant {
     let now = std::time::Instant::now();
     let duration = std::time::Duration::from_millis(HEARTBEAT_TICK);
-    return now + duration;
+    now + duration
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -121,10 +121,7 @@ impl Log {
     }
 
     fn last_index(&self) -> u64 {
-        let snapshot_index = match self.snapshot_index {
-            Some(index) => index,
-            None => 0,
-        };
+        let snapshot_index = self.snapshot_index.unwrap_or(0);
 
         snapshot_index + self.entries.len() as u64
     }
@@ -132,10 +129,7 @@ impl Log {
     fn last_term(&self) -> u64 {
         match self.entries.last() {
             Some(entry) => entry.term,
-            None => match self.snapshot_term {
-                Some(term) => term,
-                None => 0,
-            },
+            None => self.snapshot_term.unwrap_or(0),
         }
     }
 
@@ -282,7 +276,7 @@ impl Machine {
             obedient: true,
             outbox: vec![],
             commit_index: 0,
-            peers: peers,
+            peers,
             last_applied_index,
             last_committed,
             last_saved,
@@ -405,7 +399,7 @@ impl Machine {
             PeerState::Leader {} => {
                 self.log.append(LogEntry {
                     term: self.term,
-                    entry: entry,
+                    entry,
                 });
                 self.maybe_commit();
                 true
@@ -443,7 +437,7 @@ impl Machine {
         }
 
         match envelope.message {
-            Message::PreVote { index } => {
+            Message::PreVote { index: _ } => {
                 if envelope.term > self.term {
                     return true;
                 }
@@ -466,7 +460,7 @@ impl Machine {
 
         // FIXME: Is last_term appropriate here???
         match envelope.message {
-            Message::PreVote { index } => {
+            Message::PreVote { index: _ } => {
                 if envelope.term > self.term {
                     return true;
                 }
@@ -561,7 +555,7 @@ impl Machine {
                     return Err("Rejected: Not leader".to_string());
                 }
             },
-            Message::Vote { index } => {
+            Message::Vote { index: _ } => {
                 if !self.can_vote(envelope) {
                     debug!("Vote for {} rejected", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
@@ -585,7 +579,7 @@ impl Machine {
                 }
             }
 
-            Message::PreVote { index } => {
+            Message::PreVote { index: _ } => {
                 if !self.can_vote(envelope) {
                     debug!("Vote for {} rejected", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
@@ -736,7 +730,7 @@ impl Machine {
         Envelope {
             source: self.identifier.clone(),
             destination: peer.identifier.clone(),
-            term: term,
+            term,
             message,
         }
     }
@@ -758,8 +752,8 @@ impl Machine {
                 destination: peer.identifier.clone(),
                 term: self.term,
                 message: Message::AppendEntries {
-                    prev_index: prev_index,
-                    prev_term: prev_term,
+                    prev_index,
+                    prev_term,
                     entries: self.log[prev_index as usize..].to_vec(),
                     leader_commit: self.commit_index,
                 },
@@ -774,7 +768,7 @@ impl Machine {
         self.outbox.push(Envelope {
             source: self.identifier.clone(),
             destination: envelope.source.clone(),
-            term: term,
+            term,
             message,
         })
     }
