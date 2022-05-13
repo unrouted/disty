@@ -1,16 +1,14 @@
 use crate::config::Configuration;
 use crate::mint::Mint;
+use crate::raft::RaftEvent;
 use crate::types::{Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
+use tokio::io::AsyncWriteExt;
 use tokio::select;
-use tokio::{
-    io::AsyncWriteExt,
-    sync::mpsc::{channel, Receiver, Sender},
-};
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -240,12 +238,45 @@ async fn do_transfer(
     request.success(config.identifier.clone())
 }
 
-async fn do_mirroring(
-    state: Arc<RegistryState>,
-    mint: Mint,
-    configuration: Configuration,
-    mut rx: Receiver<MirrorRequest>,
-) {
+fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
+    let mut tasks = vec![];
+
+    match event {
+        RaftEvent::Committed { entries } => {
+            for entry in &entries {
+                match &entry.entry {
+                    RegistryAction::BlobStored {
+                        timestamp: _,
+                        digest,
+                        location: _,
+                        user: _,
+                    } => tasks.push(MirrorRequest::Blob {
+                        digest: digest.clone(),
+                    }),
+                    RegistryAction::ManifestStored {
+                        timestamp: _,
+                        digest,
+                        location: _,
+                        user: _,
+                    } => {
+                        tasks.push(MirrorRequest::Manifest {
+                            digest: digest.clone(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    tasks
+}
+
+pub(crate) fn start_mirroring(config: Configuration, state: Arc<RegistryState>) {
+    let mut rx = state.events.subscribe();
+
+    let mint = Mint::new(config.mirroring.clone());
+
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
@@ -253,89 +284,41 @@ async fn do_mirroring(
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
-    loop {
-        select! {
-            _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(request) = rx.recv() => {requests.insert(request);}
-        };
-
-        info!("Mirroring: There are {} mirroring tasks", requests.len());
-
-        // FIXME: Ideally we'd have some worker pool here are download a bunch
-        // of objects in parallel.
-
-        let tasks: Vec<MirrorRequest> = requests.drain().collect();
-        for task in tasks {
-            let client = client.clone();
-            let result = do_transfer(
-                configuration.clone(),
-                state.clone(),
-                mint.clone(),
-                client,
-                task,
-            )
-            .await;
-
-            match result {
-                MirrorResult::Retry { request } => {
-                    requests.insert(request);
+    tokio::spawn(async move {
+        loop {
+            select! {
+                _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
+                Ok(event) = rx.recv() => {
+                    requests.extend(get_tasks_from_raft_event(event));
                 }
-                MirrorResult::Success { action, request } => {
-                    if !state.send_actions(vec![action]).await {
+            };
+
+            info!("Mirroring: There are {} mirroring tasks", requests.len());
+
+            // FIXME: Ideally we'd have some worker pool here are download a bunch
+            // of objects in parallel.
+
+            let tasks: Vec<MirrorRequest> = requests.drain().collect();
+            for task in tasks {
+                let client = client.clone();
+                let result =
+                    do_transfer(config.clone(), state.clone(), mint.clone(), client, task).await;
+
+                match result {
+                    MirrorResult::Retry { request } => {
                         requests.insert(request);
-                        debug!("Mirroring: Raft transaction failed");
-                    } else {
-                        debug!("Mirroring: Download logged to raft");
-                    };
+                    }
+                    MirrorResult::Success { action, request } => {
+                        if !state.send_actions(vec![action]).await {
+                            requests.insert(request);
+                            debug!("Mirroring: Raft transaction failed");
+                        } else {
+                            debug!("Mirroring: Download logged to raft");
+                        };
+                    }
+                    MirrorResult::None => {}
                 }
-                MirrorResult::None => {}
             }
         }
-    }
+    });
 }
-
-pub(crate) fn start_mirroring(
-    config: Configuration,
-    state: Arc<RegistryState>,
-) -> Sender<MirrorRequest> {
-    let (tx, rx) = channel::<MirrorRequest>(500);
-
-    let mint = Mint::new(config.mirroring.clone());
-
-    tokio::spawn(do_mirroring(state, mint, config, rx));
-
-    tx
-}
-
-fn dispatch_entries(entries: Vec<ReducerDispatch>, tx: Sender<MirrorRequest>) {
-    for entry in &entries {
-        match &entry.1 {
-            RegistryAction::BlobStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tx.blocking_send(MirrorRequest::Blob {
-                    digest: digest.clone(),
-                })
-                .unwrap();
-            }
-            RegistryAction::ManifestStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tx.blocking_send(MirrorRequest::Manifest {
-                    digest: digest.clone(),
-                })
-                .unwrap();
-            }
-            _ => {}
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ReducerDispatch(u64, RegistryAction);

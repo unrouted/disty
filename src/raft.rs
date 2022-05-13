@@ -8,7 +8,7 @@ use tokio::{
 
 use crate::{
     config::Configuration,
-    machine::{Envelope, Machine, Message, LogEntry},
+    machine::{Envelope, LogEntry, Machine, Message},
 };
 
 #[derive(Clone, Debug)]

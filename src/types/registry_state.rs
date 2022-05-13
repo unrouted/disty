@@ -83,6 +83,7 @@ impl Store {
 
 pub struct RegistryState {
     state: Mutex<Store>,
+    pub events: tokio::sync::broadcast::Sender<RaftEvent>,
     pub machine_identifier: String,
     webhook_send: tokio::sync::mpsc::Sender<Event>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
@@ -94,8 +95,11 @@ impl RegistryState {
         webhook_send: tokio::sync::mpsc::Sender<Event>,
         machine_identifier: String,
     ) -> RegistryState {
+        let (tx, _) = tokio::sync::broadcast::channel::<RaftEvent>(100);
+
         RegistryState {
             state: Mutex::new(Store::default()),
+            events: tx,
             webhook_send,
             machine_identifier,
             manifest_waiters: Mutex::new(HashMap::new()),
@@ -344,12 +348,19 @@ impl RegistryState {
     }
 
     pub async fn dispatch_entries(&self, event: RaftEvent) {
-        match event {
+        match &event {
             RaftEvent::Committed { entries } => {
-                self.handle_raft_commit(entries).await;
+                self.handle_raft_commit(entries.clone()).await;
             }
         }
+
+        // After we have handled the event we can pass it on to downstream
+        // subscribers. They can then be happy that the store is as up to date as needed
+        if let Err(err) = self.events.send(event) {
+            warn!("Error while notifying of commit events: {err:?}");
+        }
     }
+
     async fn handle_raft_commit(&self, actions: Vec<LogEntry>) {
         let mut store = self.state.lock().await;
 

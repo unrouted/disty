@@ -20,10 +20,10 @@ mod webhook;
 use std::sync::Arc;
 
 use machine::Machine;
-use raft::{Raft};
+use raft::Raft;
 use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin};
-use tokio::sync::{Mutex, broadcast::error::RecvError};
+use tokio::sync::{broadcast::error::RecvError, Mutex};
 use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
@@ -85,8 +85,10 @@ async fn main() {
                 Ok(event) => {
                     dispatcher.dispatch_entries(event).await;
                 }
-                Err(RecvError::Closed) => { break; }
-                Err(RecvError::Lagged ( _ )) => {
+                Err(RecvError::Closed) => {
+                    break;
+                }
+                Err(RecvError::Lagged(_)) => {
                     warn!("Lagged queue handler");
                 }
             }
@@ -102,9 +104,7 @@ async fn main() {
         state.clone(),
     ));
 
-    let _tx = crate::mirror::start_mirroring(config.clone(), state.clone());
-    // FIXME
-    // crate::mirror::add_side_effect(&reducers, tx);
+    crate::mirror::start_mirroring(config.clone(), state.clone());
 
     let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
 
