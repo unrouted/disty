@@ -436,13 +436,10 @@ impl Machine {
             return false;
         }
 
-        match envelope.message {
-            Message::PreVote { index: _ } => {
-                if envelope.term > self.term {
-                    return true;
-                }
+        if let Message::PreVote { index: _ } = envelope.message {
+            if envelope.term > self.term {
+                return true;
             }
-            _ => {}
         }
 
         // We have already voted for this node
@@ -459,13 +456,10 @@ impl Machine {
         }
 
         // FIXME: Is last_term appropriate here???
-        match envelope.message {
-            Message::PreVote { index: _ } => {
-                if envelope.term > self.term {
-                    return true;
-                }
+        if let Message::PreVote { index: _ } = envelope.message {
+            if envelope.term > self.term {
+                return true;
             }
-            _ => {}
         }
 
         false
@@ -570,11 +564,13 @@ impl Machine {
             }
 
             Message::VoteReply { reject } => {
-                if !reject {
-                    self.vote_count += 1;
+                if self.state == PeerState::Candidate {
+                    if !reject {
+                        self.vote_count += 1;
 
-                    if self.vote_count >= self.quorum() {
-                        self.become_leader();
+                        if self.vote_count >= self.quorum() {
+                            self.become_leader();
+                        }
                     }
                 }
             }
@@ -591,18 +587,11 @@ impl Machine {
             }
 
             Message::PreVoteReply { reject } => {
-                match self.state {
-                    PeerState::PreCandidate {} => {
-                        if !reject {
-                            self.vote_count += 1;
+                if self.state == PeerState::PreCandidate && !reject {
+                    self.vote_count += 1;
 
-                            if self.vote_count >= self.quorum() {
-                                self.become_candidate();
-                            }
-                        }
-                    }
-                    _ => {
-                        // Ignore pre vote replies if not a pre-candidate
+                    if self.vote_count >= self.quorum() {
+                        self.become_candidate();
                     }
                 }
             }
@@ -681,24 +670,19 @@ impl Machine {
                 );
             }
             Message::AppendEntriesReply { reject, log_index } => {
-                match self.state {
-                    PeerState::Leader {} => {
-                        let mut peer = self.peers.get_mut(&envelope.source).unwrap();
+                if matches!(self.state, PeerState::Leader) {
+                    let mut peer = self.peers.get_mut(&envelope.source).unwrap();
 
-                        if reject {
-                            if peer.next_index > 1 {
-                                peer.next_index -= 1;
-                            }
-                            return Ok(());
+                    if reject {
+                        if peer.next_index > 1 {
+                            peer.next_index -= 1;
                         }
+                        return Ok(());
+                    }
 
-                        peer.match_index = std::cmp::min(log_index.unwrap(), self.log.last_index());
-                        peer.next_index = peer.match_index + 1;
-                        self.maybe_commit();
-                    }
-                    _ => {
-                        // Ignore replies that don't make sense any more
-                    }
+                    peer.match_index = std::cmp::min(log_index.unwrap(), self.log.last_index());
+                    peer.next_index = peer.match_index + 1;
+                    self.maybe_commit();
                 }
             }
             Message::Tick {} => {
