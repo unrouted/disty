@@ -265,7 +265,7 @@ impl Machine {
 
         Machine {
             log: Log::default(),
-            identifier: config.identifier.clone(),
+            identifier: config.identifier,
             state: PeerState::Follower {},
             leader: None,
             term: 1,
@@ -563,13 +563,11 @@ impl Machine {
             }
 
             Message::VoteReply { reject } => {
-                if self.state == PeerState::Candidate {
-                    if !reject {
-                        self.vote_count += 1;
+                if self.state == PeerState::Candidate && !reject {
+                    self.vote_count += 1;
 
-                        if self.vote_count >= self.quorum() {
-                            self.become_leader();
-                        }
+                    if self.vote_count >= self.quorum() {
+                        self.become_leader();
                     }
                 }
             }

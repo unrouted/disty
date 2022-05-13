@@ -84,11 +84,11 @@ async fn main() {
 
     tokio::spawn(crate::garbage::do_garbage_collect(
         config.clone(),
-        machine.clone(),
+        machine,
         state.clone(),
     ));
 
-    let tx = crate::mirror::start_mirroring(config.clone(), state.clone());
+    let _tx = crate::mirror::start_mirroring(config.clone(), state.clone());
     // FIXME
     // crate::mirror::add_side_effect(&reducers, tx);
 
