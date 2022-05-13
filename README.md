@@ -2,8 +2,6 @@
 
 A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. The nodes can tolerate outages as long as there is a quorum.
 
-distribd is written in Python, but is slowly migrating to Rust.
-
 :exclamation: `distribd` is currently still in Alpha. :exclamation:
 
 ## Is it for me?
