@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use crate::config::Configuration;
 
-const SCALE: u32 = 1000;
 const ELECTION_TICK_LOW: u64 = 150;
 const ELECTION_TICK_HIGH: u64 = 300;
 const HEARTBEAT_TICK: u64 = (ELECTION_TICK_LOW / 20) / 1000;
@@ -37,7 +36,7 @@ fn get_next_heartbeat_tick() -> std::time::Instant {
     return now + duration;
 }
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Message {
     StateChanged {},
     Tick {},
@@ -68,6 +67,7 @@ pub enum Message {
     },
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Envelope {
     source: String,
     destination: String,
@@ -89,7 +89,7 @@ struct Peer {
     match_index: u64,
 }
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LogEntry {
     term: u64,
     entry: String,
@@ -258,14 +258,16 @@ impl Machine {
 
         let mut peers = HashMap::new();
         for peer in config.peers {
-            peers.insert(
-                peer.name.clone(),
-                Peer {
-                    identifier: peer.name.clone(),
-                    next_index: 0,
-                    match_index: 0,
-                },
-            );
+            if peer.name != identifier {
+                peers.insert(
+                    peer.name.clone(),
+                    Peer {
+                        identifier: peer.name.clone(),
+                        next_index: 0,
+                        match_index: 0,
+                    },
+                );
+            }
         }
 
         Machine {
@@ -394,8 +396,8 @@ impl Machine {
             peer.match_index = 0;
         }
 
-        self.broadcast_entries();
         self.append("{}".to_string());
+        self.broadcast_entries();
     }
 
     fn append(&mut self, entry: String) -> bool {
@@ -748,7 +750,7 @@ impl Machine {
 
         for peer in self.peers.values() {
             let prev_index =
-                std::cmp::max(std::cmp::min(peer.next_index - 1, self.log.last_index()), 0);
+                std::cmp::max(std::cmp::min(peer.next_index - 1, self.log.last_index()), 1);
             let prev_term = self.log.get(prev_index).term;
 
             messages.push(Envelope {
@@ -784,11 +786,73 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn single_node_become_leader() {
+    fn single_node_configuration() -> Configuration {
+        Configuration::default()
+    }
+
+    fn single_node_machine() -> Machine {
+        let mut registry = <prometheus_client::registry::Registry>::default();
+        Machine::new(
+            single_node_configuration(),
+            &mut registry,
+            "node1".to_string(),
+        )
+    }
+
+    fn cluster_node_configuration() -> Configuration {
+        Configuration {
+            peers: vec![
+                PeerConfig {
+                    name: "node1".to_string(),
+                    raft: RaftConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                    registry: RegistryConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                },
+                PeerConfig {
+                    name: "node2".to_string(),
+                    raft: RaftConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                    registry: RegistryConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                },
+                PeerConfig {
+                    name: "node3".to_string(),
+                    raft: RaftConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                    registry: RegistryConfig {
+                        address: "127.0.0.1".to_string(),
+                        port: 80,
+                    },
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    fn cluster_node_machine() -> Machine {
         let mut registry = <prometheus_client::registry::Registry>::default();
 
-        let mut m = Machine::new(Configuration::default(), &mut registry, "node1".to_string());
+        Machine::new(
+            cluster_node_configuration(),
+            &mut registry,
+            "node1".to_string(),
+        )
+    }
+
+    #[test]
+    fn single_node_become_leader() {
+        let mut m = single_node_machine();
 
         m.step(&Envelope {
             source: "node1".to_string(),
@@ -799,54 +863,47 @@ mod tests {
         .unwrap();
 
         assert_eq!(m.state, PeerState::Leader);
+        assert_eq!(m.outbox.len(), 0);
     }
 
     #[test]
     fn cluster_node_become_pre_candidate() {
-        let mut registry = <prometheus_client::registry::Registry>::default();
+        let mut m = cluster_node_machine();
 
-        let mut m = Machine::new(
-            Configuration {
-                peers: vec![
-                    PeerConfig {
-                        name: "node1".to_string(),
-                        raft: RaftConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                        registry: RegistryConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                    },
-                    PeerConfig {
-                        name: "node2".to_string(),
-                        raft: RaftConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                        registry: RegistryConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                    },
-                    PeerConfig {
-                        name: "node3".to_string(),
-                        raft: RaftConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                        registry: RegistryConfig {
-                            address: "127.0.0.1".to_string(),
-                            port: 80,
-                        },
-                    },
-                ],
-                ..Default::default()
-            },
-            &mut registry,
-            "node1".to_string(),
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        m.outbox.sort();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.outbox.len(), 2);
+        assert_eq!(
+            m.outbox,
+            vec![
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node2".to_string(),
+                    term: 2,
+                    message: Message::PreVote { index: 0 }
+                },
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node3".to_string(),
+                    term: 2,
+                    message: Message::PreVote { index: 0 }
+                }
+            ]
         );
+    }
+
+    #[test]
+    fn cluster_node_pre_candidate_timeout() {
+        let mut m = cluster_node_machine();
 
         m.step(&Envelope {
             source: "node1".to_string(),
@@ -857,125 +914,185 @@ mod tests {
         .unwrap();
 
         assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // Next tick occurs after voting period times out
+
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Follower);
+        assert_eq!(m.outbox.len(), 0);
+    }
+
+    #[test]
+    fn cluster_node_become_candidate() {
+        let mut m = cluster_node_machine();
+
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // A single prevote lets us become a candidate
+
+        m.step(&Envelope {
+            source: "node2".to_string(),
+            destination: "node1".to_string(),
+            message: Message::PreVoteReply { reject: false },
+            term: 0,
+        })
+        .unwrap();
+
+        m.outbox.sort();
+
+        assert_eq!(m.state, PeerState::Candidate);
+        assert_eq!(m.outbox.len(), 2);
+        assert_eq!(
+            m.outbox,
+            vec![
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node2".to_string(),
+                    term: 2,
+                    message: Message::Vote { index: 0 }
+                },
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node3".to_string(),
+                    term: 2,
+                    message: Message::Vote { index: 0 }
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn cluster_node_candidate_timeout() {
+        let mut m = cluster_node_machine();
+
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // A single prevote lets us become a candidate
+
+        m.step(&Envelope {
+            source: "node2".to_string(),
+            destination: "node1".to_string(),
+            message: Message::PreVoteReply { reject: false },
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Candidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // But a tick before enough votes means we stay a follower
+
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Follower);
+        assert_eq!(m.outbox.len(), 0);
+    }
+
+    #[test]
+    fn cluster_node_become_leader() {
+        let mut m = cluster_node_machine();
+
+        m.step(&Envelope {
+            source: "node1".to_string(),
+            destination: "node1".to_string(),
+            message: Message::Tick {},
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // A single prevote lets us become a candidate
+
+        m.step(&Envelope {
+            source: "node2".to_string(),
+            destination: "node1".to_string(),
+            message: Message::PreVoteReply { reject: false },
+            term: 0,
+        })
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Candidate);
+        assert_eq!(m.outbox.len(), 2);
+
+        // A single vote lets us become a leader
+
+        m.step(&Envelope {
+            source: "node2".to_string(),
+            destination: "node1".to_string(),
+            message: Message::VoteReply { reject: false },
+            term: 0,
+        })
+        .unwrap();
+
+        m.outbox.sort();
+
+        assert_eq!(m.state, PeerState::Leader);
+        assert_eq!(m.outbox.len(), 2);
+        assert_eq!(
+            m.outbox,
+            vec![
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node2".to_string(),
+                    term: 2,
+                    message: Message::AppendEntries {
+                        leader_commit: 0,
+                        prev_index: 1,
+                        prev_term: 2,
+                        entries: vec![]
+                    }
+                },
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node3".to_string(),
+                    term: 2,
+                    message: Message::AppendEntries {
+                        leader_commit: 0,
+                        prev_index: 1,
+                        prev_term: 2,
+                        entries: vec![]
+                    }
+                }
+            ]
+        );
     }
 }
 
 /*
-
-def test_become_pre_candidate(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    assert m.state == NodeState.PRE_CANDIDATE
-    assert len(m.outbox) == 2
-
-    assert m.outbox[0].type == Message.PreVote
-    assert m.outbox[1].type == Message.PreVote
-
-
-def test_pre_candidate_timeout(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    assert m.state == NodeState.PRE_CANDIDATE
-
-    m.outbox = []
-    m.tick = 0
-
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    assert m.state == NodeState.FOLLOWER
-
-
-def test_become_candidate(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    # One vote is enough to win a prevote and make us a candidate
-    m.step(m.outbox.pop(0).reply(1, reject=False))
-
-    assert m.state == NodeState.CANDIDATE
-    assert len(m.outbox) == 2
-
-    assert m.outbox[0].type == Message.Vote
-    assert m.outbox[1].type == Message.Vote
-
-
-def test_candidate_timeout(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    # One vote is enough to win a prevote and make us a candidate
-    m.step(m.outbox.pop(0).reply(1, reject=False))
-    assert m.state == NodeState.CANDIDATE
-
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    assert m.state == NodeState.FOLLOWER
-
-
-def test_become_leader(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-    m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
-    m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
-
-    assert m.vote_count == 1
-    assert m.state == NodeState.CANDIDATE
-
-    # If a node rejects then we should still be a candidate
-    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=True))
-    assert m.vote_count == 1
-    assert m.state == NodeState.CANDIDATE
-
-    # 3 node cluster, so one node replying is enough to get a quorum
-    m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
-
-    assert m.state == NodeState.LEADER
-    assert len(m.outbox) == 2
-
-    assert m.peers["node2"].next_index == 1
-    assert m.peers["node2"].match_index == 0
-
-    assert m.peers["node3"].next_index == 1
-    assert m.peers["node3"].match_index == 0
-
-    assert m.outbox[0].type == Message.AppendEntries
-    assert m.outbox[1].type == Message.AppendEntries
-
-    # Further votes should have no effect
-    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=True))
-
-    assert m.vote_count == 2
-    assert m.state == NodeState.LEADER
-    assert len(m.outbox) == 0
-
-    assert m.peers["node2"].next_index == 1
-    assert m.peers["node2"].match_index == 0
-
-    assert m.peers["node3"].next_index == 1
-    assert m.peers["node3"].match_index == 0
-
-
 def test_leader_handle_append_entries_reply_success(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
