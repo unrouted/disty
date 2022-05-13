@@ -22,16 +22,16 @@ fn find_first_inconsistency(ours: Vec<LogEntry>, theirs: Vec<LogEntry>) -> u64 {
     std::cmp::min(ours.len() as u64, theirs.len() as u64)
 }
 
-fn get_next_election_tick() -> std::time::Instant {
-    let now = std::time::Instant::now();
+fn get_next_election_tick() -> tokio::time::Instant {
+    let now = tokio::time::Instant::now();
     let mut rng = thread_rng();
     let millis = rng.gen_range(ELECTION_TICK_LOW..ELECTION_TICK_HIGH);
     let duration = std::time::Duration::from_millis(millis);
     now + duration
 }
 
-fn get_next_heartbeat_tick() -> std::time::Instant {
-    let now = std::time::Instant::now();
+fn get_next_heartbeat_tick() -> tokio::time::Instant {
+    let now = tokio::time::Instant::now();
     let duration = std::time::Duration::from_millis(HEARTBEAT_TICK);
     now + duration
 }
@@ -192,7 +192,7 @@ pub struct Machine {
     pub leader: Option<String>,
     peers: HashMap<String, Peer>,
     voted_for: Option<String>,
-    tick: std::time::Instant,
+    pub tick: tokio::time::Instant,
     vote_count: usize,
     commit_index: u64,
     obedient: bool,
@@ -269,7 +269,7 @@ impl Machine {
             state: PeerState::Follower {},
             leader: None,
             term: 1,
-            tick: std::time::Instant::now(),
+            tick: tokio::time::Instant::now(),
             vote_count: 0,
             voted_for: None,
             obedient: true,

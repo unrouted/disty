@@ -1,35 +1,48 @@
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tokio::{select, sync::Mutex, time::Instant};
 
-use crate::machine::{Envelope, Machine, Message};
+use crate::{
+    config::Configuration,
+    machine::{Envelope, Machine, Message},
+};
 
 pub struct Raft {
+    config: Configuration,
     machine: Arc<Mutex<Machine>>,
 }
 
 impl Raft {
-    pub fn new(machine: Arc<Mutex<Machine>>) -> Self {
-        Self { machine }
+    pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>) -> Self {
+        Self { config, machine }
     }
 
     pub async fn run(&mut self) {
-        loop {
-            let mut machine = self.machine.lock().await;
+        let mut next_tick = Instant::now();
 
-            let msg = Envelope {
-                source: machine.identifier.clone(),
-                destination: machine.identifier.clone(),
-                term: 0,
-                message: Message::Tick {},
+        loop {
+            let envelope = select! {
+                _ = tokio::time::sleep_until(next_tick) => {
+                    Envelope {
+                        source: self.config.identifier.clone(),
+                        destination: self.config.identifier.clone(),
+                        term: 0,
+                        message: Message::Tick {},
+                    }
+                },
+                // Some(request) = rx.recv() => {requests.insert(request);}
             };
 
-            match machine.step(&msg) {
+            let mut machine = self.machine.lock().await;
+
+            match machine.step(&envelope) {
                 Ok(()) => {}
                 Err(err) => {
-                    error!("Raft: State machine rejected message {msg:?} with: {err}");
+                    error!("Raft: State machine rejected message {envelope:?} with: {err}");
                 }
             }
+
+            next_tick = machine.tick;
         }
     }
 }

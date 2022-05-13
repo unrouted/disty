@@ -70,7 +70,7 @@ async fn main() {
 
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
 
-    let mut raft = Raft::new(machine.clone());
+    let mut raft = Raft::new(config.clone(), machine.clone());
     tokio::spawn(async move {
         raft.run().await;
     });
