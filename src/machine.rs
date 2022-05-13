@@ -150,12 +150,11 @@ impl Log {
 
         let adjusted_index = index - snapshot_index - 1;
 
-        match self.entries.iter().nth(adjusted_index.try_into().unwrap()) {
-            Some(entry) => entry.clone(),
-            _ => {
-                panic!("Log probably corrupt");
-            }
+        if let Some(entry) = self.entries.get(adjusted_index as usize) {
+            return entry.clone();
         }
+
+        panic!("Ugh, error");
     }
 
     fn append(&mut self, entry: LogEntry) {
@@ -266,7 +265,7 @@ impl Machine {
         Machine {
             log: Log::default(),
             identifier: config.identifier,
-            state: PeerState::Follower {},
+            state: PeerState::Follower,
             leader: None,
             term: 1,
             tick: tokio::time::Instant::now(),
@@ -313,7 +312,7 @@ impl Machine {
     fn become_follower(&mut self, term: u64, leader: Option<String>) {
         debug!("Became follower of {leader:?}");
 
-        self.state = PeerState::Follower {};
+        self.state = PeerState::Follower;
         self.reset(term);
         self.leader = leader;
         self.reset_election_tick();
@@ -321,7 +320,7 @@ impl Machine {
 
     fn become_pre_candidate(&mut self) {
         debug!("Became pre-candidate {}", self.identifier);
-        self.state = PeerState::PreCandidate {};
+        self.state = PeerState::PreCandidate;
         self.obedient = false;
 
         if self.quorum() == 1 {
@@ -350,7 +349,7 @@ impl Machine {
 
     fn become_candidate(&mut self) {
         debug!("Became candidate {}", self.identifier);
-        self.state = PeerState::Candidate {};
+        self.state = PeerState::Candidate;
         self.reset(self.term + 1);
         self.vote_count = 1;
         self.voted_for = Some(self.identifier.clone());
@@ -380,7 +379,7 @@ impl Machine {
 
     fn become_leader(&mut self) {
         debug!("Became leader {}", self.identifier);
-        self.state = PeerState::Leader {};
+        self.state = PeerState::Leader;
         self.reset(self.term);
         self.reset_election_tick();
 
@@ -395,7 +394,7 @@ impl Machine {
 
     fn append(&mut self, entry: RegistryAction) -> bool {
         match self.state {
-            PeerState::Leader {} => {
+            PeerState::Leader => {
                 self.log.append(LogEntry {
                     term: self.term,
                     entry,
@@ -408,15 +407,12 @@ impl Machine {
     }
 
     pub fn is_leader(&self) -> bool {
-        match self.state {
-            PeerState::Leader {} => true,
-            _ => false,
-        }
+        matches!(self.state, PeerState::Leader)
     }
 
     fn leader_active(&self) -> bool {
         match self.state {
-            PeerState::Leader {} => true,
+            PeerState::Leader => true,
             _ => self.obedient,
         }
     }
@@ -450,7 +446,7 @@ impl Machine {
         }
 
         // We have not voted, but we think we are leader
-        if self.voted_for.is_none() && !matches!(self.state, PeerState::Leader {}) {
+        if self.voted_for.is_none() && !matches!(self.state, PeerState::Leader) {
             return true;
         }
 
@@ -537,7 +533,7 @@ impl Machine {
 
         match envelope.message.clone() {
             Message::AddEntries { entries } => match self.state {
-                PeerState::Leader {} => {
+                PeerState::Leader => {
                     for entry in entries {
                         self.log.append(entry.clone());
                     }
@@ -626,7 +622,7 @@ impl Machine {
                 }
 
                 match self.state {
-                    PeerState::Follower {} => {
+                    PeerState::Follower => {
                         self.reset_election_tick();
                     }
                     _ => {
@@ -684,18 +680,18 @@ impl Machine {
             }
             Message::Tick {} => {
                 match self.state {
-                    PeerState::Leader {} => {
+                    PeerState::Leader => {
                         self.broadcast_entries();
                     }
-                    PeerState::Follower {} => {
+                    PeerState::Follower => {
                         // Heartbeat timeout - time to start thinking about elections
                         self.become_pre_candidate()
                     }
-                    PeerState::PreCandidate {} => {
+                    PeerState::PreCandidate => {
                         // Pre-election timed out before receiving all votes
                         self.become_follower(self.term, None);
                     }
-                    PeerState::Candidate {} => {
+                    PeerState::Candidate => {
                         // Election timed out before receiving all votes
                         self.become_follower(self.term, None);
                     }
