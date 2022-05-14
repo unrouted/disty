@@ -11,6 +11,7 @@ mod mirror;
 mod prometheus;
 mod raft;
 mod registry;
+mod rpc;
 mod types;
 mod utils;
 mod views;
