@@ -127,9 +127,7 @@ async fn main() {
 
     tokio::spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
 
-    tokio::spawn(async move {
-        raft.run().await;
-    });
+    raft.run().await;
 }
 
 #[cfg(test)]
