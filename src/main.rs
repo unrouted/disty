@@ -10,7 +10,6 @@ mod mint;
 mod mirror;
 mod prometheus;
 mod raft;
-mod reducer;
 mod registry;
 mod types;
 mod utils;
