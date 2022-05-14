@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
-use crate::{types::RegistryAction, config::Configuration};
+use crate::{config::Configuration, types::RegistryAction};
 
 #[derive(Deserialize)]
 pub struct Submission {
@@ -27,7 +27,7 @@ impl RpcClient {
 
         let url = match self.urls.get(leader) {
             Some(url) => url,
-            None => return Err("Unknown peer".to_string())
+            None => return Err("Unknown peer".to_string()),
         };
 
         let resp = self.client.post(url).json(&actions).send().await;
@@ -45,7 +45,7 @@ impl RpcClient {
                     }
                 };
             }
-            Err(err) => Err(format!("Network error: {err:?}"))
+            Err(err) => Err(format!("Network error: {err:?}")),
         };
 
         self.state.wait_for_commit(index).await;

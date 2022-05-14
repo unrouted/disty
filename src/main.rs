@@ -104,6 +104,8 @@ async fn main() {
         state.clone(),
     ));
 
+    crate::rpc::start_rpc_server(config.clone());
+
     crate::mirror::start_mirroring(config.clone(), state.clone());
 
     let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
