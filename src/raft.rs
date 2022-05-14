@@ -19,17 +19,22 @@ pub enum RaftEvent {
 pub struct Raft {
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
+    pub inbox: tokio::sync::mpsc::Sender<Envelope>,
+    inbox_rx: tokio::sync::mpsc::Receiver<Envelope>,
     pub events: broadcast::Sender<RaftEvent>,
 }
 
 impl Raft {
     pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>) -> Self {
         let (tx, _) = broadcast::channel::<RaftEvent>(100);
+        let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<Envelope>(100);
 
         Self {
             config,
             machine,
             events: tx,
+            inbox,
+            inbox_rx,
         }
     }
 
@@ -46,7 +51,7 @@ impl Raft {
                         message: Message::Tick {},
                     }
                 },
-                // Some(request) = rx.recv() => {requests.insert(request);}
+                Some(envelope) = self.inbox_rx.recv() => envelope,
             };
 
             let mut machine = self.machine.lock().await;
