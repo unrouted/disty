@@ -6,8 +6,8 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::{Configuration, RaftConfig},
-    machine::{Envelope, Machine, Message},
-    raft::{Raft, RaftQueueResult},
+    machine::{Envelope, Machine, Message, LogEntry},
+    raft::{Raft, RaftQueueResult, RaftEvent},
     types::{RegistryAction, RegistryState},
 };
 
@@ -64,12 +64,13 @@ impl RpcClient {
     }
 
     async fn get_leader(&self) -> Option<Destination> {
-        let leader = self.raft.wait_for_leader().await;
-        Some(self.destinations.get(leader).unwrap().clone())
+        // let leader = self.raft.wait_for_leader().await;
+        // Some(self.destinations.get(leader).unwrap().clone())
+        Some(Destination::Local)
     }
 
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
-        let subscriber = self.registry.events.subscribe();
+        let mut subscriber = self.registry.events.subscribe();
 
         let result = match self.get_leader().await {
             Some(Destination::Local) => {
@@ -111,11 +112,25 @@ impl RpcClient {
             Ok(RaftQueueResult { index, term }) => {
                 loop {
                     match subscriber.recv().await {
-                        Ok(event) => {
-                            if event.index == index {
-                                if event.term == term {
-                                    return Ok(());
+                        Ok(RaftEvent::Committed {start_index, entries }) => {
+                            let last_index = start_index + entries.len() as u64;
+                            if index > last_index {
+                                continue;
+                            }
+                            if start_index > index {
+                                // We missed the event we wanted
+                                return Err("Event stream missed some data".to_string());
+                            }
+                            let offset = index - start_index;
+                            let actual_term = match entries.get(offset as usize) {
+                                Some(LogEntry { term, entry: _}) => term,
+                                None => {
+                                    return Err("Offset missing".to_string());
                                 }
+                            };
+
+                            if &term != actual_term {
+                                return Err("Commit failed".to_string());
                             }
                         }
                         Err(RecvError::Lagged(_)) => {

@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
-    Committed { entries: Vec<LogEntry> },
+    Committed { start_index: u64, entries: Vec<LogEntry> },
 }
 
 struct RaftQueueEntry {
@@ -116,6 +116,7 @@ impl Raft {
             let next_index = machine.commit_index as usize;
             if next_index - current_index > 0 {
                 if let Err(err) = self.events.send(RaftEvent::Committed {
+                    start_index: current_index as u64,
                     entries: machine.log[current_index..next_index].to_vec(),
                 }) {
                     warn!("Error while notifying of commit events: {err:?}");
