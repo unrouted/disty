@@ -65,6 +65,8 @@ async fn main() {
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
+    let rpc_client = rpc::RpcClient::new(config.clone());
+
     let webhook_send = start_webhook_worker(config.webhooks.clone(), &mut registry);
     let extractor = crate::extractor::Extractor::new(config.clone());
 

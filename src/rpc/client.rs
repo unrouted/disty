@@ -17,6 +17,15 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    pub fn new(config: Configuration) -> Self {
+        let client = reqwest::Client::builder()
+            .user_agent("distribd/mirror")
+            .build()
+            .unwrap();
+
+        RpcClient { client, config, urls: HashMap::new() }
+    }
+
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
         // FIXME: Wait with a timeout
         let leader = self.raft.wait_for_leader().await;
