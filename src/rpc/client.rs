@@ -44,7 +44,7 @@ impl RpcClient {
             .unwrap();
 
         let mut destinations = HashMap::new();
-        for peer in config.peers {
+        for peer in config.peers.iter().cloned() {
             if peer.name == config.identifier {
                 destinations.insert(peer.name, Destination::Local);
                 continue;
