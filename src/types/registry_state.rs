@@ -349,7 +349,10 @@ impl RegistryState {
 
     pub async fn dispatch_entries(&self, event: RaftEvent) {
         match &event {
-            RaftEvent::Committed { start_index: _, entries } => {
+            RaftEvent::Committed {
+                start_index: _,
+                entries,
+            } => {
                 self.handle_raft_commit(entries.clone()).await;
             }
         }

@@ -14,7 +14,10 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
-    Committed { start_index: u64, entries: Vec<LogEntry> },
+    Committed {
+        start_index: u64,
+        entries: Vec<LogEntry>,
+    },
 }
 
 struct RaftQueueEntry {
@@ -24,15 +27,15 @@ struct RaftQueueEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaftQueueResult {
-    index: u64,
-    term: u64,
+    pub index: u64,
+    pub term: u64,
 }
 
 pub struct Raft {
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
     inbox: tokio::sync::mpsc::Sender<RaftQueueEntry>,
-    inbox_rx: tokio::sync::mpsc::Receiver<RaftQueueEntry>,
+    inbox_rx: Mutex<tokio::sync::mpsc::Receiver<RaftQueueEntry>>,
     pub events: broadcast::Sender<RaftEvent>,
 }
 
@@ -46,7 +49,7 @@ impl Raft {
             machine,
             events: tx,
             inbox,
-            inbox_rx,
+            inbox_rx: Mutex::new(inbox_rx),
         }
     }
 
@@ -74,7 +77,7 @@ impl Raft {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&self) {
         let mut next_tick = Instant::now();
 
         loop {
@@ -89,7 +92,7 @@ impl Raft {
                         message: Message::Tick {},
                     }}
                 },
-                Some(entry) = self.inbox_rx.recv() => entry,
+                Some(entry) = async { self.inbox_rx.lock().await.recv().await } => entry,
             };
 
             let mut machine = self.machine.lock().await;

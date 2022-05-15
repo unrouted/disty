@@ -242,7 +242,10 @@ fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
     let mut tasks = vec![];
 
     match event {
-        RaftEvent::Committed { start_index: _, entries } => {
+        RaftEvent::Committed {
+            start_index: _,
+            entries,
+        } => {
             for entry in &entries {
                 match &entry.entry {
                     RegistryAction::BlobStored {

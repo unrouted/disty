@@ -6,8 +6,8 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::{Configuration, RaftConfig},
-    machine::{Envelope, Machine, Message, LogEntry},
-    raft::{Raft, RaftQueueResult, RaftEvent},
+    machine::{Envelope, LogEntry, Machine, Message},
+    raft::{Raft, RaftEvent, RaftQueueResult},
     types::{RegistryAction, RegistryState},
 };
 
@@ -112,7 +112,10 @@ impl RpcClient {
             Ok(RaftQueueResult { index, term }) => {
                 loop {
                     match subscriber.recv().await {
-                        Ok(RaftEvent::Committed {start_index, entries }) => {
+                        Ok(RaftEvent::Committed {
+                            start_index,
+                            entries,
+                        }) => {
                             let last_index = start_index + entries.len() as u64;
                             if index > last_index {
                                 continue;
@@ -123,7 +126,7 @@ impl RpcClient {
                             }
                             let offset = index - start_index;
                             let actual_term = match entries.get(offset as usize) {
-                                Some(LogEntry { term, entry: _}) => term,
+                                Some(LogEntry { term, entry: _ }) => term,
                                 None => {
                                     return Err("Offset missing".to_string());
                                 }
