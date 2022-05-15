@@ -67,7 +67,7 @@ impl RpcClient {
         let machine = self.machine.lock().await;
 
         if machine.is_leader() {
-            return Some(Destination::Local)
+            return Some(Destination::Local);
         }
 
         match &machine.leader {
@@ -171,4 +171,36 @@ impl RpcClient {
             }
         }
     }
+}
+
+pub fn start_rpc_client(
+    config: Configuration,
+) -> HashMap<String, tokio::sync::mpsc::Sender<Envelope>> {
+    let mut outboxes = HashMap::new();
+
+    for peer in config.peers {
+        if peer.name == config.identifier {
+            continue;
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Envelope>(100);
+
+        outboxes.insert(peer.name.clone(), tx);
+
+        let RaftConfig { address, port } = peer.raft;
+        let url = format!("http://{address}:{port}/queue");
+        let client = reqwest::Client::builder().build().unwrap();
+
+        tokio::spawn(async move {
+            while let Some(envelope) = rx.recv().await {
+                let resp = client.post(&url).json(&envelope).send().await;
+                match resp {
+                    Ok(resp) => {}
+                    Err(err) => {}
+                }
+            }
+        });
+    }
+
+    outboxes
 }

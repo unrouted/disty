@@ -4,7 +4,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use rand::{thread_rng, Rng};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::{config::Configuration, types::RegistryAction};
@@ -37,7 +37,7 @@ fn get_next_heartbeat_tick() -> tokio::time::Instant {
     now + duration
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
 pub enum Message {
     Tick {},
     Vote {
@@ -67,7 +67,7 @@ pub enum Message {
     },
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Clone)]
 pub struct Envelope {
     pub source: String,
     pub destination: String,
@@ -89,7 +89,7 @@ struct Peer {
     match_index: u64,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
 pub struct LogEntry {
     pub term: u64,
     pub entry: RegistryAction,

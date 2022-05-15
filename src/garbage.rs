@@ -21,7 +21,11 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(machine: &Mutex<Machine>, state: &RegistryState, submission: Arc<RpcClient>) {
+async fn do_garbage_collect_phase1(
+    machine: &Mutex<Machine>,
+    state: &RegistryState,
+    submission: Arc<RpcClient>,
+) {
     if !machine.lock().await.is_leader() {
         info!("Garbage collection: Phase 1: Not leader");
         return;

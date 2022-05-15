@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -38,10 +38,15 @@ pub struct Raft {
     inbox: tokio::sync::mpsc::Sender<RaftQueueEntry>,
     inbox_rx: Mutex<tokio::sync::mpsc::Receiver<RaftQueueEntry>>,
     pub events: broadcast::Sender<RaftEvent>,
+    clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
 }
 
 impl Raft {
-    pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>) -> Self {
+    pub fn new(
+        config: Configuration,
+        machine: Arc<Mutex<Machine>>,
+        clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
+    ) -> Self {
         let (tx, _) = broadcast::channel::<RaftEvent>(100);
         let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<RaftQueueEntry>(100);
 
@@ -51,6 +56,7 @@ impl Raft {
             events: tx,
             inbox,
             inbox_rx: Mutex::new(inbox_rx),
+            clients,
         }
     }
 
@@ -133,6 +139,17 @@ impl Raft {
                             warn!("Error whilst running callback: {err:?}");
                         }
                     }
+                }
+            }
+
+            for envelope in machine.outbox.iter().cloned() {
+                match self.clients.get(&envelope.destination) {
+                    Some(client) => {
+                        if let Err(err) = client.send(envelope.clone()).await {
+                            warn!("Error queueing envelope in outbox: {err:?}")
+                        }
+                    }
+                    None => {}
                 }
             }
 
