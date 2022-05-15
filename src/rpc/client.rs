@@ -64,9 +64,16 @@ impl RpcClient {
     }
 
     async fn get_leader(&self) -> Option<Destination> {
-        // let leader = self.raft.wait_for_leader().await;
-        // Some(self.destinations.get(leader).unwrap().clone())
-        Some(Destination::Local)
+        let machine = self.machine.lock().await;
+
+        if machine.is_leader() {
+            return Some(Destination::Local)
+        }
+
+        match &machine.leader {
+            Some(leader) => self.destinations.get(leader).cloned(),
+            None => None,
+        }
     }
 
     pub async fn send(&self, actions: Vec<RegistryAction>) -> bool {
