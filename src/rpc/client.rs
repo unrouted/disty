@@ -69,7 +69,7 @@ impl RpcClient {
         Some(Destination::Local)
     }
 
-    pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
+    pub async fn send(&self, actions: Vec<RegistryAction>) -> bool {
         let mut subscriber = self.registry.events.subscribe();
 
         let result = match self.get_leader().await {
@@ -90,21 +90,27 @@ impl RpcClient {
                 match resp {
                     Ok(resp) => {
                         if resp.status() != StatusCode::ACCEPTED {
-                            return Err("Submission not accepted by current leader".to_string());
+                            return false;
+                            // return Err("Submission not accepted by current leader".to_string());
                         }
 
                         match resp.json().await {
                             Ok(submission) => submission,
                             Err(err) => {
-                                return Err(format!("Network error: {err:?}"));
+                                return false;
+                                // return Err(format!("Network error: {err:?}"));
                             }
                         }
                     }
-                    Err(err) => return Err(format!("Network error: {err:?}")),
+                    Err(err) => {
+                        return false;
+                        // return Err(format!("Network error: {err:?}"))
+                    }
                 }
             }
             None => {
-                return Err(format!("Unable to find leader"));
+                return false;
+                // return Err(format!("Unable to find leader"));
             }
         };
 
@@ -122,32 +128,39 @@ impl RpcClient {
                             }
                             if start_index > index {
                                 // We missed the event we wanted
-                                return Err("Event stream missed some data".to_string());
+                                return false;
+                                // return Err("Event stream missed some data".to_string());
                             }
                             let offset = index - start_index;
                             let actual_term = match entries.get(offset as usize) {
                                 Some(LogEntry { term, entry: _ }) => term,
                                 None => {
-                                    return Err("Offset missing".to_string());
+                                    return false;
+                                    // return Err("Offset missing".to_string());
                                 }
                             };
 
                             if &term != actual_term {
-                                return Err("Commit failed".to_string());
+                                return false;
+                                // return Err("Commit failed".to_string());
                             }
+
+                            return true;
                         }
                         Err(RecvError::Lagged(_)) => {
                             // We ignore log errors - we'll catch up or abort the txn
                             continue;
                         }
                         Err(RecvError::Closed) => {
-                            return Err("Event stream closed".to_string());
+                            return false;
+                            // return Err("Event stream closed".to_string());
                         }
                     }
                 }
             }
             Err(err) => {
-                return Err(format!("State machine error: {err}"));
+                return false;
+                // return Err(format!("State machine error: {err}"));
             }
         }
     }

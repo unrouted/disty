@@ -1,6 +1,7 @@
 use crate::config::Configuration;
 use crate::mint::Mint;
 use crate::raft::RaftEvent;
+use crate::rpc::RpcClient;
 use crate::types::{Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
@@ -275,7 +276,11 @@ fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
     tasks
 }
 
-pub(crate) fn start_mirroring(config: Configuration, state: Arc<RegistryState>) {
+pub(crate) fn start_mirroring(
+    config: Configuration,
+    state: Arc<RegistryState>,
+    submission: Arc<RpcClient>,
+) {
     let mut rx = state.events.subscribe();
 
     let mint = Mint::new(config.mirroring.clone());
@@ -313,7 +318,7 @@ pub(crate) fn start_mirroring(config: Configuration, state: Arc<RegistryState>) 
                         requests.insert(request);
                     }
                     MirrorResult::Success { action, request } => {
-                        if !state.send_actions(vec![action]).await {
+                        if !submission.send(vec![action]).await {
                             requests.insert(request);
                             debug!("Mirroring: Raft transaction failed");
                         } else {

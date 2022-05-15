@@ -2,6 +2,7 @@ use crate::config::Configuration;
 use crate::extractor::Extractor;
 use crate::headers::ContentType;
 use crate::headers::Token;
+use crate::rpc::RpcClient;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -97,6 +98,7 @@ pub(crate) async fn put(
     tag: String,
     config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
+    submission: &State<Arc<RpcClient>>,
     extractor: &State<Extractor>,
     content_type: ContentType,
     token: Token,
@@ -105,6 +107,7 @@ pub(crate) async fn put(
     let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
     let extractor: &Extractor = extractor.inner();
+    let submission: &RpcClient = submission.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -190,7 +193,7 @@ pub(crate) async fn put(
         }
     }
 
-    if !state.send_actions(actions).await {
+    if !submission.send(actions).await {
         return Responses::UploadInvalid {};
     }
 

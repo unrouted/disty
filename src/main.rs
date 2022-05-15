@@ -78,7 +78,7 @@ async fn main() {
     ));
 
     let rpc_client =
-        rpc::RpcClient::new(config.clone(), machine.clone(), raft.clone(), state.clone());
+        Arc::new(rpc::RpcClient::new(config.clone(), machine.clone(), raft.clone(), state.clone()));
 
     let mut events = raft.events.subscribe();
     let dispatcher = state.clone();
@@ -105,11 +105,12 @@ async fn main() {
         config.clone(),
         machine,
         state.clone(),
+        rpc_client.clone(),
     ));
 
     crate::rpc::start_rpc_server(config.clone(), raft.clone());
 
-    crate::mirror::start_mirroring(config.clone(), state.clone());
+    crate::mirror::start_mirroring(config.clone(), state.clone(), rpc_client.clone());
 
     let registry_conf = rocket::Config::figment().merge(("port", config.registry.port));
 
@@ -124,6 +125,7 @@ async fn main() {
             .manage(config.clone())
             .manage(state)
             .manage(extractor)
+            .manage(rpc_client)
             .attach(crate::prometheus::HttpMetrics::new(&mut registry))
             .mount("/v2/", crate::registry::routes())
             .launch(),

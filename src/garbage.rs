@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use crate::config::Configuration;
+use crate::rpc::RpcClient;
 use crate::{
     machine::Machine,
     types::{RegistryAction, RegistryState},
@@ -20,7 +21,7 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(machine: &Mutex<Machine>, state: &RegistryState) {
+async fn do_garbage_collect_phase1(machine: &Mutex<Machine>, state: &RegistryState, submission: Arc<RpcClient>) {
     if !machine.lock().await.is_leader() {
         info!("Garbage collection: Phase 1: Not leader");
         return;
@@ -72,7 +73,7 @@ async fn do_garbage_collect_phase1(machine: &Mutex<Machine>, state: &RegistrySta
             "Garbage collection: Phase 1: Reaped {} mounts",
             actions.len()
         );
-        state.send_actions(actions).await;
+        submission.send(actions).await;
     }
 }
 
@@ -117,6 +118,7 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
 async fn do_garbage_collect_phase2(
     machine: &Mutex<Machine>,
     state: &RegistryState,
+    submission: Arc<RpcClient>,
     images_directory: &str,
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
@@ -175,7 +177,7 @@ async fn do_garbage_collect_phase2(
             "Garbage collection: Phase 2: Reaped {} stores",
             actions.len()
         );
-        state.send_actions(actions).await;
+        submission.send(actions).await;
     }
 }
 
@@ -183,10 +185,11 @@ pub async fn do_garbage_collect(
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
     state: Arc<RegistryState>,
+    submission: Arc<RpcClient>,
 ) {
     loop {
-        do_garbage_collect_phase1(&machine, &state).await;
-        do_garbage_collect_phase2(&machine, &state, &config.storage).await;
+        do_garbage_collect_phase1(&machine, &state, submission.clone()).await;
+        do_garbage_collect_phase2(&machine, &state, submission.clone(), &config.storage).await;
         sleep(Duration::from_secs(60)).await;
     }
 }

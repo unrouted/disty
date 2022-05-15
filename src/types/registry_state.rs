@@ -206,11 +206,6 @@ impl RegistryState {
         matches!(self.webhook_send.send(event).await, Ok(_))
     }
 
-    pub async fn send_actions(&self, _actions: Vec<RegistryAction>) -> bool {
-        // FIXME
-        true
-    }
-
     pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         let store = self.state.lock().await;
         match store.blobs.get(hash) {
