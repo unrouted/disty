@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{broadcast, Mutex},
@@ -16,18 +17,29 @@ pub enum RaftEvent {
     Committed { entries: Vec<LogEntry> },
 }
 
+struct RaftQueueEntry {
+    envelope: Envelope,
+    callback: Option<tokio::sync::oneshot::Sender<Result<RaftQueueResult, String>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaftQueueResult {
+    index: u64,
+    term: u64,
+}
+
 pub struct Raft {
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
-    pub inbox: tokio::sync::mpsc::Sender<Envelope>,
-    inbox_rx: tokio::sync::mpsc::Receiver<Envelope>,
+    inbox: tokio::sync::mpsc::Sender<RaftQueueEntry>,
+    inbox_rx: tokio::sync::mpsc::Receiver<RaftQueueEntry>,
     pub events: broadcast::Sender<RaftEvent>,
 }
 
 impl Raft {
     pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>) -> Self {
         let (tx, _) = broadcast::channel::<RaftEvent>(100);
-        let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<Envelope>(100);
+        let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<RaftQueueEntry>(100);
 
         Self {
             config,
@@ -38,29 +50,66 @@ impl Raft {
         }
     }
 
+    pub async fn queue_envelope(&self, envelope: Envelope) {
+        self.inbox
+            .send(RaftQueueEntry {
+                envelope,
+                callback: None,
+            })
+            .await;
+    }
+
+    pub async fn run_envelope(&self, envelope: Envelope) -> Result<RaftQueueResult, String> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<RaftQueueResult, String>>();
+        self.inbox
+            .send(RaftQueueEntry {
+                envelope,
+                callback: Some(tx),
+            })
+            .await;
+
+        match rx.await {
+            Ok(res) => res,
+            Err(err) => Err(format!("Error waiting for raft state machine: {err:?}")),
+        }
+    }
+
     pub async fn run(&mut self) {
         let mut next_tick = Instant::now();
 
         loop {
-            let envelope = select! {
+            let RaftQueueEntry { envelope, callback } = select! {
                 _ = tokio::time::sleep_until(next_tick) => {
-                    Envelope {
+                    RaftQueueEntry{
+                    callback: None,
+                    envelope: Envelope {
                         source: self.config.identifier.clone(),
                         destination: self.config.identifier.clone(),
                         term: 0,
                         message: Message::Tick {},
-                    }
+                    }}
                 },
-                Some(envelope) = self.inbox_rx.recv() => envelope,
+                Some(entry) = self.inbox_rx.recv() => entry,
             };
 
             let mut machine = self.machine.lock().await;
             let current_index = machine.commit_index as usize;
 
             match machine.step(&envelope) {
-                Ok(()) => {}
+                Ok(()) => {
+                    if let Some(callback) = callback {
+                        callback.send(Ok(RaftQueueResult {
+                            index: machine.log.last_index(),
+                            term: machine.log.last_term(),
+                        }));
+                    }
+                }
                 Err(err) => {
                     error!("Raft: State machine rejected message {envelope:?} with: {err}");
+
+                    if let Some(callback) = callback {
+                        callback.send(Err(err));
+                    }
                 }
             }
 

@@ -1,13 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
-use figment::providers::Env;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
 use crate::{
-    config::Configuration,
+    config::{Configuration, RaftConfig},
     machine::{Envelope, Machine, Message},
+    raft::{Raft, RaftQueueResult},
     types::RegistryAction,
 };
 
@@ -21,26 +21,28 @@ pub struct RpcClient {
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
     urls: HashMap<String, String>,
-    inbox: tokio::sync::mpsc::Sender<Envelope>,
+    raft: Arc<Raft>,
 }
 
 impl RpcClient {
-    pub fn new(
-        config: Configuration,
-        machine: Arc<Mutex<Machine>>,
-        inbox: tokio::sync::mpsc::Sender<Envelope>,
-    ) -> Self {
+    pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>, raft: Arc<Raft>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("distribd/mirror")
             .build()
             .unwrap();
 
+        let mut urls = HashMap::new();
+        for peer in config.peers {
+            let RaftConfig { address, port } = peer.raft;
+            urls.insert(peer.name.clone(), format!("http://{address}:{port}"));
+        }
+
         RpcClient {
             client,
             config,
             machine,
-            inbox,
-            urls: HashMap::new(),
+            raft,
+            urls,
         }
     }
 
@@ -51,8 +53,9 @@ impl RpcClient {
         {
             let machine = self.machine.lock().await;
             if machine.is_leader() {
-                self.inbox
-                    .send(Envelope {
+                let result = self
+                    .raft
+                    .run_envelope(Envelope {
                         source: self.config.identifier.clone(),
                         destination: self.config.identifier.clone(),
                         term: 0,
@@ -63,7 +66,7 @@ impl RpcClient {
         }
 
         let url = match self.urls.get(leader) {
-            Some(url) => url,
+            Some(url) => format!("{url}/run"),
             None => return Err("Unknown peer".to_string()),
         };
 

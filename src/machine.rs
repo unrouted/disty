@@ -120,13 +120,13 @@ impl Log {
         self.entries.extend(log.iter().cloned());
     }
 
-    fn last_index(&self) -> u64 {
+    pub fn last_index(&self) -> u64 {
         let snapshot_index = self.snapshot_index.unwrap_or(0);
 
         snapshot_index + self.entries.len() as u64
     }
 
-    fn last_term(&self) -> u64 {
+    pub fn last_term(&self) -> u64 {
         match self.entries.last() {
             Some(entry) => entry.term,
             None => self.snapshot_term.unwrap_or(0),

@@ -1,32 +1,38 @@
+use std::sync::Arc;
+
 use rocket::serde::json::Json;
 use rocket::State;
 use rocket::{Build, Rocket, Route};
-use tokio::sync::mpsc::Sender;
 
+use crate::raft::{Raft, RaftQueueResult};
 use crate::{config::Configuration, machine::Envelope};
 
-#[post("/append")]
-async fn append() -> String {
-    "ok".to_string()
+#[post("/queue", data = "<envelope>")]
+pub(crate) async fn queue(
+    envelope: Json<Envelope>,
+    raft: &State<Arc<Raft>>,
+) -> Json<Result<RaftQueueResult, String>> {
+    Json(raft.run_envelope(envelope.0).await)
 }
 
-#[post("/queue", data = "<envelope>")]
-pub(crate) async fn queue(envelope: Json<Envelope>, inbox: &State<Sender<Envelope>>) -> String {
-    inbox.send(envelope.0).await;
-
-    "ok".to_string()
+#[post("/run", data = "<envelope>")]
+pub(crate) async fn run(
+    envelope: Json<Envelope>,
+    raft: &State<Arc<Raft>>,
+) -> Json<Result<RaftQueueResult, String>> {
+    Json(raft.run_envelope(envelope.0).await)
 }
 
 fn routes() -> Vec<Route> {
-    routes![append, queue]
+    routes![queue, run]
 }
 
-fn configure(rocket: Rocket<Build>, inbox: Sender<Envelope>) -> Rocket<Build> {
-    rocket.mount("/", routes()).manage(inbox)
+fn configure(rocket: Rocket<Build>, raft: Arc<Raft>) -> Rocket<Build> {
+    rocket.mount("/", routes()).manage(raft)
 }
 
-pub(crate) fn start_rpc_server(config: Configuration, inbox: Sender<Envelope>) {
+pub(crate) fn start_rpc_server(config: Configuration, raft: Arc<Raft>) {
     let figment = rocket::Config::figment().merge(("port", config.raft.port));
 
-    tokio::spawn(configure(rocket::custom(figment), inbox).launch());
+    tokio::spawn(configure(rocket::custom(figment), raft).launch());
 }
