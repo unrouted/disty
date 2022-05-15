@@ -72,12 +72,13 @@ async fn main() {
 
     let mut raft = Arc::new(Raft::new(config.clone(), machine.clone()));
 
-    let rpc_client = rpc::RpcClient::new(config.clone(), machine.clone(), raft.clone());
-
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,
         machine_identifier,
     ));
+
+    let rpc_client =
+        rpc::RpcClient::new(config.clone(), machine.clone(), raft.clone(), state.clone());
 
     let mut events = raft.events.subscribe();
     let dispatcher = state.clone();

@@ -1,14 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
-
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::Mutex;
 
 use crate::{
     config::{Configuration, RaftConfig},
     machine::{Envelope, Machine, Message},
     raft::{Raft, RaftQueueResult},
-    types::RegistryAction,
+    types::{RegistryAction, RegistryState},
 };
 
 #[derive(Deserialize)]
@@ -22,6 +22,7 @@ pub struct RpcClient {
     machine: Arc<Mutex<Machine>>,
     destinations: HashMap<String, Destination>,
     raft: Arc<Raft>,
+    registry: Arc<RegistryState>,
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +32,12 @@ enum Destination {
 }
 
 impl RpcClient {
-    pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>, raft: Arc<Raft>) -> Self {
+    pub fn new(
+        config: Configuration,
+        machine: Arc<Mutex<Machine>>,
+        raft: Arc<Raft>,
+        registry: Arc<RegistryState>,
+    ) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("distribd/mirror")
             .build()
@@ -53,6 +59,7 @@ impl RpcClient {
             machine,
             raft,
             destinations,
+            registry,
         }
     }
 
@@ -62,6 +69,8 @@ impl RpcClient {
     }
 
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
+        let subscriber = self.registry.events.subscribe();
+
         let result = match self.get_leader().await {
             Some(Destination::Local) => {
                 self.raft
@@ -100,9 +109,24 @@ impl RpcClient {
 
         match result {
             Ok(RaftQueueResult { index, term }) => {
-                self.state.wait_for_commit(index).await;
-
-                Ok(())
+                loop {
+                    match subscriber.recv().await {
+                        Ok(event) => {
+                            if event.index == index {
+                                if event.term == term {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        Err(RecvError::Lagged(_)) => {
+                            // We ignore log errors - we'll catch up or abort the txn
+                            continue;
+                        }
+                        Err(RecvError::Closed) => {
+                            return Err("Event stream closed".to_string());
+                        }
+                    }
+                }
             }
             Err(err) => {
                 return Err(format!("State machine error: {err}"));
