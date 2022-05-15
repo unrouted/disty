@@ -103,13 +103,13 @@ impl RpcClient {
 
                         match resp.json().await {
                             Ok(submission) => submission,
-                            Err(err) => {
+                            Err(_err) => {
                                 return false;
                                 // return Err(format!("Network error: {err:?}"));
                             }
                         }
                     }
-                    Err(err) => {
+                    Err(_err) => {
                         return false;
                         // return Err(format!("Network error: {err:?}"))
                     }
@@ -165,8 +165,8 @@ impl RpcClient {
                     }
                 }
             }
-            Err(err) => {
-                return false;
+            Err(_err) => {
+                false
                 // return Err(format!("State machine error: {err}"));
             }
         }
