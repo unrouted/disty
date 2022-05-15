@@ -20,6 +20,7 @@ pub enum RaftEvent {
     },
 }
 
+#[derive(Debug)]
 struct RaftQueueEntry {
     envelope: Envelope,
     callback: Option<tokio::sync::oneshot::Sender<Result<RaftQueueResult, String>>>,
@@ -54,22 +55,34 @@ impl Raft {
     }
 
     pub async fn queue_envelope(&self, envelope: Envelope) {
-        self.inbox
+        let res = self
+            .inbox
             .send(RaftQueueEntry {
                 envelope,
                 callback: None,
             })
             .await;
+
+        if let Err(err) = res {
+            warn!("Error whilst queueing envelope: {err:?}");
+        }
     }
 
     pub async fn run_envelope(&self, envelope: Envelope) -> Result<RaftQueueResult, String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<Result<RaftQueueResult, String>>();
-        self.inbox
+
+        let res = self
+            .inbox
             .send(RaftQueueEntry {
                 envelope,
                 callback: Some(tx),
             })
             .await;
+
+        if let Err(err) = res {
+            warn!("Error whilst queueing envelope: {err:?}");
+            return Err(format!("Error whilst queueing envelope: {err:?}"));
+        }
 
         match rx.await {
             Ok(res) => res,
@@ -101,17 +114,24 @@ impl Raft {
             match machine.step(&envelope) {
                 Ok(()) => {
                     if let Some(callback) = callback {
-                        callback.send(Ok(RaftQueueResult {
+                        let res = callback.send(Ok(RaftQueueResult {
                             index: machine.log.last_index(),
                             term: machine.log.last_term(),
                         }));
+
+                        if let Err(err) = res {
+                            warn!("Error whilst running callback: {err:?}");
+                        }
                     }
                 }
                 Err(err) => {
                     error!("Raft: State machine rejected message {envelope:?} with: {err}");
 
                     if let Some(callback) = callback {
-                        callback.send(Err(err));
+                        let res = callback.send(Err(err));
+                        if let Err(err) = res {
+                            warn!("Error whilst running callback: {err:?}");
+                        }
                     }
                 }
             }

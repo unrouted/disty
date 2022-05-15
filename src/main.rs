@@ -70,7 +70,7 @@ async fn main() {
 
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
 
-    let mut raft = Arc::new(Raft::new(config.clone(), machine.clone()));
+    let raft = Arc::new(Raft::new(config.clone(), machine.clone()));
 
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,
