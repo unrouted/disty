@@ -70,9 +70,9 @@ async fn main() {
 
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
 
-    let rpc_client = rpc::RpcClient::new(config.clone(), machine.clone());
-
     let mut raft = Raft::new(config.clone(), machine.clone());
+
+    let rpc_client = rpc::RpcClient::new(config.clone(), machine.clone(), raft.inbox.clone());
 
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,

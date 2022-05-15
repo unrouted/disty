@@ -1,10 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
+use figment::providers::Env;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use crate::{config::Configuration, machine::Machine, types::RegistryAction};
+use crate::{
+    config::Configuration,
+    machine::{Envelope, Machine, Message},
+    types::RegistryAction,
+};
 
 #[derive(Deserialize)]
 pub struct Submission {
@@ -16,10 +21,15 @@ pub struct RpcClient {
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
     urls: HashMap<String, String>,
+    inbox: tokio::sync::mpsc::Sender<Envelope>,
 }
 
 impl RpcClient {
-    pub fn new(config: Configuration, machine: Arc<Mutex<Machine>>) -> Self {
+    pub fn new(
+        config: Configuration,
+        machine: Arc<Mutex<Machine>>,
+        inbox: tokio::sync::mpsc::Sender<Envelope>,
+    ) -> Self {
         let client = reqwest::Client::builder()
             .user_agent("distribd/mirror")
             .build()
@@ -29,6 +39,7 @@ impl RpcClient {
             client,
             config,
             machine,
+            inbox,
             urls: HashMap::new(),
         }
     }
@@ -40,7 +51,14 @@ impl RpcClient {
         {
             let machine = self.machine.lock().await;
             if machine.is_leader() {
-                return self.raft.submit(actions).await;
+                self.inbox
+                    .send(Envelope {
+                        source: self.config.identifier.clone(),
+                        destination: self.config.identifier.clone(),
+                        term: 0,
+                        message: Message::AddEntries { entries: actions },
+                    })
+                    .await;
             }
         }
 

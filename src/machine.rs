@@ -63,7 +63,7 @@ pub enum Message {
         log_index: Option<u64>,
     },
     AddEntries {
-        entries: Vec<LogEntry>,
+        entries: Vec<RegistryAction>,
     },
 }
 
@@ -536,7 +536,10 @@ impl Machine {
             Message::AddEntries { entries } => match self.state {
                 PeerState::Leader => {
                     for entry in entries {
-                        self.log.append(entry.clone());
+                        self.log.append(LogEntry {
+                            term: self.term,
+                            entry: entry.clone(),
+                        });
                     }
                     self.maybe_commit();
                     self.broadcast_entries();
