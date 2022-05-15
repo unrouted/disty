@@ -20,8 +20,14 @@ pub struct RpcClient {
     client: Client,
     config: Configuration,
     machine: Arc<Mutex<Machine>>,
-    urls: HashMap<String, String>,
+    destinations: HashMap<String, Destination>,
     raft: Arc<Raft>,
+}
+
+#[derive(Clone, Debug)]
+enum Destination {
+    Local,
+    Remote { address: String, port: u32 },
 }
 
 impl RpcClient {
@@ -31,10 +37,14 @@ impl RpcClient {
             .build()
             .unwrap();
 
-        let mut urls = HashMap::new();
+        let mut destinations = HashMap::new();
         for peer in config.peers {
+            if peer.name == config.identifier {
+                destinations.insert(peer.name, Destination::Local);
+                continue;
+            }
             let RaftConfig { address, port } = peer.raft;
-            urls.insert(peer.name.clone(), format!("http://{address}:{port}"));
+            destinations.insert(peer.name, Destination::Remote { address, port });
         }
 
         RpcClient {
@@ -42,54 +52,61 @@ impl RpcClient {
             config,
             machine,
             raft,
-            urls,
+            destinations,
         }
     }
 
-    pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
-        // FIXME: Wait with a timeout
+    async fn get_leader(&self) -> Option<Destination> {
         let leader = self.raft.wait_for_leader().await;
+        Some(self.destinations.get(leader).unwrap().clone())
+    }
 
-        {
-            let machine = self.machine.lock().await;
-            if machine.is_leader() {
-                let result = self
-                    .raft
+    pub async fn submit(&self, actions: Vec<RegistryAction>) -> Result<(), String> {
+        let result = match self.get_leader().await {
+            Some(Destination::Local) => {
+                self.raft
                     .run_envelope(Envelope {
                         source: self.config.identifier.clone(),
                         destination: self.config.identifier.clone(),
                         term: 0,
                         message: Message::AddEntries { entries: actions },
                     })
-                    .await;
+                    .await
+            }
+            Some(Destination::Remote { address, port }) => {
+                let url = format!("http://{address}:{port}/run");
+                let resp = self.client.post(url).json(&actions).send().await;
+
+                match resp {
+                    Ok(resp) => {
+                        if resp.status() != StatusCode::ACCEPTED {
+                            return Err("Submission not accepted by current leader".to_string());
+                        }
+
+                        match resp.json().await {
+                            Ok(submission) => submission,
+                            Err(err) => {
+                                return Err(format!("Network error: {err:?}"));
+                            }
+                        }
+                    }
+                    Err(err) => return Err(format!("Network error: {err:?}")),
+                }
+            }
+            None => {
+                return Err(format!("Unable to find leader"));
+            }
+        };
+
+        match result {
+            Ok(RaftQueueResult { index, term }) => {
+                self.state.wait_for_commit(index).await;
+
+                Ok(())
+            }
+            Err(err) => {
+                return Err(format!("State machine error: {err}"));
             }
         }
-
-        let url = match self.urls.get(leader) {
-            Some(url) => format!("{url}/run"),
-            None => return Err("Unknown peer".to_string()),
-        };
-
-        let resp = self.client.post(url).json(&actions).send().await;
-
-        let index = match resp {
-            Ok(resp) => {
-                if resp.status() != StatusCode::ACCEPTED {
-                    return Err("Submission not accepted by current leader".to_string());
-                }
-
-                let submission: Submission = match resp.json().await {
-                    Ok(submission) => submission.index,
-                    Err(err) => {
-                        return Err(format!("Network error: {err:?}"));
-                    }
-                };
-            }
-            Err(err) => Err(format!("Network error: {err:?}")),
-        };
-
-        self.state.wait_for_commit(index).await;
-
-        Ok(())
     }
 }
