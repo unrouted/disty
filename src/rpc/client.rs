@@ -195,8 +195,8 @@ pub fn start_rpc_client(
             while let Some(envelope) = rx.recv().await {
                 let resp = client.post(&url).json(&envelope).send().await;
                 match resp {
-                    Ok(resp) => {}
-                    Err(err) => {}
+                    Ok(_resp) => {}
+                    Err(_err) => {}
                 }
             }
         });
