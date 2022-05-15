@@ -715,10 +715,6 @@ impl Machine {
         }
     }
 
-    fn send(&mut self, term: u64, message: Message, peer: &Peer) {
-        self.outbox.push(self.envelope(term, message, peer))
-    }
-
     fn broadcast_entries(&mut self) {
         let mut messages: Vec<Envelope> = vec![];
 
