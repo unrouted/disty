@@ -393,8 +393,13 @@ impl Machine {
         let mut commit_index = 0;
         let mut i = std::cmp::max(self.commit_index, 1);
 
+        if self.stored_index == self.commit_index {
+            return true;
+        }
+
         while i <= self.stored_index {
             if log.get(i).term != self.term {
+                println!("term doesnt match");
                 i += 1;
                 continue;
             }
@@ -408,17 +413,20 @@ impl Machine {
             }
 
             if match_count >= self.quorum() {
+                println!("quorum");
                 commit_index = i;
             }
 
             i += 1;
-
-            if commit_index <= self.commit_index {
-                return false;
-            }
-
-            self.commit_index = std::cmp::min(self.stored_index, commit_index)
         }
+
+        if commit_index <= self.commit_index {
+            println!("early abort");
+            return false;
+        }
+
+        self.commit_index = std::cmp::min(self.stored_index, commit_index);
+        println!("commit_index: set to {}", self.commit_index);
 
         true
     }
@@ -618,7 +626,7 @@ impl Machine {
         }
     }
 
-    fn broadcast_entries(&mut self, log: &Log) {
+    fn broadcast_entries(&mut self, log: &mut Log) {
         let mut messages: Vec<Envelope> = vec![];
 
         for peer in self.peers.values() {
@@ -638,8 +646,10 @@ impl Machine {
                 },
             });
         }
-
         self.outbox.extend(messages);
+
+        self.maybe_commit(log);
+
         self.reset_heartbeat_tick();
     }
 

@@ -93,6 +93,8 @@ impl Raft {
             return Err(format!("Error whilst queueing envelope: {err:?}"));
         }
 
+        println!("Waiting");
+
         match rx.await {
             Ok(res) => res,
             Err(err) => Err(format!("Error waiting for raft state machine: {err:?}")),
@@ -157,6 +159,7 @@ impl Raft {
             }
 
             storage.step(&mut log, machine.term).await;
+            machine.stored_index = log.last_index();
 
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {
@@ -171,6 +174,7 @@ impl Raft {
 
             let next_index = machine.commit_index as usize;
             if next_index - current_index > 0 {
+                println!("Commited");
                 if let Err(err) = self.events.send(RaftEvent::Committed {
                     start_index: current_index as u64,
                     entries: log[current_index..next_index].to_vec(),

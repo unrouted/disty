@@ -122,6 +122,8 @@ impl RpcClient {
             }
         };
 
+        println!("Got RaftQueueReault: {result:?}");
+
         match result {
             Ok(RaftQueueResult { index, term }) => {
                 loop {
@@ -130,28 +132,41 @@ impl RpcClient {
                             start_index,
                             entries,
                         }) => {
+                            println!("Result: {start_index} {entries:?}");
+
                             let last_index = start_index + entries.len() as u64;
                             if index > last_index {
+                                println!("{index} > {last_index} - waiting for next commit");
                                 continue;
                             }
                             if start_index > index {
                                 // We missed the event we wanted
+                                println!("Somehow missed some data");
                                 return false;
                                 // return Err("Event stream missed some data".to_string());
                             }
-                            let offset = index - start_index;
+                            let offset = index - start_index - 1;
+                            println!(
+                                "GET RESULT SET: {index} {start_index} {offset} {}",
+                                entries.len()
+                            );
                             let actual_term = match entries.get(offset as usize) {
                                 Some(LogEntry { term, entry: _ }) => term,
                                 None => {
+                                    println!("Offset missing");
                                     return false;
+
                                     // return Err("Offset missing".to_string());
                                 }
                             };
 
                             if &term != actual_term {
+                                println!("Term didn't match");
                                 return false;
                                 // return Err("Commit failed".to_string());
                             }
+
+                            println!("Success");
 
                             return true;
                         }
