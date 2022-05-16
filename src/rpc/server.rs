@@ -10,8 +10,6 @@ use crate::{config::Configuration, machine::Envelope};
 #[post("/queue", data = "<envelope>")]
 pub(crate) async fn queue(envelope: Json<Envelope>, raft: &State<Arc<Raft>>) -> Json<String> {
     raft.queue_envelope(envelope.0).await;
-    Json(());
-
     Json("".to_string())
 }
 

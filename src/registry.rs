@@ -66,7 +66,7 @@ fn configure(
                 req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
             })
         }))
-        .manage(config.clone())
+        .manage(config)
         .manage(state)
         .manage(extractor)
         .manage(rpc_client)

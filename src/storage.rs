@@ -1,6 +1,6 @@
 use crate::{config::Configuration, log::Log};
 
-use jsonl;
+
 
 pub struct Storage {
     file: tokio::fs::File,
@@ -20,7 +20,7 @@ impl Storage {
 
         let file = match file {
             Ok(file) => file,
-            Err(err) => {
+            Err(_err) => {
                 panic!("Could not open journal");
             }
         };
@@ -38,7 +38,7 @@ impl Storage {
 
         log.stored_index = log.last_index();
 
-        (Storage { file: file }, log)
+        (Storage { file }, log)
     }
 
     pub async fn step(&mut self, log: &mut Log) {
