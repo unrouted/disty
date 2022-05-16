@@ -7,7 +7,11 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::{config::Configuration, types::RegistryAction};
+use crate::{
+    config::Configuration,
+    log::{Log, LogEntry},
+    types::RegistryAction,
+};
 
 const ELECTION_TICK_LOW: u64 = 150;
 const ELECTION_TICK_HIGH: u64 = 300;
@@ -89,97 +93,6 @@ struct Peer {
     match_index: u64,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
-pub struct LogEntry {
-    pub term: u64,
-    pub entry: RegistryAction,
-}
-
-#[derive(Default)]
-pub struct Log {
-    pub entries: Vec<LogEntry>,
-    snapshot_index: Option<u64>,
-    snapshot_term: Option<u64>,
-    truncate_index: Option<u64>,
-}
-
-impl<Idx> std::ops::Index<Idx> for Log
-where
-    Idx: std::slice::SliceIndex<[LogEntry]>,
-{
-    type Output = Idx::Output;
-
-    fn index(&self, index: Idx) -> &Self::Output {
-        &self.entries[index]
-    }
-}
-
-impl Log {
-    fn load(&mut self, log: Vec<LogEntry>) {
-        self.entries.clear();
-        self.entries.extend(log.iter().cloned());
-    }
-
-    pub fn last_index(&self) -> u64 {
-        let snapshot_index = self.snapshot_index.unwrap_or(0);
-
-        snapshot_index + self.entries.len() as u64
-    }
-
-    pub fn last_term(&self) -> u64 {
-        match self.entries.last() {
-            Some(entry) => entry.term,
-            None => self.snapshot_term.unwrap_or(0),
-        }
-    }
-
-    fn truncate(&mut self, index: u64) {
-        self.truncate_index = Some(index);
-
-        while self.last_index() >= index {
-            if self.entries.pop().is_none() {
-                break;
-            }
-        }
-    }
-
-    fn get(&self, index: u64) -> LogEntry {
-        let snapshot_index = match self.snapshot_index {
-            Some(index) => index,
-            _ => 0,
-        };
-
-        let adjusted_index = index - snapshot_index - 1;
-
-        if let Some(entry) = self.entries.get(adjusted_index as usize) {
-            return entry.clone();
-        }
-
-        panic!("Ugh, error");
-    }
-
-    fn append(&mut self, entry: LogEntry) {
-        self.entries.push(entry);
-    }
-
-    fn step(&mut self) {
-        self.truncate_index = None;
-    }
-
-    /*
-        def __getitem__(self, key):
-            if isinstance(key, slice):
-                new_slice = slice(
-                    key.start - 1 if key.start else None,
-                    key.stop - 1 if key.stop else None,
-                    key.step,
-                )
-                return self._log[new_slice]
-
-            return self._log[key - 1]
-    */
-}
-
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
 struct MachineMetricLabels {
     identifier: String,
@@ -194,9 +107,20 @@ pub struct Machine {
     voted_for: Option<String>,
     pub tick: tokio::time::Instant,
     vote_count: usize,
+
+    // The index we are about to flush to disk
+    pub pending_index: u64,
+
+    // The index we have flushed to disk
+    pub stored_index: u64,
+
+    // The index we know has been written to disk for at least the quorum
     pub commit_index: u64,
+
+    // The index this node has applied to its state machine
+    pub applied_index: u64,
+
     obedient: bool,
-    pub log: Log,
     last_applied_index: Family<MachineMetricLabels, Gauge>,
     last_committed: Family<MachineMetricLabels, Gauge>,
     last_saved: Family<MachineMetricLabels, Gauge>,
@@ -264,7 +188,6 @@ impl Machine {
         }
 
         Machine {
-            log: Log::default(),
             identifier: config.identifier,
             state: PeerState::Follower,
             leader: None,
@@ -274,6 +197,9 @@ impl Machine {
             voted_for: None,
             obedient: true,
             outbox: vec![],
+            pending_index: 0,
+            stored_index: 0,
+            applied_index: 0,
             commit_index: 0,
             peers,
             last_applied_index,
@@ -319,13 +245,13 @@ impl Machine {
         self.reset_election_tick();
     }
 
-    fn become_pre_candidate(&mut self) {
+    fn become_pre_candidate(&mut self, log: &mut Log) {
         debug!("Became pre-candidate {}", self.identifier);
         self.state = PeerState::PreCandidate;
         self.obedient = false;
 
         if self.quorum() == 1 {
-            self.become_candidate();
+            self.become_candidate(log);
             return;
         }
 
@@ -339,7 +265,7 @@ impl Machine {
                 self.envelope(
                     self.term + 1,
                     Message::PreVote {
-                        index: self.log.last_index(),
+                        index: self.stored_index,
                     },
                     p,
                 )
@@ -348,7 +274,7 @@ impl Machine {
         self.outbox.extend(messages);
     }
 
-    fn become_candidate(&mut self) {
+    fn become_candidate(&mut self, log: &mut Log) {
         debug!("Became candidate {}", self.identifier);
         self.state = PeerState::Candidate;
         self.reset(self.term + 1);
@@ -356,7 +282,7 @@ impl Machine {
         self.voted_for = Some(self.identifier.clone());
 
         if self.quorum() == 1 {
-            self.become_leader();
+            self.become_leader(log);
             return;
         }
 
@@ -369,7 +295,7 @@ impl Machine {
                 self.envelope(
                     self.term,
                     Message::Vote {
-                        index: self.log.last_index(),
+                        index: self.stored_index,
                     },
                     p,
                 )
@@ -378,29 +304,29 @@ impl Machine {
         self.outbox.extend(messages);
     }
 
-    fn become_leader(&mut self) {
+    fn become_leader(&mut self, log: &mut Log) {
         debug!("Became leader {}", self.identifier);
         self.state = PeerState::Leader;
         self.reset(self.term);
         self.reset_election_tick();
 
         for peer in self.peers.values_mut() {
-            peer.next_index = self.log.last_index() + 1;
+            peer.next_index = self.stored_index + 1;
             peer.match_index = 0;
         }
 
-        self.append(RegistryAction::Empty);
-        self.broadcast_entries();
+        self.append(log, RegistryAction::Empty);
+        self.broadcast_entries(log);
     }
 
-    fn append(&mut self, entry: RegistryAction) -> bool {
+    fn append(&mut self, log: &mut Log, entry: RegistryAction) -> bool {
         match self.state {
             PeerState::Leader => {
-                self.log.append(LogEntry {
+                log.append(LogEntry {
                     term: self.term,
                     entry,
                 });
-                self.maybe_commit();
+                self.maybe_commit(log);
                 true
             }
             _ => false,
@@ -424,11 +350,11 @@ impl Machine {
             _ => return false,
         };
 
-        if self.log.last_term() > envelope.term {
+        if self.term > envelope.term {
             return false;
         }
 
-        if self.log.last_index() > index {
+        if self.stored_index > index {
             return false;
         }
 
@@ -460,12 +386,12 @@ impl Machine {
 
         false
     }
-    fn maybe_commit(&mut self) -> bool {
+    fn maybe_commit(&mut self, log: &mut Log) -> bool {
         let mut commit_index = 0;
         let mut i = std::cmp::max(self.commit_index, 1);
 
-        while i <= self.log.last_index() {
-            if self.log.get(i).term != self.term {
+        while i <= self.stored_index {
+            if log.get(i).term != self.term {
                 i += 1;
                 continue;
             }
@@ -488,15 +414,18 @@ impl Machine {
                 return false;
             }
 
-            self.commit_index = std::cmp::min(self.log.last_index(), commit_index)
+            self.commit_index = std::cmp::min(self.stored_index, commit_index)
         }
 
         true
     }
 
-    pub fn step(&mut self, envelope: &Envelope) -> Result<(), String> {
+    pub fn step(&mut self, log: &mut Log, envelope: &Envelope) -> Result<(), String> {
         self.outbox.clear();
-        self.log.step();
+
+        log.truncate_index = None;
+
+        self.stored_index = log.last_index();
 
         /*
         def step_term(self, message):
@@ -536,13 +465,13 @@ impl Machine {
             Message::AddEntries { entries } => match self.state {
                 PeerState::Leader => {
                     for entry in entries {
-                        self.log.append(LogEntry {
+                        log.append(LogEntry {
                             term: self.term,
                             entry: entry.clone(),
                         });
                     }
-                    self.maybe_commit();
-                    self.broadcast_entries();
+                    self.maybe_commit(log);
+                    self.broadcast_entries(log);
                 }
                 _ => {
                     return Err("Rejected: Not leader".to_string());
@@ -567,7 +496,7 @@ impl Machine {
                     self.vote_count += 1;
 
                     if self.vote_count >= self.quorum() {
-                        self.become_leader();
+                        self.become_leader(log);
                     }
                 }
             }
@@ -588,7 +517,7 @@ impl Machine {
                     self.vote_count += 1;
 
                     if self.vote_count >= self.quorum() {
-                        self.become_candidate();
+                        self.become_candidate(log);
                     }
                 }
             }
@@ -599,7 +528,7 @@ impl Machine {
                 prev_term,
                 entries,
             } => {
-                if prev_index > self.log.last_index() {
+                if prev_index > self.stored_index {
                     debug!("Leader assumed we had log entry {prev_index} but we do not");
                     self.reply(
                         envelope,
@@ -612,7 +541,7 @@ impl Machine {
                     return Ok(());
                 }
 
-                if prev_index > 0 && self.log.get(prev_index).term != prev_term {
+                if prev_index > 0 && log.get(prev_index).term != prev_term {
                     warn!("Log not valid - mismatched terms");
                     self.reply(
                         envelope,
@@ -638,23 +567,23 @@ impl Machine {
                 self.leader = Some(envelope.source.clone());
 
                 let offset = find_first_inconsistency(
-                    self.log[prev_index as usize + 1..].to_vec(),
+                    log[prev_index as usize + 1..].to_vec(),
                     entries.clone(),
                 );
                 let prev_index = prev_index + offset;
                 let entries = entries[offset as usize..].to_vec();
 
-                if self.log.last_index() > prev_index {
+                if self.stored_index > prev_index {
                     warn!("Need to truncate log to recover quorum");
-                    self.log.truncate(prev_index);
+                    log.truncate(prev_index);
                 }
 
                 for entry in entries {
-                    self.log.append(entry.clone());
+                    log.append(entry.clone());
                 }
 
                 if leader_commit > self.commit_index {
-                    self.commit_index = std::cmp::min(leader_commit, self.log.last_index());
+                    self.commit_index = std::cmp::min(leader_commit, self.stored_index);
                 }
 
                 self.reply(
@@ -662,7 +591,7 @@ impl Machine {
                     self.term,
                     Message::AppendEntriesReply {
                         reject: false,
-                        log_index: Some(self.log.last_index()),
+                        log_index: Some(self.stored_index),
                     },
                 );
             }
@@ -677,19 +606,19 @@ impl Machine {
                         return Ok(());
                     }
 
-                    peer.match_index = std::cmp::min(log_index.unwrap(), self.log.last_index());
+                    peer.match_index = std::cmp::min(log_index.unwrap(), self.stored_index);
                     peer.next_index = peer.match_index + 1;
-                    self.maybe_commit();
+                    self.maybe_commit(log);
                 }
             }
             Message::Tick {} => {
                 match self.state {
                     PeerState::Leader => {
-                        self.broadcast_entries();
+                        self.broadcast_entries(log);
                     }
                     PeerState::Follower => {
                         // Heartbeat timeout - time to start thinking about elections
-                        self.become_pre_candidate()
+                        self.become_pre_candidate(log)
                     }
                     PeerState::PreCandidate => {
                         // Pre-election timed out before receiving all votes
@@ -715,13 +644,13 @@ impl Machine {
         }
     }
 
-    fn broadcast_entries(&mut self) {
+    fn broadcast_entries(&mut self, log: &Log) {
         let mut messages: Vec<Envelope> = vec![];
 
         for peer in self.peers.values() {
             let prev_index =
-                std::cmp::max(std::cmp::min(peer.next_index - 1, self.log.last_index()), 1);
-            let prev_term = self.log.get(prev_index).term;
+                std::cmp::max(std::cmp::min(peer.next_index - 1, self.stored_index), 1);
+            let prev_term = log.get(prev_index).term;
 
             messages.push(Envelope {
                 source: self.identifier.clone(),
@@ -730,7 +659,7 @@ impl Machine {
                 message: Message::AppendEntries {
                     prev_index,
                     prev_term,
-                    entries: self.log[prev_index as usize..].to_vec(),
+                    entries: log[prev_index as usize..].to_vec(),
                     leader_commit: self.commit_index,
                 },
             });
@@ -818,14 +747,18 @@ mod tests {
 
     #[test]
     fn single_node_become_leader() {
+        let mut log = Log::default();
         let mut m = single_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Leader);
@@ -834,14 +767,18 @@ mod tests {
 
     #[test]
     fn cluster_node_become_pre_candidate() {
+        let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         m.outbox.sort();
@@ -869,14 +806,18 @@ mod tests {
 
     #[test]
     fn cluster_node_pre_candidate_timeout() {
+        let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::PreCandidate);
@@ -884,12 +825,15 @@ mod tests {
 
         // Next tick occurs after voting period times out
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Follower);
@@ -898,14 +842,18 @@ mod tests {
 
     #[test]
     fn cluster_node_become_candidate() {
+        let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::PreCandidate);
@@ -913,12 +861,15 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(&Envelope {
-            source: "node2".to_string(),
-            destination: "node1".to_string(),
-            message: Message::PreVoteReply { reject: false },
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
         .unwrap();
 
         m.outbox.sort();
@@ -946,14 +897,18 @@ mod tests {
 
     #[test]
     fn cluster_node_candidate_timeout() {
+        let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::PreCandidate);
@@ -961,12 +916,15 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(&Envelope {
-            source: "node2".to_string(),
-            destination: "node1".to_string(),
-            message: Message::PreVoteReply { reject: false },
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Candidate);
@@ -974,12 +932,15 @@ mod tests {
 
         // But a tick before enough votes means we stay a follower
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Follower);
@@ -988,14 +949,18 @@ mod tests {
 
     #[test]
     fn cluster_node_become_leader() {
+        let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(&Envelope {
-            source: "node1".to_string(),
-            destination: "node1".to_string(),
-            message: Message::Tick {},
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::PreCandidate);
@@ -1003,12 +968,15 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(&Envelope {
-            source: "node2".to_string(),
-            destination: "node1".to_string(),
-            message: Message::PreVoteReply { reject: false },
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Candidate);
@@ -1016,12 +984,15 @@ mod tests {
 
         // A single vote lets us become a leader
 
-        m.step(&Envelope {
-            source: "node2".to_string(),
-            destination: "node1".to_string(),
-            message: Message::VoteReply { reject: false },
-            term: 0,
-        })
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::VoteReply { reject: false },
+                term: 0,
+            },
+        )
         .unwrap();
 
         m.outbox.sort();

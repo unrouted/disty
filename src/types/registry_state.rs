@@ -1,4 +1,4 @@
-use crate::machine::LogEntry;
+use crate::log::LogEntry;
 use crate::raft::RaftEvent;
 use crate::types::Blob;
 use crate::types::Manifest;

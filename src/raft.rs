@@ -9,7 +9,9 @@ use tokio::{
 
 use crate::{
     config::Configuration,
-    machine::{Envelope, LogEntry, Machine, Message},
+    log::LogEntry,
+    machine::{Envelope, Machine, Message},
+    storage::Storage,
 };
 
 #[derive(Clone, Debug)]
@@ -99,6 +101,9 @@ impl Raft {
     pub async fn run(&self) {
         let mut next_tick = Instant::now();
 
+        let storage = Storage {};
+        let mut log = storage.load().await;
+
         loop {
             let RaftQueueEntry { envelope, callback } = select! {
                 _ = tokio::time::sleep_until(next_tick) => {
@@ -117,12 +122,12 @@ impl Raft {
             let mut machine = self.machine.lock().await;
             let current_index = machine.commit_index as usize;
 
-            match machine.step(&envelope) {
+            match machine.step(&mut log, &envelope) {
                 Ok(()) => {
                     if let Some(callback) = callback {
                         let res = callback.send(Ok(RaftQueueResult {
-                            index: machine.log.last_index(),
-                            term: machine.log.last_term(),
+                            index: log.last_index(),
+                            term: log.last_term(),
                         }));
 
                         if let Err(err) = res {
@@ -142,6 +147,8 @@ impl Raft {
                 }
             }
 
+            storage.step(&mut log).await;
+
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {
                     Some(client) => {
@@ -157,7 +164,7 @@ impl Raft {
             if next_index - current_index > 0 {
                 if let Err(err) = self.events.send(RaftEvent::Committed {
                     start_index: current_index as u64,
-                    entries: machine.log[current_index..next_index].to_vec(),
+                    entries: log[current_index..next_index].to_vec(),
                 }) {
                     warn!("Error while notifying of commit events: {err:?}");
                 }

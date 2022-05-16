@@ -6,7 +6,8 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::{Configuration, RaftConfig},
-    machine::{Envelope, LogEntry, Machine, Message},
+    log::LogEntry,
+    machine::{Envelope, Machine, Message},
     raft::{Raft, RaftEvent, RaftQueueResult},
     types::{RegistryAction, RegistryState},
 };
