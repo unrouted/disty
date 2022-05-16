@@ -3,7 +3,6 @@ use crate::{config::Configuration, log::Log};
 use jsonl;
 
 pub struct Storage {
-    path: std::path::PathBuf,
     file: tokio::fs::File,
 }
 
@@ -39,12 +38,16 @@ impl Storage {
 
         log.stored_index = log.last_index();
 
-        (Storage { path, file: file }, log)
+        (Storage { file: file }, log)
     }
 
     pub async fn step(&mut self, log: &mut Log) {
         if let Some(_truncate_index) = log.truncate_index {
-            self.file.set_len(0).await;
+            if let Err(err) = self.file.set_len(0).await {
+                warn!("Error truncating: {err:?}");
+                return;
+            }
+
             log.stored_index = 0;
             log.truncate_index = None;
         }

@@ -29,11 +29,6 @@ where
 }
 
 impl Log {
-    fn load(&mut self, log: Vec<LogEntry>) {
-        self.entries.clear();
-        self.entries.extend(log.iter().cloned());
-    }
-
     pub fn last_index(&self) -> u64 {
         let snapshot_index = self.snapshot_index.unwrap_or(0);
 

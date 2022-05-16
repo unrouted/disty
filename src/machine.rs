@@ -338,6 +338,16 @@ impl Machine {
     }
 
     fn can_vote(&self, envelope: &Envelope) -> bool {
+        if self.state == PeerState::Leader {
+            debug!("Machine: Can't vote whilst leader");
+            return false;
+        }
+
+        if self.obedient {
+            debug!("Machine: Can't vote whilst obedient");
+            return false;
+        }
+
         let index = match envelope.message {
             Message::PreVote { index } => index,
             _ => return false,
@@ -420,39 +430,10 @@ impl Machine {
 
         self.stored_index = log.last_index();
 
-        /*
-        def step_term(self, message):
-            if message.term == 0:
-                # local message
-                return
-
-            if message.term > self.term:
-                # If we have a leader we should ignore PreVote and Vote
-                if message.type in (Message.PreVote, Message.Vote):
-                    if self.leader_active:
-                        logger.debug("PreVote: sticky leader")
-                        return
-
-                # Never change term in response to prevote
-                if message.type == Message.PreVote:
-                    logger.debug("PreVote: Not bumping term")
-                    return
-
-                if message.type == Message.PreVoteReply and not message.reject:
-                    # We send pre-votes with a future term, when we become a
-                    # candidate we will actually apply it
-                    logger.debug("PreVote: not rejected; not bumping")
-                    return
-
-                self._become_follower(message.term, message.source)
-
-            elif message.term < self.term:
-                if message.type == Message.PreVote:
-                    self.reply(message, term=self.term, reject=True)
-
-                logger.debug("Message from old term")
-                return
-            */
+        if envelope.term > 0 && envelope.term < self.term {
+            debug!("Machine: Dropping message from old term");
+            return Ok(());
+        }
 
         match envelope.message.clone() {
             Message::AddEntries { entries } => match self.state {

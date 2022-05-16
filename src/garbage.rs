@@ -203,7 +203,7 @@ pub async fn do_garbage_collect(
                 debug!("Garbage collection: Stopping in response to SIGINT");
                 return;
             },
-            _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
+            _ = sleep(Duration::from_secs(60)) => {},
         };
     }
 }

@@ -127,12 +127,16 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             if let Err(err) = tokio::signal::ctrl_c().await {
+                warn!("Error whilst waiting for Ctrl+C: {err:?}");
                 continue;
             }
 
             match broadcaster.send(Broadcast::Shutdown) {
                 Ok(_) => return,
-                Err(err) => continue,
+                Err(err) => {
+                    warn!("Error whilst broadcasting shutdown: {err:?}");
+                    continue
+                },
             };
         }
     });
