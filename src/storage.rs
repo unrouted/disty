@@ -1,21 +1,62 @@
+use std::io::SeekFrom;
+
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+
 use crate::{config::Configuration, log::Log};
 
-
-
 pub struct Storage {
+    term: tokio::fs::File,
     file: tokio::fs::File,
 }
 
 impl Storage {
-    pub async fn new(config: Configuration) -> (Self, Log) {
-        let path = std::path::PathBuf::from(&config.storage).join("journal");
+    pub async fn new(config: Configuration) -> (Self, u64, Log) {
+        let path = std::path::PathBuf::from(&config.storage).join("term");
         let mut log = Log::default();
 
+        let term = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .read(true)
+            .open(path)
+            .await;
+
+        let mut term = match term {
+            Ok(file) => file,
+            Err(_err) => {
+                panic!("Could not open term");
+            }
+        };
+
+        let mut buffer = String::new();
+        let buffer = match term.read_to_string(&mut buffer).await {
+            Ok(term) => {
+                if term == 0 {
+                    "0".to_string()
+                } else {
+                    buffer
+                }
+            }
+            Err(err) => {
+                panic!("Could not read term");
+            }
+        };
+
+        println!("Debug: {buffer}");
+
+        let term_value: u64 = match serde_json::from_str(&buffer) {
+            Ok(term_value) => term_value,
+            Err(err) => {
+                panic!("term file is corrupt: {err:?}");
+            }
+        };
+
+        let path = std::path::PathBuf::from(&config.storage).join("journal");
         let file = tokio::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
-            .open(&path)
+            .open(path)
             .await;
 
         let file = match file {
@@ -38,10 +79,20 @@ impl Storage {
 
         log.stored_index = log.last_index();
 
-        (Storage { file }, log)
+        (Storage { file, term }, term_value, log)
     }
 
-    pub async fn step(&mut self, log: &mut Log) {
+    pub async fn step(&mut self, log: &mut Log, term: u64) {
+        if let Err(err) = self.term.seek(SeekFrom::Start(0)).await {
+            warn!("Error truncating term: {err:?}");
+            return;
+        }
+
+        if let Err(err) = self.term.write(term.to_string().as_bytes()).await {
+            warn!("Error truncating term: {err:?}");
+            return;
+        }
+
         if let Some(_truncate_index) = log.truncate_index {
             if let Err(err) = self.file.set_len(0).await {
                 warn!("Error truncating: {err:?}");

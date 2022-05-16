@@ -229,11 +229,11 @@ impl Machine {
 
     fn reset(&mut self, term: u64) {
         if term != self.term {
-            self.term = term
-            // self.voted_for = None
+            self.term = term;
+            self.voted_for = None;
         }
 
-        self.leader = None
+        self.leader = None;
     }
 
     fn become_follower(&mut self, term: u64, leader: Option<String>) {

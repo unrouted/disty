@@ -135,8 +135,8 @@ async fn main() {
                 Ok(_) => return,
                 Err(err) => {
                     warn!("Error whilst broadcasting shutdown: {err:?}");
-                    continue
-                },
+                    continue;
+                }
             };
         }
     });

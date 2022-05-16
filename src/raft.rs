@@ -102,7 +102,12 @@ impl Raft {
     pub async fn run(&self, mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>) {
         let mut next_tick = Instant::now();
 
-        let (mut storage, mut log) = Storage::new(self.config.clone()).await;
+        let (mut storage, term, mut log) = Storage::new(self.config.clone()).await;
+
+        {
+            let mut machine = self.machine.lock().await;
+            machine.term = term;
+        }
 
         loop {
             let RaftQueueEntry { envelope, callback } = select! {
@@ -151,7 +156,7 @@ impl Raft {
                 }
             }
 
-            storage.step(&mut log).await;
+            storage.step(&mut log, machine.term).await;
 
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {
