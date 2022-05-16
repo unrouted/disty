@@ -14,6 +14,7 @@ pub struct Log {
     pub snapshot_index: Option<u64>,
     pub snapshot_term: Option<u64>,
     pub truncate_index: Option<u64>,
+    pub stored_index: u64,
 }
 
 impl<Idx> std::ops::Index<Idx> for Log

@@ -24,3 +24,4 @@ figment = { version="0.10.6", features=["yaml"]}
 platform-dirs = "0.3.0"
 rand = "0.8.5"
 serde_regex = "1.1.0"
+jsonl = { version="4.0.1", features=["tokio"]}

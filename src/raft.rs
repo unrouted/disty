@@ -101,8 +101,7 @@ impl Raft {
     pub async fn run(&self) {
         let mut next_tick = Instant::now();
 
-        let storage = Storage {};
-        let mut log = storage.load().await;
+        let (mut storage, mut log) = Storage::new(self.config.clone()).await;
 
         loop {
             let RaftQueueEntry { envelope, callback } = select! {
