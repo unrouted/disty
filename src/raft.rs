@@ -12,6 +12,7 @@ use crate::{
     log::LogEntry,
     machine::{Envelope, Machine, Message},
     storage::Storage,
+    types::Broadcast,
 };
 
 #[derive(Clone, Debug)]
@@ -98,7 +99,7 @@ impl Raft {
         }
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&self, mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>) {
         let mut next_tick = Instant::now();
 
         let (mut storage, mut log) = Storage::new(self.config.clone()).await;
@@ -114,6 +115,10 @@ impl Raft {
                         term: 0,
                         message: Message::Tick {},
                     }}
+                },
+                _ = broadcasts.recv() => {
+                    debug!("Raft: Stopping in response to SIGINT");
+                    return;
                 },
                 Some(entry) = async { self.inbox_rx.lock().await.recv().await } => entry,
             };

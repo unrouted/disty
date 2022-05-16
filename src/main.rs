@@ -137,5 +137,5 @@ async fn main() {
         }
     });
 
-    raft.run().await;
+    raft.run(broadcasts).await;
 }
