@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use prometheus_client::registry::Registry;
 use regex::Captures;
-use rocket::{Route, fairing::AdHoc, http::uri::Origin, Rocket, Build};
+use rocket::{fairing::AdHoc, http::uri::Origin, Build, Rocket, Route};
 
-use crate::{config::Configuration, types::RegistryState, rpc::RpcClient};
+use crate::{config::Configuration, rpc::RpcClient, types::RegistryState};
 
 pub fn rewrite_urls(url: &str) -> String {
     // /v2/foo/bar/manifests/tagname -> /v2/foo:bar/manifests/tagname
@@ -22,7 +22,6 @@ pub fn rewrite_urls(url: &str) -> String {
 
     result.to_string()
 }
-
 
 pub fn routes() -> Vec<Route> {
     routes![
@@ -48,7 +47,12 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn configure(config: Configuration, registry: &mut Registry, state: Arc<RegistryState>, rpc_client: Arc<RpcClient>) -> Rocket<Build> {
+fn configure(
+    config: Configuration,
+    registry: &mut Registry,
+    state: Arc<RegistryState>,
+    rpc_client: Arc<RpcClient>,
+) -> Rocket<Build> {
     let extractor = crate::extractor::Extractor::new(config.clone());
 
     let registry_conf = rocket::Config::figment()
@@ -70,7 +74,12 @@ fn configure(config: Configuration, registry: &mut Registry, state: Arc<Registry
         .mount("/v2/", crate::registry::routes())
 }
 
-pub fn launch(config: Configuration, registry: &mut Registry, state: Arc<RegistryState>, rpc_client: Arc<RpcClient>) {
+pub fn launch(
+    config: Configuration,
+    registry: &mut Registry,
+    state: Arc<RegistryState>,
+    rpc_client: Arc<RpcClient>,
+) {
     tokio::spawn(configure(config, registry, state, rpc_client).launch());
 }
 

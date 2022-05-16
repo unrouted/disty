@@ -8,11 +8,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use log::info;
 use tokio::fs::remove_file;
+use tokio::select;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use crate::config::Configuration;
 use crate::rpc::RpcClient;
+use crate::types::Broadcast;
 use crate::{
     machine::Machine,
     types::{RegistryAction, RegistryState},
@@ -190,10 +192,18 @@ pub async fn do_garbage_collect(
     machine: Arc<Mutex<Machine>>,
     state: Arc<RegistryState>,
     submission: Arc<RpcClient>,
+    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) {
     loop {
         do_garbage_collect_phase1(&machine, &state, submission.clone()).await;
         do_garbage_collect_phase2(&machine, &state, submission.clone(), &config.storage).await;
-        sleep(Duration::from_secs(60)).await;
+
+        select! {
+            _ = broadcasts.recv() => {
+                debug!("Garbage collection: Stopping in response to SIGINT");
+                return;
+            },
+            _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
+        };
     }
 }

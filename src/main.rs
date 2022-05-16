@@ -24,6 +24,7 @@ use std::sync::Arc;
 use machine::Machine;
 use raft::Raft;
 use tokio::sync::{broadcast::error::RecvError, Mutex};
+use types::Broadcast;
 use webhook::start_webhook_worker;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
@@ -48,7 +49,13 @@ async fn main() {
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let webhook_send = start_webhook_worker(config.webhooks.clone(), &mut registry);
+    let (broadcaster, broadcasts) = tokio::sync::broadcast::channel::<Broadcast>(100);
+
+    let webhook_send = start_webhook_worker(
+        config.webhooks.clone(),
+        &mut registry,
+        broadcaster.subscribe(),
+    );
 
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
 
@@ -70,6 +77,7 @@ async fn main() {
 
     let mut events = raft.events.subscribe();
     let dispatcher = state.clone();
+
     tokio::spawn(async move {
         loop {
             match events.recv().await {
@@ -91,19 +99,43 @@ async fn main() {
         machine,
         state.clone(),
         rpc_client.clone(),
+        broadcaster.subscribe(),
     ));
 
     crate::rpc::start_rpc_server(config.clone(), raft.clone());
 
-    crate::mirror::start_mirroring(config.clone(), state.clone(), rpc_client.clone());
+    crate::mirror::start_mirroring(
+        config.clone(),
+        state.clone(),
+        rpc_client.clone(),
+        broadcaster.subscribe(),
+    );
 
-    crate::registry::launch(config.clone(), &mut registry, state.clone(), rpc_client.clone());
+    crate::registry::launch(
+        config.clone(),
+        &mut registry,
+        state.clone(),
+        rpc_client.clone(),
+    );
 
     let prometheus_conf = rocket::Config::figment()
         .merge(("port", config.prometheus.port))
         .merge(("address", "0.0.0.0"));
 
     tokio::spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
+
+    tokio::spawn(async move {
+        loop {
+            if let Err(err) = tokio::signal::ctrl_c().await {
+                continue;
+            }
+
+            match broadcaster.send(Broadcast::Shutdown) {
+                Ok(_) => return,
+                Err(err) => continue,
+            };
+        }
+    });
 
     raft.run().await;
 }

@@ -1,6 +1,7 @@
 mod actions;
 mod blob;
 mod blob_entry;
+mod broadcast;
 mod digest;
 mod manifest;
 mod manifest_entry;
@@ -11,6 +12,7 @@ mod repository_name;
 pub use self::actions::RegistryAction;
 pub use self::blob::Blob;
 pub use self::blob_entry::BlobEntry;
+pub use self::broadcast::Broadcast;
 pub use self::digest::Digest;
 pub use self::manifest::Manifest;
 pub use self::manifest_entry::ManifestEntry;

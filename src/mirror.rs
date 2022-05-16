@@ -2,7 +2,7 @@ use crate::config::Configuration;
 use crate::mint::Mint;
 use crate::raft::RaftEvent;
 use crate::rpc::RpcClient;
-use crate::types::{Digest, RegistryAction, RegistryState};
+use crate::types::{Broadcast, Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
 use rand::seq::SliceRandom;
@@ -280,6 +280,7 @@ pub(crate) fn start_mirroring(
     config: Configuration,
     state: Arc<RegistryState>,
     submission: Arc<RpcClient>,
+    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) {
     let mut rx = state.events.subscribe();
 
@@ -295,6 +296,10 @@ pub(crate) fn start_mirroring(
     tokio::spawn(async move {
         loop {
             select! {
+                _ = broadcasts.recv() => {
+                    debug!("Mirroring: Stopping in response to SIGINT");
+                    return;
+                },
                 _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
                 Ok(event) = rx.recv() => {
                     println!("{:?}", event);
