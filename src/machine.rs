@@ -337,13 +337,6 @@ impl Machine {
         matches!(self.state, PeerState::Leader)
     }
 
-    fn leader_active(&self) -> bool {
-        match self.state {
-            PeerState::Leader => true,
-            _ => self.obedient,
-        }
-    }
-
     fn can_vote(&self, envelope: &Envelope) -> bool {
         let index = match envelope.message {
             Message::PreVote { index } => index,
