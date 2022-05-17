@@ -349,46 +349,51 @@ impl Machine {
         }
 
         let index = match envelope.message {
-            Message::PreVote { index } => index,
-            _ => return false,
+            Message::PreVote { index } => {
+                if envelope.term > self.term {
+                    return true;
+                }
+
+                index
+            }
+            Message::Vote { index } => index,
+            _ => {
+                debug!("Machine: Can only vote due to PreVote or Vote message");
+                return false;
+            }
         };
 
-        if self.term > envelope.term {
+        if self.term >= envelope.term {
+            debug!("Machine: VoteRequest is from past");
             return false;
         }
 
         if self.stored_index > index {
+            debug!("Machine: We know more than them");
             return false;
-        }
-
-        if let Message::PreVote { index: _ } = envelope.message {
-            if envelope.term > self.term {
-                return true;
-            }
         }
 
         // We have already voted for this node
         match &self.voted_for {
             Some(voted_for) if voted_for == &envelope.source => {
+                debug!("Machine: We already voted for them");
                 return true;
             }
             _ => {}
         }
 
-        // We have not voted, but we think we are leader
-        if self.voted_for.is_none() && !matches!(self.state, PeerState::Leader) {
-            return true;
-        }
-
         // FIXME: Is last_term appropriate here???
         if let Message::PreVote { index: _ } = envelope.message {
             if envelope.term > self.term {
+                debug!("Machine: Future term");
                 return true;
             }
         }
 
-        false
+        debug!("Machine: Default case");
+        true
     }
+
     fn maybe_commit(&mut self, log: &mut Log) -> bool {
         let mut commit_index = 0;
         let mut i = std::cmp::max(self.commit_index, 1);
@@ -399,7 +404,6 @@ impl Machine {
 
         while i <= self.stored_index {
             if log.get(i).term != self.term {
-                println!("term doesnt match");
                 i += 1;
                 continue;
             }
@@ -413,7 +417,6 @@ impl Machine {
             }
 
             if match_count >= self.quorum() {
-                println!("quorum");
                 commit_index = i;
             }
 
@@ -421,12 +424,10 @@ impl Machine {
         }
 
         if commit_index <= self.commit_index {
-            println!("early abort");
             return false;
         }
 
         self.commit_index = std::cmp::min(self.stored_index, commit_index);
-        println!("commit_index: set to {}", self.commit_index);
 
         true
     }
@@ -1063,7 +1064,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
-                    leader_commit: 1,
+                    leader_commit: 0,
                     prev_index: 0,
                     prev_term: 0,
                     entries: vec![LogEntry {
@@ -1079,8 +1080,16 @@ mod tests {
         assert!(m.tick > tokio::time::Instant::now());
         assert_eq!(m.state, PeerState::Follower);
         assert_eq!(m.leader, Some("node2".to_string()));
+        assert_eq!(
+            log.entries,
+            vec![LogEntry {
+                term: 2,
+                entry: RegistryAction::Empty,
+            }]
+        );
+        assert_eq!(m.commit_index, 0);
 
-        assert_eq!(m.outbox.len(), 2);
+        assert_eq!(m.outbox.len(), 1);
         assert_eq!(
             m.outbox,
             vec![Envelope {
@@ -1094,328 +1103,434 @@ mod tests {
             },]
         );
     }
-}
-/*
-def test_append_entries_against_empty(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
 
-    m.tick = 0
+    #[test]
+    fn answer_pre_vote() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
 
-    m.step(
-        Msg(
-            "node2",
-            "node1",
-            Message.AppendEntries,
-            2,
-            prev_index=0,
-            prev_term=0,
-            entries=[(2, {})],
-            leader_commit=0,
-        )
-    )
+        m.term = 1;
 
-    # Should reset election timeout
-    assert m.tick > 0
-
-    assert m.state == NodeState.FOLLOWER
-    assert m.obedient is True
-    assert m.leader == "node2"
-    assert m.log[1:] == [(2, {})]
-    assert m.commit_index == 0
-
-    assert m.outbox[0].type == Message.AppendEntriesReply
-
-
-def test_answer_pre_vote(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-    m.term = 1
-
-    # Vote rejected because in same term and obedient
-    m.step(Msg("node2", "node1", Message.PreVote, 1, index=1))
-    assert m.outbox[-1].type == Message.PreVoteReply
-    assert m.outbox[-1].reject is True
-
-    # Becomes a PRE_CANDIDATE - no longer obedient
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-    assert m.obedient is False
-    assert m.state == NodeState.PRE_CANDIDATE
-    assert m.term == 1
-
-    # In a later term and not obedient
-    m.tick = 0
-    m.step(Msg("node2", "node1", Message.PreVote, 2, index=1))
-    assert m.outbox[-1].type == Message.PreVoteReply
-    assert m.outbox[-1].reject is False
-
-    # Hasn't actually voted so this shouldn't be set
-    assert m.voted_for is None
-
-
-def test_answer_vote(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-    m.term = 1
-
-    # Vote rejected because in same term
-    m.step(Msg("node2", "node1", Message.Vote, 1, index=1))
-    assert m.outbox[-1].type == Message.VoteReply
-    assert m.outbox[-1].reject is True
-
-    # Vote in new term, but it is still obedient to current leader
-    m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
-    assert m.outbox[-1].type == Message.VoteReply
-    assert m.outbox[-1].reject is True
-
-    # Becomes a PRE_CANDIDATE - nog longer obedient
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-    assert m.obedient is False
-    assert m.state == NodeState.PRE_CANDIDATE
-    assert m.term == 1
-
-    # Vote in new term, but it is still obedient to current leader
-    m.tick = 0
-    m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
-    assert m.term == 2
-    assert m.outbox[-1].type == Message.VoteReply
-    assert m.outbox[-1].reject is False
-
-    # Election timer reset after vote
-    assert m.tick > 0
-
-    # Pin to node until next reset
-    assert m.voted_for == "node2"
-
-    # Term should have increased
-    assert m.term == 2
-
-
-def test_append_entries_revoke_previous_log_entry(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-    m.term = 2
-
-    # Recovered from saved log
-    m.log.append((1, {"type": "consensus"}))
-
-    # Committed when became leader
-    m.log.append((2, {}))
-
-    m.step(
-        Msg(
-            "node2",
-            "node1",
-            Message.AppendEntries,
-            term=3,
-            prev_index=2,
-            prev_term=3,
-            entries=[],
-            leader_commit=0,
-        )
-    )
-
-    assert m.log[2] == (2, {})
-    assert m.outbox[-1].type == Message.AppendEntriesReply
-    assert m.outbox[-1].reject is True
-
-    m.step(
-        Msg(
-            "node2",
-            "node1",
-            Message.AppendEntries,
-            term=3,
-            prev_index=1,
-            prev_term=1,
-            entries=[(3, {})],
-            leader_commit=0,
-        )
-    )
-
-    assert m.log[2] == (3, {})
-    assert m.outbox[-1].type == Message.AppendEntriesReply
-    assert m.outbox[-1].reject is False
-    assert m.outbox[-1].log_index == 2
-*/
-
-#[test]
-fn find_inconsistencies() {
-    let n = find_first_inconsistency(
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-        vec![
-            LogEntry {
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVote { index: 1 },
                 term: 2,
-                entry: RegistryAction::Empty,
             },
-            LogEntry {
+        )
+        .unwrap();
+
+        // Vote rejected because in same term and obedient
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::PreVoteReply { reject: true }
+            },]
+        );
+
+        // Becomes a PRE_CANDIDATE - no longer obedient
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.obedient, false);
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.term, 1);
+
+        //  In a later term and not obedient
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVote { index: 1 },
                 term: 2,
-                entry: RegistryAction::Empty,
             },
-            LogEntry {
-                term: 3,
-                entry: RegistryAction::Empty,
-            },
-        ],
-    );
+        )
+        .unwrap();
 
-    assert_eq!(n, 0);
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::PreVoteReply { reject: false }
+            },]
+        );
 
-    let n = find_first_inconsistency(
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
+        // Hasn't actually voted so this shouldn't be set
+        assert_eq!(m.voted_for, None);
+    }
+
+    #[test]
+    fn answer_vote() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.term = 1;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
                 term: 2,
-                entry: RegistryAction::Empty,
             },
-            LogEntry {
-                term: 3,
-                entry: RegistryAction::Empty,
-            },
-        ],
-    );
+        )
+        .unwrap();
 
-    assert_eq!(n, 1);
+        // Vote rejected because in same term and obedient
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: true }
+            },]
+        );
 
-    let n = find_first_inconsistency(
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
+        // Becomes a PRE_CANDIDATE - no longer obedient
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
             },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 3,
-                entry: RegistryAction::Empty,
-            },
-        ],
-    );
+        )
+        .unwrap();
 
-    assert_eq!(n, 2);
+        assert_eq!(m.obedient, false);
+        assert_eq!(m.state, PeerState::PreCandidate);
+        assert_eq!(m.term, 1);
 
-    let n = find_first_inconsistency(
-        vec![
-            LogEntry {
+        // Not obedient
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
                 term: 1,
-                entry: RegistryAction::Empty,
             },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-    );
+        )
+        .unwrap();
 
-    assert_eq!(n, 3);
+        // Bu vote in old term denied
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: true }
+            },]
+        );
 
-    let n = find_first_inconsistency(
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
+        // Not obedient and vote in new term
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 2,
             },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-        vec![
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-            LogEntry {
-                term: 1,
-                entry: RegistryAction::Empty,
-            },
-        ],
-    );
+        )
+        .unwrap();
 
-    assert_eq!(n, 3);
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: false }
+            },]
+        );
+
+        // Hasn't actually voted so this shouldn't be set
+        assert_eq!(m.voted_for, Some("node2".to_string()));
+    }
+
+    /*
+    def test_answer_vote(event_loop):
+        m = Machine("node1")
+        m.add_peer("node2")
+        m.add_peer("node3")
+        m.term = 1
+
+        # Vote rejected because in same term
+        m.step(Msg("node2", "node1", Message.Vote, 1, index=1))
+        assert m.outbox[-1].type == Message.VoteReply
+        assert m.outbox[-1].reject is True
+
+        # Vote in new term, but it is still obedient to current leader
+        m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
+        assert m.outbox[-1].type == Message.VoteReply
+        assert m.outbox[-1].reject is True
+
+        # Becomes a PRE_CANDIDATE - nog longer obedient
+        m.tick = 0
+        m.step(Msg("node1", "node1", Message.Tick, 0))
+        assert m.obedient is False
+        assert m.state == NodeState.PRE_CANDIDATE
+        assert m.term == 1
+
+        # Vote in new term, but it is still obedient to current leader
+        m.tick = 0
+        m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
+        assert m.term == 2
+        assert m.outbox[-1].type == Message.VoteReply
+        assert m.outbox[-1].reject is False
+
+        # Election timer reset after vote
+        assert m.tick > 0
+
+        # Pin to node until next reset
+        assert m.voted_for == "node2"
+
+        # Term should have increased
+        assert m.term == 2
+
+
+    def test_append_entries_revoke_previous_log_entry(event_loop):
+        m = Machine("node1")
+        m.add_peer("node2")
+        m.add_peer("node3")
+        m.term = 2
+
+        # Recovered from saved log
+        m.log.append((1, {"type": "consensus"}))
+
+        # Committed when became leader
+        m.log.append((2, {}))
+
+        m.step(
+            Msg(
+                "node2",
+                "node1",
+                Message.AppendEntries,
+                term=3,
+                prev_index=2,
+                prev_term=3,
+                entries=[],
+                leader_commit=0,
+            )
+        )
+
+        assert m.log[2] == (2, {})
+        assert m.outbox[-1].type == Message.AppendEntriesReply
+        assert m.outbox[-1].reject is True
+
+        m.step(
+            Msg(
+                "node2",
+                "node1",
+                Message.AppendEntries,
+                term=3,
+                prev_index=1,
+                prev_term=1,
+                entries=[(3, {})],
+                leader_commit=0,
+            )
+        )
+
+        assert m.log[2] == (3, {})
+        assert m.outbox[-1].type == Message.AppendEntriesReply
+        assert m.outbox[-1].reject is False
+        assert m.outbox[-1].log_index == 2
+    */
+
+    #[test]
+    fn find_inconsistencies() {
+        let n = find_first_inconsistency(
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+            vec![
+                LogEntry {
+                    term: 2,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 2,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 3,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+        );
+
+        assert_eq!(n, 0);
+
+        let n = find_first_inconsistency(
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 2,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 3,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+        );
+
+        assert_eq!(n, 1);
+
+        let n = find_first_inconsistency(
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 3,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+        );
+
+        assert_eq!(n, 2);
+
+        let n = find_first_inconsistency(
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+        );
+
+        assert_eq!(n, 3);
+
+        let n = find_first_inconsistency(
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::Empty,
+                },
+            ],
+        );
+
+        assert_eq!(n, 3);
+    }
 }
