@@ -1011,48 +1011,91 @@ mod tests {
             ]
         );
     }
+
+    /*
+    def test_leader_handle_append_entries_reply_success(event_loop):
+        m = Machine("node1")
+        m.add_peer("node2")
+        m.add_peer("node3")
+
+        m.log.append((1, {}))
+        m.log.append((1, {}))
+        m.log.append((1, {}))
+
+        assert m.log.last_index == 3
+        assert m.log.last_term == 1
+
+        m.tick = 0
+        m.step(Msg("node1", "node1", Message.Tick, 0))
+
+        m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
+        m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
+
+        m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
+        outbox = list(m.outbox)
+        m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=False))
+        outbox.extend(m.outbox)
+
+        m.step(outbox[0].reply(1, reject=False, log_index=3))
+        m.step(outbox[1].reply(1, reject=False, log_index=3))
+
+        assert m.peers["node2"].next_index == 4
+        assert m.peers["node2"].match_index == 3
+
+        # Make sure we can't commit what we don't have
+        m.step(outbox[0].reply(1, reject=False, log_index=10))
+        m.step(outbox[1].reply(1, reject=False, log_index=10))
+
+        # These have gone up one because the leader has committed an empty log entry
+        # As it has started a new term.
+        assert m.peers["node2"].next_index == 5
+        assert m.peers["node2"].match_index == 4
+    */
+
+    #[test]
+    fn append_entries_against_empty() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: 1,
+                    prev_index: 0,
+                    prev_term: 0,
+                    entries: vec![LogEntry {
+                        term: 2,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 2,
+            },
+        )
+        .unwrap();
+
+        assert!(m.tick > tokio::time::Instant::now());
+        assert_eq!(m.state, PeerState::Follower);
+        assert_eq!(m.leader, Some("node2".to_string()));
+
+        assert_eq!(m.outbox.len(), 2);
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::AppendEntriesReply {
+                    reject: false,
+                    log_index: Some(2),
+                }
+            },]
+        );
+    }
 }
-
 /*
-def test_leader_handle_append_entries_reply_success(event_loop):
-    m = Machine("node1")
-    m.add_peer("node2")
-    m.add_peer("node3")
-
-    m.log.append((1, {}))
-    m.log.append((1, {}))
-    m.log.append((1, {}))
-
-    assert m.log.last_index == 3
-    assert m.log.last_term == 1
-
-    m.tick = 0
-    m.step(Msg("node1", "node1", Message.Tick, 0))
-
-    m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
-    m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
-
-    m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
-    outbox = list(m.outbox)
-    m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=False))
-    outbox.extend(m.outbox)
-
-    m.step(outbox[0].reply(1, reject=False, log_index=3))
-    m.step(outbox[1].reply(1, reject=False, log_index=3))
-
-    assert m.peers["node2"].next_index == 4
-    assert m.peers["node2"].match_index == 3
-
-    # Make sure we can't commit what we don't have
-    m.step(outbox[0].reply(1, reject=False, log_index=10))
-    m.step(outbox[1].reply(1, reject=False, log_index=10))
-
-    # These have gone up one because the leader has committed an empty log entry
-    # As it has started a new term.
-    assert m.peers["node2"].next_index == 5
-    assert m.peers["node2"].match_index == 4
-
-
 def test_append_entries_against_empty(event_loop):
     m = Machine("node1")
     m.add_peer("node2")
