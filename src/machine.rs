@@ -87,10 +87,11 @@ pub enum PeerState {
     Leader,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Peer {
     pub identifier: String,
-    next_index: u64,
-    match_index: u64,
+    pub next_index: u64,
+    pub match_index: u64,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
@@ -1015,45 +1016,148 @@ mod tests {
         );
     }
 
-    /*
-    def test_leader_handle_append_entries_reply_success(event_loop):
-        m = Machine("node1")
-        m.add_peer("node2")
-        m.add_peer("node3")
+    #[test]
+    fn leader_handle_append_entries_reply_success() {
+        let mut log = Log::default();
 
-        m.log.append((1, {}))
-        m.log.append((1, {}))
-        m.log.append((1, {}))
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
 
-        assert m.log.last_index == 3
-        assert m.log.last_term == 1
+        let mut m = cluster_node_machine();
+        m.term = 1;
 
-        m.tick = 0
-        m.step(Msg("node1", "node1", Message.Tick, 0))
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 1,
+            },
+        )
+        .unwrap();
 
-        m.step(Msg("node2", "node1", Message.PreVoteReply, 1, reject=False))
-        m.step(Msg("node3", "node1", Message.PreVoteReply, 1, reject=False))
+        assert_eq!(m.state, PeerState::PreCandidate);
 
-        m.step(Msg("node2", "node1", Message.VoteReply, 1, reject=False))
-        outbox = list(m.outbox)
-        m.step(Msg("node3", "node1", Message.VoteReply, 1, reject=False))
-        outbox.extend(m.outbox)
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
+        .unwrap();
 
-        m.step(outbox[0].reply(1, reject=False, log_index=3))
-        m.step(outbox[1].reply(1, reject=False, log_index=3))
+        assert_eq!(m.state, PeerState::Candidate);
 
-        assert m.peers["node2"].next_index == 4
-        assert m.peers["node2"].match_index == 3
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::VoteReply { reject: false },
+                term: 0,
+            },
+        )
+        .unwrap();
 
-        # Make sure we can't commit what we don't have
-        m.step(outbox[0].reply(1, reject=False, log_index=10))
-        m.step(outbox[1].reply(1, reject=False, log_index=10))
+        assert_eq!(m.state, PeerState::Leader);
 
-        # These have gone up one because the leader has committed an empty log entry
-        # As it has started a new term.
-        assert m.peers["node2"].next_index == 5
-        assert m.peers["node2"].match_index == 4
-    */
+        m.outbox.sort();
+
+        assert_eq!(
+            m.outbox,
+            vec![
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node2".to_string(),
+                    term: 2,
+                    message: Message::AppendEntries {
+                        leader_commit: 0,
+                        prev_index: 3,
+                        prev_term: 1,
+                        entries: vec![LogEntry {
+                            term: 2,
+                            entry: RegistryAction::Empty,
+                        }]
+                    }
+                },
+                Envelope {
+                    source: "node1".to_string(),
+                    destination: "node3".to_string(),
+                    term: 2,
+                    message: Message::AppendEntries {
+                        leader_commit: 0,
+                        prev_index: 3,
+                        prev_term: 1,
+                        entries: vec![LogEntry {
+                            term: 2,
+                            entry: RegistryAction::Empty,
+                        }]
+                    }
+                }
+            ]
+        );
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntriesReply {
+                    reject: false,
+                    log_index: Some(4),
+                },
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node3".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntriesReply {
+                    reject: false,
+                    log_index: Some(4),
+                },
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        let mut peers = m.peers.values().cloned().collect::<Vec<Peer>>();
+        peers.sort();
+
+        assert_eq!(
+            peers,
+            vec![
+                Peer {
+                    identifier: "node2".to_string(),
+                    next_index: 5,
+                    match_index: 4,
+                },
+                Peer {
+                    identifier: "node3".to_string(),
+                    next_index: 5,
+                    match_index: 4,
+                }
+            ]
+        );
+    }
 
     #[test]
     fn append_entries_against_empty() {
@@ -1147,7 +1251,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(m.obedient, false);
+        assert!(!m.obedient);
         assert_eq!(m.state, PeerState::PreCandidate);
         assert_eq!(m.term, 1);
 
@@ -1218,7 +1322,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(m.obedient, false);
+        assert!(!m.obedient);
         assert_eq!(m.state, PeerState::PreCandidate);
         assert_eq!(m.term, 1);
 
