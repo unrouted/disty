@@ -666,6 +666,8 @@ impl Machine {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use crate::config::{PeerConfig, RaftConfig, RegistryConfig};
 
     use super::*;
@@ -1269,94 +1271,103 @@ mod tests {
         assert_eq!(m.voted_for, Some("node2".to_string()));
     }
 
-    /*
-    def test_answer_vote(event_loop):
-        m = Machine("node1")
-        m.add_peer("node2")
-        m.add_peer("node3")
-        m.term = 1
+    #[test]
+    fn append_entries_revoke_previous_log_entry() {
+        let mut log = Log::default();
 
-        # Vote rejected because in same term
-        m.step(Msg("node2", "node1", Message.Vote, 1, index=1))
-        assert m.outbox[-1].type == Message.VoteReply
-        assert m.outbox[-1].reject is True
+        // Recovered from saved log
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "foo".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
 
-        # Vote in new term, but it is still obedient to current leader
-        m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
-        assert m.outbox[-1].type == Message.VoteReply
-        assert m.outbox[-1].reject is True
+        // Committed when became leader
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::Empty,
+        }]);
 
-        # Becomes a PRE_CANDIDATE - nog longer obedient
-        m.tick = 0
-        m.step(Msg("node1", "node1", Message.Tick, 0))
-        assert m.obedient is False
-        assert m.state == NodeState.PRE_CANDIDATE
-        assert m.term == 1
-
-        # Vote in new term, but it is still obedient to current leader
-        m.tick = 0
-        m.step(Msg("node2", "node1", Message.Vote, 2, index=1))
-        assert m.term == 2
-        assert m.outbox[-1].type == Message.VoteReply
-        assert m.outbox[-1].reject is False
-
-        # Election timer reset after vote
-        assert m.tick > 0
-
-        # Pin to node until next reset
-        assert m.voted_for == "node2"
-
-        # Term should have increased
-        assert m.term == 2
-
-
-    def test_append_entries_revoke_previous_log_entry(event_loop):
-        m = Machine("node1")
-        m.add_peer("node2")
-        m.add_peer("node3")
-        m.term = 2
-
-        # Recovered from saved log
-        m.log.append((1, {"type": "consensus"}))
-
-        # Committed when became leader
-        m.log.append((2, {}))
+        let mut m = cluster_node_machine();
+        m.term = 2;
 
         m.step(
-            Msg(
-                "node2",
-                "node1",
-                Message.AppendEntries,
-                term=3,
-                prev_index=2,
-                prev_term=3,
-                entries=[],
-                leader_commit=0,
-            )
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: 0,
+                    prev_index: 2,
+                    prev_term: 3,
+                    entries: vec![],
+                },
+                term: 3,
+            },
         )
+        .unwrap();
 
-        assert m.log[2] == (2, {})
-        assert m.outbox[-1].type == Message.AppendEntriesReply
-        assert m.outbox[-1].reject is True
+        assert_eq!(
+            log[1],
+            LogEntry {
+                term: 2,
+                entry: RegistryAction::Empty
+            }
+        );
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::AppendEntriesReply {
+                    reject: true,
+                    log_index: None,
+                }
+            },]
+        );
 
         m.step(
-            Msg(
-                "node2",
-                "node1",
-                Message.AppendEntries,
-                term=3,
-                prev_index=1,
-                prev_term=1,
-                entries=[(3, {})],
-                leader_commit=0,
-            )
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: 0,
+                    prev_index: 1,
+                    prev_term: 1,
+                    entries: vec![],
+                },
+                term: 3,
+            },
         )
+        .unwrap();
 
-        assert m.log[2] == (3, {})
-        assert m.outbox[-1].type == Message.AppendEntriesReply
-        assert m.outbox[-1].reject is False
-        assert m.outbox[-1].log_index == 2
-    */
+        assert_eq!(
+            log[1],
+            LogEntry {
+                term: 3,
+                entry: RegistryAction::Empty
+            }
+        );
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::AppendEntriesReply {
+                    reject: false,
+                    log_index: Some(2),
+                }
+            },]
+        );
+    }
 
     #[test]
     fn find_inconsistencies() {

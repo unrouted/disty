@@ -37,7 +37,7 @@ impl Storage {
                     buffer
                 }
             }
-            Err(err) => {
+            Err(_err) => {
                 panic!("Could not read term");
             }
         };
