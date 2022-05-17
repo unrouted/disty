@@ -1242,52 +1242,180 @@ def test_append_entries_revoke_previous_log_entry(event_loop):
     assert m.outbox[-1].type == Message.AppendEntriesReply
     assert m.outbox[-1].reject is False
     assert m.outbox[-1].log_index == 2
-
-
-def test_find_inconsistencies(event_loop):
-    n = Machine("node1")
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None)], [(2, None), (2, None), (3, None)]
-        )
-        == 0
-    )
-
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None)], [(1, None), (2, None), (3, None)]
-        )
-        == 1
-    )
-
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None)], [(1, None), (1, None), (3, None)]
-        )
-        == 2
-    )
-
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None)], [(1, None), (1, None), (1, None)]
-        )
-        == 3
-    )
-
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None), (1, None)],
-            [(1, None), (1, None), (1, None)],
-        )
-        == 3
-    )
-
-    assert (
-        n.find_first_inconsistency(
-            [(1, None), (1, None), (1, None)],
-            [(1, None), (1, None), (1, None), (1, None)],
-        )
-        == 3
-    )
-
 */
+
+#[test]
+fn find_inconsistencies() {
+    let n = find_first_inconsistency(
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+        vec![
+            LogEntry {
+                term: 2,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 2,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 3,
+                entry: RegistryAction::Empty,
+            },
+        ],
+    );
+
+    assert_eq!(n, 0);
+
+    let n = find_first_inconsistency(
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 2,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 3,
+                entry: RegistryAction::Empty,
+            },
+        ],
+    );
+
+    assert_eq!(n, 1);
+
+    let n = find_first_inconsistency(
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 3,
+                entry: RegistryAction::Empty,
+            },
+        ],
+    );
+
+    assert_eq!(n, 2);
+
+    let n = find_first_inconsistency(
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+    );
+
+    assert_eq!(n, 3);
+
+    let n = find_first_inconsistency(
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+        vec![
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+            LogEntry {
+                term: 1,
+                entry: RegistryAction::Empty,
+            },
+        ],
+    );
+
+    assert_eq!(n, 3);
+}
