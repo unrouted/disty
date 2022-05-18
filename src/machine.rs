@@ -528,8 +528,10 @@ impl Machine {
                                 return Ok(());
                             }
 
-                            let offset =
-                                find_first_inconsistency(log[index..].to_vec(), entries.clone());
+                            let offset = find_first_inconsistency(
+                                log.entries[index..].to_vec(),
+                                entries.clone(),
+                            );
                             let prev_index = index + offset;
 
                             if stored_index > prev_index {
@@ -651,7 +653,7 @@ impl Machine {
 
                     Message::AppendEntries {
                         prev: Some(Position { index, term }),
-                        entries: log[index..].to_vec(),
+                        entries: log.entries[index..].to_vec(),
                         leader_commit: self.commit_index,
                     }
                 }
@@ -1442,7 +1444,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            log[1],
+            log.entries[1],
             LogEntry {
                 term: 2,
                 entry: RegistryAction::Empty

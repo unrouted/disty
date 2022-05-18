@@ -221,7 +221,7 @@ impl Raft {
                         },
                         Some(current_index) => RaftEvent::Committed {
                             start_index: current_index,
-                            entries: log[current_index..next_index].to_vec(),
+                            entries: log.entries[current_index..next_index].to_vec(),
                         },
                     };
                     if let Err(err) = self.events.send(ev) {

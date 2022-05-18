@@ -17,17 +17,6 @@ pub struct Log {
     pub stored_index: Option<usize>,
 }
 
-impl<Idx> std::ops::Index<Idx> for Log
-where
-    Idx: std::slice::SliceIndex<[LogEntry]>,
-{
-    type Output = Idx::Output;
-
-    fn index(&self, index: Idx) -> &Self::Output {
-        &self.entries[index]
-    }
-}
-
 impl Log {
     pub fn last_index(&self) -> Option<usize> {
         if self.entries.is_empty() {
