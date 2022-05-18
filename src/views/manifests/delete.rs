@@ -1,4 +1,5 @@
 use crate::headers::Token;
+use crate::rpc::RpcClient;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -60,9 +61,11 @@ pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
     state: &State<Arc<RegistryState>>,
+    submission: &State<Arc<RpcClient>>,
     token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
+    let submission: &RpcClient = submission.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -85,7 +88,7 @@ pub(crate) async fn delete(
         user: token.sub.clone(),
     }];
 
-    if !state.send_actions(actions).await {
+    if !submission.send(actions).await {
         return Responses::Failed {};
     }
 
@@ -97,9 +100,11 @@ pub(crate) async fn delete_by_tag(
     repository: RepositoryName,
     tag: String,
     state: &State<Arc<RegistryState>>,
+    submission: &State<Arc<RpcClient>>,
     token: Token,
 ) -> Responses {
     let state: &RegistryState = state.inner();
+    let submission: &RpcClient = submission.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -127,7 +132,7 @@ pub(crate) async fn delete_by_tag(
         user: token.sub.clone(),
     }];
 
-    if !state.send_actions(actions).await {
+    if !submission.send(actions).await {
         return Responses::Failed {};
     }
 

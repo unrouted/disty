@@ -1,11 +1,12 @@
 use crate::config::WebhookConfig;
-use crate::types::{Digest, RepositoryName};
+use crate::types::{Broadcast, Digest, RepositoryName};
 use prometheus_client::encoding::text::Encode;
 use prometheus_client::registry::Registry;
 
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use serde_json::json;
+use tokio::select;
 use tokio::sync::mpsc;
 
 pub struct Event {
@@ -23,6 +24,7 @@ struct WebhookMetricLabels {
 pub fn start_webhook_worker(
     webhooks: Vec<WebhookConfig>,
     registry: &mut Registry,
+    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) -> tokio::sync::mpsc::Sender<Event> {
     let webhooks_total = Family::<WebhookMetricLabels, Counter>::default();
     registry.register(
@@ -33,16 +35,19 @@ pub fn start_webhook_worker(
 
     let (tx, mut rx) = mpsc::channel::<Event>(100);
 
-    let runtime = pyo3_asyncio::tokio::get_runtime();
-    runtime.spawn(async move {
+    tokio::spawn(async move {
         loop {
-            if let Some(Event {
-                repository,
-                digest,
-                tag,
-                content_type,
-            }) = rx.recv().await
-            {
+            select! {
+                _ = broadcasts.recv() => {
+                    debug!("Webhooks: Stopping in response to SIGINT");
+                    return;
+                },
+                Some(Event {
+                    repository,
+                    digest,
+                    tag,
+                    content_type,
+                }) = rx.recv() => {
                 // FIXME: This is just enough webhook for what I personally need. Sorry if
                 // you need it to be valid!
                 let payload = json!({
@@ -99,6 +104,7 @@ pub fn start_webhook_worker(
                         };
                         webhooks_total.get_or_create(&labels).inc();
                     }
+                }
                 }
             }
         }

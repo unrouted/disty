@@ -4,14 +4,12 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use data_encoding::HEXLOWER;
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 use ring::digest;
+use rocket::form::{FromFormField, ValueField};
+use rocket::request::FromParam;
 use serde::{Deserialize, Serialize};
 
-use rocket::form::{FromFormField, ValueField};
-
-#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(try_from = "String", into = "String")]
 pub struct Digest {
     pub algo: String,
@@ -33,30 +31,6 @@ impl Digest {
             .join(&self.hash[6..])
     }
 }
-
-impl IntoPy<PyObject> for Digest {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_string().into_py(py)
-    }
-}
-
-impl ToPyObject for Digest {
-    fn to_object(&self, py: Python) -> PyObject {
-        self.to_string().into_py(py)
-    }
-}
-
-impl FromPyObject<'_> for Digest {
-    fn extract(digest: &'_ PyAny) -> PyResult<Self> {
-        let digest_string: String = digest.extract()?;
-        match Digest::from_str(&digest_string) {
-            Ok(value) => Ok(value),
-            Err(_) => Err(PyValueError::new_err("argument is wrong")),
-        }
-    }
-}
-
-use rocket::request::FromParam;
 
 impl<'r> FromParam<'r> for Digest {
     type Error = &'r str;

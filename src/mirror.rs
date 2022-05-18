@@ -1,23 +1,15 @@
 use crate::config::Configuration;
 use crate::mint::Mint;
-use crate::{
-    machine::Machine,
-    types::{Digest, RegistryAction, RegistryState},
-};
+use crate::raft::RaftEvent;
+use crate::rpc::RpcClient;
+use crate::types::{Broadcast, Digest, RegistryAction, RegistryState};
 use chrono::Utc;
 use log::{debug, warn};
-use pyo3::{
-    prelude::*,
-    types::{self, PyDict, PyTuple},
-};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
-use tokio::{
-    io::AsyncWriteExt,
-    sync::mpsc::{channel, Receiver, Sender},
-};
-use tokio::{runtime::Runtime, select};
+use tokio::io::AsyncWriteExt;
+use tokio::select;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -72,7 +64,6 @@ impl MirrorRequest {
 async fn do_transfer(
     config: Configuration,
     state: Arc<RegistryState>,
-    machine: Arc<Machine>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
@@ -87,7 +78,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if blob.locations.contains(&machine.identifier) {
+                if blob.locations.contains(&config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -108,7 +99,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if manifest.locations.contains(&machine.identifier) {
+                if manifest.locations.contains(&config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -245,16 +236,56 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(machine.identifier.clone())
+    request.success(config.identifier.clone())
 }
 
-async fn do_mirroring(
-    machine: Arc<Machine>,
+fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
+    let mut tasks = vec![];
+
+    match event {
+        RaftEvent::Committed {
+            start_index: _,
+            entries,
+        } => {
+            for entry in &entries {
+                match &entry.entry {
+                    RegistryAction::BlobStored {
+                        timestamp: _,
+                        digest,
+                        location: _,
+                        user: _,
+                    } => tasks.push(MirrorRequest::Blob {
+                        digest: digest.clone(),
+                    }),
+                    RegistryAction::ManifestStored {
+                        timestamp: _,
+                        digest,
+                        location: _,
+                        user: _,
+                    } => {
+                        tasks.push(MirrorRequest::Manifest {
+                            digest: digest.clone(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    tasks
+}
+
+pub(crate) fn start_mirroring(
+    config: Configuration,
     state: Arc<RegistryState>,
-    mint: Mint,
-    configuration: Configuration,
-    mut rx: Receiver<MirrorRequest>,
+    submission: Arc<RpcClient>,
+    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) {
+    let mut rx = state.events.subscribe();
+
+    let mint = Mint::new(config.mirroring.clone());
+
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
@@ -262,110 +293,46 @@ async fn do_mirroring(
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
-    loop {
-        select! {
-            _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(request) = rx.recv() => {requests.insert(request);}
-        };
-
-        info!("Mirroring: There are {} mirroring tasks", requests.len());
-
-        // FIXME: Ideally we'd have some worker pool here are download a bunch
-        // of objects in parallel.
-
-        let tasks: Vec<MirrorRequest> = requests.drain().collect();
-        for task in tasks {
-            let client = client.clone();
-            let result = do_transfer(
-                configuration.clone(),
-                state.clone(),
-                machine.clone(),
-                mint.clone(),
-                client,
-                task,
-            )
-            .await;
-
-            match result {
-                MirrorResult::Retry { request } => {
-                    requests.insert(request);
+    tokio::spawn(async move {
+        loop {
+            select! {
+                _ = broadcasts.recv() => {
+                    debug!("Mirroring: Stopping in response to SIGINT");
+                    return;
+                },
+                _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
+                Ok(event) = rx.recv() => {
+                    println!("{:?}", event);
+                    requests.extend(get_tasks_from_raft_event(event));
                 }
-                MirrorResult::Success { action, request } => {
-                    if !state.send_actions(vec![action]).await {
+            };
+
+            info!("Mirroring: There are {} mirroring tasks", requests.len());
+
+            // FIXME: Ideally we'd have some worker pool here are download a bunch
+            // of objects in parallel.
+
+            let tasks: Vec<MirrorRequest> = requests.drain().collect();
+            for task in tasks {
+                let client = client.clone();
+                let result =
+                    do_transfer(config.clone(), state.clone(), mint.clone(), client, task).await;
+
+                match result {
+                    MirrorResult::Retry { request } => {
                         requests.insert(request);
-                        debug!("Mirroring: Raft transaction failed");
-                    } else {
-                        debug!("Mirroring: Download logged to raft");
-                    };
+                    }
+                    MirrorResult::Success { action, request } => {
+                        if !submission.send(vec![action]).await {
+                            requests.insert(request);
+                            debug!("Mirroring: Raft transaction failed");
+                        } else {
+                            debug!("Mirroring: Download logged to raft");
+                        };
+                    }
+                    MirrorResult::None => {}
                 }
-                MirrorResult::None => {}
             }
         }
-    }
-}
-
-pub(crate) fn start_mirroring(
-    runtime: &Runtime,
-    config: Configuration,
-    machine: Arc<Machine>,
-    state: Arc<RegistryState>,
-) -> Sender<MirrorRequest> {
-    let (tx, rx) = channel::<MirrorRequest>(500);
-
-    let mint = Mint::new(config.mirroring.clone());
-
-    runtime.spawn(do_mirroring(machine, state, mint, config, rx));
-
-    tx
-}
-
-fn dispatch_entries(entries: Vec<ReducerDispatch>, tx: Sender<MirrorRequest>) {
-    for entry in &entries {
-        match &entry.1 {
-            RegistryAction::BlobStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tx.blocking_send(MirrorRequest::Blob {
-                    digest: digest.clone(),
-                })
-                .unwrap();
-            }
-            RegistryAction::ManifestStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tx.blocking_send(MirrorRequest::Manifest {
-                    digest: digest.clone(),
-                })
-                .unwrap();
-            }
-            _ => {}
-        }
-    }
-}
-
-#[derive(Debug, FromPyObject)]
-struct ReducerDispatch(u64, RegistryAction);
-
-pub(crate) fn add_side_effect(reducers: &PyObject, tx: Sender<MirrorRequest>) {
-    Python::with_gil(|py| {
-        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
-            println!("side_effect: {:?}", entries);
-            dispatch_entries(entries, tx.clone());
-            Ok(true)
-        };
-        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
-
-        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
-
-        if result.is_err() {
-            panic!("Boot failure: Could not setup mirroring side effects")
-        }
-    })
+    });
 }

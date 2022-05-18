@@ -8,9 +8,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use log::info;
 use tokio::fs::remove_file;
+use tokio::select;
+use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use crate::config::Configuration;
+use crate::rpc::RpcClient;
+use crate::types::Broadcast;
 use crate::{
     machine::Machine,
     types::{RegistryAction, RegistryState},
@@ -19,8 +23,12 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
-    if !machine.is_leader() {
+async fn do_garbage_collect_phase1(
+    machine: &Mutex<Machine>,
+    state: &RegistryState,
+    submission: Arc<RpcClient>,
+) {
+    if !machine.lock().await.is_leader() {
         info!("Garbage collection: Phase 1: Not leader");
         return;
     }
@@ -71,7 +79,7 @@ async fn do_garbage_collect_phase1(machine: &Machine, state: &RegistryState) {
             "Garbage collection: Phase 1: Reaped {} mounts",
             actions.len()
         );
-        state.send_actions(actions).await;
+        submission.send(actions).await;
     }
 }
 
@@ -114,16 +122,20 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
 }
 
 async fn do_garbage_collect_phase2(
-    machine: &Machine,
+    machine: &Mutex<Machine>,
     state: &RegistryState,
+    submission: Arc<RpcClient>,
     images_directory: &str,
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
+    // FIXME: This doesn't change - just grab it from Configuration or something
+    let identifier = machine.lock().await.identifier.clone();
+
     let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests().await {
-        if !entry.manifest.locations.contains(&machine.identifier) {
+        if !entry.manifest.locations.contains(&identifier) {
             continue;
         }
 
@@ -139,13 +151,13 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: machine.identifier.clone(),
+            location: identifier.clone(),
             user: "$system".to_string(),
         });
     }
 
     for entry in state.get_orphaned_blobs().await {
-        if !entry.blob.locations.contains(&machine.identifier) {
+        if !entry.blob.locations.contains(&identifier) {
             continue;
         }
 
@@ -161,7 +173,7 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: machine.identifier.clone(),
+            location: identifier.clone(),
             user: "$system".to_string(),
         });
     }
@@ -171,18 +183,27 @@ async fn do_garbage_collect_phase2(
             "Garbage collection: Phase 2: Reaped {} stores",
             actions.len()
         );
-        state.send_actions(actions).await;
+        submission.send(actions).await;
     }
 }
 
 pub async fn do_garbage_collect(
     config: Configuration,
-    machine: Arc<Machine>,
+    machine: Arc<Mutex<Machine>>,
     state: Arc<RegistryState>,
+    submission: Arc<RpcClient>,
+    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) {
     loop {
-        do_garbage_collect_phase1(&machine, &state).await;
-        do_garbage_collect_phase2(&machine, &state, &config.storage).await;
-        sleep(Duration::from_secs(60)).await;
+        do_garbage_collect_phase1(&machine, &state, submission.clone()).await;
+        do_garbage_collect_phase2(&machine, &state, submission.clone(), &config.storage).await;
+
+        select! {
+            _ = broadcasts.recv() => {
+                debug!("Garbage collection: Stopping in response to SIGINT");
+                return;
+            },
+            _ = sleep(Duration::from_secs(60)) => {},
+        };
     }
 }

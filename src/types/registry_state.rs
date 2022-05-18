@@ -1,4 +1,5 @@
-use crate::reducer::ReducerDispatch;
+use crate::log::LogEntry;
+use crate::raft::RaftEvent;
 use crate::types::Blob;
 use crate::types::Manifest;
 use crate::types::RegistryAction;
@@ -6,30 +7,16 @@ use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use chrono::DateTime;
 use chrono::Utc;
-use pyo3::prelude::*;
-use pyo3::types;
-use pyo3::types::PyDict;
-use pyo3::types::PyTuple;
-use pyo3_asyncio::{into_future_with_locals, TaskLocals};
-use rocket::futures::executor::block_on;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::future::Future;
-use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 
+use super::MachineMetricLabels;
 use super::{BlobEntry, ManifestEntry};
-
-pub fn into_future_with_loop(
-    event_loop: &PyAny,
-    awaitable: &PyAny,
-) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send> {
-    into_future_with_locals(
-        &TaskLocals::new(event_loop).copy_context(event_loop.py())?,
-        awaitable,
-    )
-}
 
 #[derive(Default)]
 struct Store {
@@ -100,29 +87,37 @@ impl Store {
 
 pub struct RegistryState {
     state: Mutex<Store>,
+    pub events: tokio::sync::broadcast::Sender<RaftEvent>,
     pub machine_identifier: String,
-    send_action: PyObject,
     webhook_send: tokio::sync::mpsc::Sender<Event>,
-    event_loop: PyObject,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    last_applied_index: Family<MachineMetricLabels, Gauge>,
 }
 
 impl RegistryState {
     pub fn new(
-        send_action: PyObject,
         webhook_send: tokio::sync::mpsc::Sender<Event>,
         machine_identifier: String,
-        event_loop: PyObject,
+        registry: &mut Registry,
     ) -> RegistryState {
+        let (tx, _) = tokio::sync::broadcast::channel::<RaftEvent>(100);
+
+        let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_applied_index",
+            "Last index that was applied",
+            Box::new(last_applied_index.clone()),
+        );
+
         RegistryState {
             state: Mutex::new(Store::default()),
-            send_action,
+            events: tx,
             webhook_send,
             machine_identifier,
-            event_loop,
             manifest_waiters: Mutex::new(HashMap::new()),
             blob_waiters: Mutex::new(HashMap::new()),
+            last_applied_index,
         }
     }
 
@@ -223,28 +218,6 @@ impl RegistryState {
 
     pub async fn send_webhook(&self, event: Event) -> bool {
         matches!(self.webhook_send.send(event).await, Ok(_))
-    }
-
-    pub async fn send_actions(&self, actions: Vec<RegistryAction>) -> bool {
-        let result = Python::with_gil(|py| {
-            let event_loop = self.event_loop.as_ref(py);
-
-            into_future_with_loop(
-                event_loop,
-                self.send_action.call1(py, (actions,))?.as_ref(py),
-            )
-        });
-
-        match result {
-            Ok(result) => match result.await {
-                Ok(value) => match Python::with_gil(|py| value.extract(py)) {
-                    Ok(value) => value,
-                    _ => false,
-                },
-                _ => false,
-            },
-            _ => false,
-        }
     }
 
     pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
@@ -383,11 +356,35 @@ impl RegistryState {
             .collect::<Vec<ManifestEntry>>()
     }
 
-    pub async fn dispatch_entries(&self, actions: Vec<ReducerDispatch>) {
+    pub async fn dispatch_entries(&self, event: RaftEvent) {
+        match &event {
+            RaftEvent::Committed {
+                start_index,
+                entries,
+            } => {
+                self.handle_raft_commit(entries.clone()).await;
+
+                let labels = MachineMetricLabels {
+                    identifier: self.machine_identifier.clone(),
+                };
+                self.last_applied_index
+                    .get_or_create(&labels)
+                    .set(*start_index as u64);
+            }
+        }
+
+        // After we have handled the event we can pass it on to downstream
+        // subscribers. They can then be happy that the store is as up to date as needed
+        if let Err(err) = self.events.send(event) {
+            warn!("Error while notifying of commit events: {err:?}");
+        }
+    }
+
+    async fn handle_raft_commit(&self, actions: Vec<LogEntry>) {
         let mut store = self.state.lock().await;
 
         for action in actions {
-            match action.1 {
+            match action.entry {
                 RegistryAction::Empty {} => {}
                 RegistryAction::BlobStored {
                     timestamp,
@@ -540,33 +537,15 @@ impl RegistryState {
     }
 }
 
-pub(crate) fn add_side_effect(reducers: &PyObject, state: Arc<RegistryState>) {
-    Python::with_gil(|py| {
-        let dispatch_entries = move |args: &PyTuple, _kwargs: Option<&PyDict>| -> PyResult<_> {
-            let entries: Vec<ReducerDispatch> = args.get_item(0)?.extract()?;
-            block_on(state.dispatch_entries(entries));
-            Ok(true)
-        };
-        let dispatch_entries = types::PyCFunction::new_closure(dispatch_entries, py).unwrap();
-
-        let result = reducers.call_method1(py, "add_side_effects", (dispatch_entries,));
-
-        if result.is_err() {
-            panic!("Boot failure: Could not registry state side effects")
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn setup_state() -> RegistryState {
-        let evloop = Python::with_gil(|py| PyDict::new(py).to_object(py));
-        let send_action = evloop.clone();
         let (tx, _) = tokio::sync::mpsc::channel::<crate::webhook::Event>(100);
+        let mut registry = <prometheus_client::registry::Registry>::default();
 
-        RegistryState::new(send_action, tx, "foo".to_string(), evloop)
+        RegistryState::new(tx, "foo".to_string(), &mut registry)
     }
 
     // BLOB TESTS
@@ -589,15 +568,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
@@ -615,25 +594,25 @@ mod tests {
         let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
 
         state
-            .dispatch_entries(vec![
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository,
                         digest: digest.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobInfo {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobInfo {
                         timestamp: Utc::now(),
                         digest,
                         content_type: "application/json".to_string(),
                         dependencies: vec![dependency],
                     },
-                ),
+                },
             ])
             .await;
 
@@ -655,28 +634,28 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobStat {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobStat {
                     timestamp: Utc::now(),
                     digest,
                     size: 1234,
                 },
-            )])
+            }])
             .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
@@ -693,30 +672,30 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobUnmounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobUnmounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
@@ -734,15 +713,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Make node unavailable
@@ -750,15 +729,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobUnmounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobUnmounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Make node available again
@@ -766,15 +745,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::BlobMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Should be visible...
@@ -804,15 +783,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
@@ -829,30 +808,30 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
         let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestInfo {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestInfo {
                     timestamp: Utc::now(),
                     digest,
                     content_type: "application/json".to_string(),
                     dependencies: vec![dependency],
                 },
-            )])
+            }])
             .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
@@ -873,28 +852,28 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestStat {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestStat {
                     timestamp: Utc::now(),
                     digest,
                     size: 1234,
                 },
-            )])
+            }])
             .await;
 
         let digest: Digest = "sha256:abcdefg".parse().unwrap();
@@ -911,30 +890,30 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestUnmounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestUnmounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo".parse().unwrap();
@@ -952,15 +931,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Make node unavailable
@@ -968,15 +947,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestUnmounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestUnmounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Make node available again
@@ -984,15 +963,15 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::ManifestMounted {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::ManifestMounted {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                 },
-            )])
+            }])
             .await;
 
         // Should be visible...
@@ -1011,16 +990,16 @@ mod tests {
         let digest = "sha256:abcdefg".parse().unwrap();
 
         state
-            .dispatch_entries(vec![ReducerDispatch(
-                1,
-                RegistryAction::HashTagged {
+            .handle_raft_commit(vec![LogEntry {
+                term: 1,
+                entry: RegistryAction::HashTagged {
                     timestamp: Utc::now(),
                     user: "test".to_string(),
                     repository,
                     digest,
                     tag: "latest".to_string(),
                 },
-            )])
+            }])
             .await;
 
         let repository = "myrepo2".parse().unwrap();
@@ -1043,63 +1022,63 @@ mod tests {
         let digest2: Digest = "sha256:gfedcba".parse().unwrap();
 
         state
-            .dispatch_entries(vec![
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestStored {
+            .handle_raft_commit(vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest1.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest1.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::HashTagged {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::HashTagged {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest1.clone(),
                         tag: "latest".to_string(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestStored {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest2.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest2.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::HashTagged {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::HashTagged {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository,
                         digest: digest2.clone(),
                         tag: "latest".to_string(),
                     },
-                ),
+                },
             ])
             .await;
 
@@ -1124,127 +1103,127 @@ mod tests {
         let manifest_digest: Digest = "sha256:ababababababa".parse().unwrap();
 
         state
-            .dispatch_entries(vec![
+            .handle_raft_commit(vec![
                 // BLOB 1 DAG
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobStored {
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest1.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest1.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobStored {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest2.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest2.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobInfo {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobInfo {
                         timestamp: Utc::now(),
                         digest: digest2.clone(),
                         content_type: "foo".to_string(),
                         dependencies: vec![digest1.clone()],
                     },
-                ),
+                },
                 // BLOB 2 DAG
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobStored {
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest3.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest3.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobStored {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: digest4.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: digest4.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::BlobInfo {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobInfo {
                         timestamp: Utc::now(),
                         digest: digest4.clone(),
                         content_type: "foo".to_string(),
                         dependencies: vec![digest3.clone()],
                     },
-                ),
+                },
                 // MANIFEST DAG
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestStored {
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestStored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: manifest_digest.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestMounted {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestMounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: manifest_digest.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestInfo {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestInfo {
                         timestamp: Utc::now(),
                         digest: manifest_digest.clone(),
                         content_type: "foo".to_string(),
                         dependencies: vec![digest4.clone()],
                     },
-                ),
+                },
             ])
             .await;
 
@@ -1268,25 +1247,25 @@ mod tests {
         // If we delete the manifest all blobs should now be garbage collected
 
         state
-            .dispatch_entries(vec![
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestUnmounted {
+            .handle_raft_commit(vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestUnmounted {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         repository: repository.clone(),
                         digest: manifest_digest.clone(),
                     },
-                ),
-                ReducerDispatch(
-                    1,
-                    RegistryAction::ManifestUnstored {
+                },
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::ManifestUnstored {
                         timestamp: Utc::now(),
                         user: "test".to_string(),
                         location: "test".to_string(),
                         digest: manifest_digest.clone(),
                     },
-                ),
+                },
             ])
             .await;
 

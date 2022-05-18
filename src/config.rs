@@ -18,7 +18,7 @@ pub struct RaftConfig {
 impl Default for RaftConfig {
     fn default() -> Self {
         Self {
-            address: "127.0.0.1".to_string(),
+            address: "0.0.0.0".to_string(),
             port: 8080,
         }
     }
@@ -33,7 +33,7 @@ pub struct RegistryConfig {
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
-            address: "127.0.0.1".to_string(),
+            address: "0.0.0.0".to_string(),
             port: 8000,
         }
     }
@@ -48,7 +48,7 @@ pub struct PrometheusConfig {
 impl Default for PrometheusConfig {
     fn default() -> Self {
         Self {
-            address: "127.0.0.1".to_string(),
+            address: "0.0.0.0".to_string(),
             port: 7080,
         }
     }
@@ -123,6 +123,7 @@ pub struct WebhookConfig {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Configuration {
+    pub identifier: String,
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
     pub prometheus: PrometheusConfig,
@@ -136,6 +137,7 @@ pub struct Configuration {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
+            identifier: "localhost".to_string(),
             raft: RaftConfig::default(),
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),
@@ -174,7 +176,7 @@ mod test {
         let defaults: Configuration = Figment::from(Serialized::defaults(Configuration::default()))
             .extract()
             .unwrap();
-        assert_eq!(defaults.raft.address, "127.0.0.1");
+        assert_eq!(defaults.raft.address, "0.0.0.0");
         assert!(defaults.peers.is_empty());
     }
 

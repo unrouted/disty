@@ -1,6 +1,7 @@
 use crate::config::Configuration;
 use crate::headers::Access;
 use crate::headers::Token;
+use crate::rpc::RpcClient;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RegistryState;
@@ -138,11 +139,13 @@ pub(crate) async fn post(
     digest: Option<Digest>,
     config: &State<Configuration>,
     state: &State<Arc<RegistryState>>,
+    submission: &State<Arc<RpcClient>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
     let config: &Configuration = config.inner();
     let state: &RegistryState = state.inner();
+    let submission: &RpcClient = submission.inner();
 
     if !token.validated_token {
         let mut access = vec![Access {
@@ -183,7 +186,7 @@ pub(crate) async fn post(
                 user: token.sub.clone(),
             }];
 
-            if !state.send_actions(actions).await {
+            if !submission.send(actions).await {
                 return Responses::UploadInvalid {};
             }
 
@@ -245,7 +248,7 @@ pub(crate) async fn post(
                 },
             ];
 
-            if !state.send_actions(actions).await {
+            if !submission.send(actions).await {
                 return Responses::UploadInvalid {};
             }
 
