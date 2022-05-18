@@ -137,7 +137,7 @@ impl Raft {
                 Ok(()) => {
                     if let Some(callback) = callback {
                         let res = callback.send(Ok(RaftQueueResult {
-                            index: log.last_index(),
+                            index: machine.pending_index,
                             term: log.last_term(),
                         }));
 
@@ -159,7 +159,7 @@ impl Raft {
             }
 
             storage.step(&mut log, machine.term).await;
-            machine.stored_index = Some(log.last_index());
+            machine.stored_index = log.last_index();
 
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {

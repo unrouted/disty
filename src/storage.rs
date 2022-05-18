@@ -99,11 +99,16 @@ impl Storage {
                 return;
             }
 
-            log.stored_index = 0;
+            log.stored_index = None;
             log.truncate_index = None;
         }
 
-        for row in &log.entries[log.stored_index as usize..] {
+        let source = match log.stored_index {
+            None => &log.entries,
+            Some(stored_index) => &log.entries[stored_index..],
+        };
+
+        for row in source {
             match jsonl::write(&mut self.file, row).await {
                 Ok(_) => (),
                 Err(err) => {

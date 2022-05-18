@@ -14,7 +14,7 @@ pub struct Log {
     pub snapshot_index: Option<usize>,
     pub snapshot_term: Option<usize>,
     pub truncate_index: Option<usize>,
-    pub stored_index: usize,
+    pub stored_index: Option<usize>,
 }
 
 impl<Idx> std::ops::Index<Idx> for Log
@@ -29,10 +29,12 @@ where
 }
 
 impl Log {
-    pub fn last_index(&self) -> usize {
-        let snapshot_index = self.snapshot_index.unwrap_or(0);
+    pub fn last_index(&self) -> Option<usize> {
+        if self.entries.is_empty() {
+            return self.snapshot_index;
+        }
 
-        snapshot_index + self.entries.len() as usize
+        Some((self.entries.len() - 1) + self.snapshot_index.unwrap_or(0))
     }
 
     pub fn last_term(&self) -> usize {
@@ -45,7 +47,7 @@ impl Log {
     pub fn truncate(&mut self, index: usize) {
         self.truncate_index = Some(index);
 
-        while self.last_index() >= index {
+        while self.last_index() >= Some(index) {
             if self.entries.pop().is_none() {
                 break;
             }
