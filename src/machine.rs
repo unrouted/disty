@@ -15,7 +15,7 @@ use crate::{
 
 const ELECTION_TICK_LOW: u64 = 150;
 const ELECTION_TICK_HIGH: u64 = 300;
-const HEARTBEAT_TICK: u64 = (ELECTION_TICK_LOW / 20) / 1000;
+const HEARTBEAT_TICK: u64 = 100;
 
 fn find_first_inconsistency(ours: Vec<LogEntry>, theirs: Vec<LogEntry>) -> usize {
     for (i, (our_entry, their_entry)) in ours.iter().zip(theirs.iter()).enumerate() {
