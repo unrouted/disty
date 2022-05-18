@@ -121,7 +121,7 @@ pub struct Machine {
     pub stored_index: Option<usize>,
 
     // The index we know has been written to disk for at least the quorum
-    pub commit_index: usize,
+    pub commit_index: Option<usize>,
 
     // The index this node has applied to its state machine
     pub applied_index: usize,
@@ -206,7 +206,7 @@ impl Machine {
             pending_index: 0,
             stored_index: None,
             applied_index: 0,
-            commit_index: 0,
+            commit_index: None,
             peers,
             last_applied_index,
             last_committed,
@@ -378,7 +378,7 @@ impl Machine {
             if stored_index > index {
                 debug!("Machine: We know more than them");
                 return false;
-            }    
+            }
         }
 
         // We have already voted for this node
@@ -403,20 +403,20 @@ impl Machine {
     }
 
     fn maybe_commit(&mut self, log: &mut Log) -> bool {
-        let mut commit_index = 0;
-        let mut i = std::cmp::max(self.commit_index, 1);
+        if self.stored_index == self.commit_index {
+            return true;
+        }
+
+        let mut commit_index = None;
+        let mut i = self.commit_index.unwrap_or(0);
 
         if let Some(stored_index) = self.stored_index {
-            if stored_index == self.commit_index {
-                return true;
-            }
-    
             while i <= stored_index {
                 if log.get(i).term != self.term {
                     i += 1;
                     continue;
                 }
-    
+
                 // Start counting at 1 because we count as a vote
                 let mut match_count = 1;
                 for peer in self.peers.values() {
@@ -424,21 +424,19 @@ impl Machine {
                         match_count += 1
                     }
                 }
-    
+
                 if match_count >= self.quorum() {
-                    commit_index = i;
+                    commit_index = Some(i);
                 }
-    
+
                 i += 1;
             }
-    
+
             if commit_index <= self.commit_index {
                 return false;
             }
-    
-            self.commit_index = std::cmp::min(stored_index, commit_index);
-    
-            
+
+            self.commit_index = std::cmp::min(self.stored_index, commit_index);
         }
         true
     }
@@ -594,12 +592,8 @@ impl Machine {
 
                 // If we have some stored commits and the leader has commmitted some stuff
                 // Advance self.commit_index
-                if let Some(stored_index) = self.stored_index {
-                    if let Some(leader_commit) = leader_commit {
-                        if leader_commit > self.commit_index {
-                            self.commit_index = std::cmp::min(leader_commit, stored_index);
-                        }
-                    }
+                if leader_commit > self.commit_index {
+                    self.commit_index = std::cmp::min(leader_commit, self.stored_index);
                 }
 
                 self.reply(
@@ -667,12 +661,10 @@ impl Machine {
 
         for peer in self.peers.values() {
             let message = match self.stored_index {
-                None => {
-                    Message::AppendEntries {
-                        prev: None,
-                        entries: log.entries.clone(),
-                        leader_commit: Some(self.commit_index),
-                    }
+                None => Message::AppendEntries {
+                    prev: None,
+                    entries: log.entries.clone(),
+                    leader_commit: self.commit_index,
                 },
                 Some(stored_index) => {
                     let index = std::cmp::max(std::cmp::min(peer.next_index - 1, stored_index), 1);
@@ -681,7 +673,7 @@ impl Machine {
                     Message::AppendEntries {
                         prev: Some(Position { index, term }),
                         entries: log[index..].to_vec(),
-                        leader_commit: Some(self.commit_index),
+                        leader_commit: self.commit_index,
                     }
                 }
             };
@@ -1229,7 +1221,7 @@ mod tests {
                 entry: RegistryAction::Empty,
             }]
         );
-        assert_eq!(m.commit_index, 0);
+        assert_eq!(m.commit_index, None);
 
         assert_eq!(m.outbox.len(), 1);
         assert_eq!(

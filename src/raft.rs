@@ -131,7 +131,7 @@ impl Raft {
             };
 
             let mut machine = self.machine.lock().await;
-            let current_index = machine.commit_index as usize;
+            let current_index = machine.commit_index;
 
             match machine.step(&mut log, &envelope) {
                 Ok(()) => {
@@ -172,11 +172,9 @@ impl Raft {
                 }
             }
 
-            let next_index = machine.commit_index as usize;
-            if next_index - current_index > 0 {
-                println!("Commited");
+            if machine.commit_index > current_index {
                 if let Err(err) = self.events.send(RaftEvent::Committed {
-                    start_index: current_index as usize,
+                    start_index: current_index.unwrap_or(0),
                     entries: log[current_index..next_index].to_vec(),
                 }) {
                     warn!("Error while notifying of commit events: {err:?}");
