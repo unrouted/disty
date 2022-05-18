@@ -97,7 +97,7 @@ struct Peer {
     pub identifier: String,
     pub next_index: usize,
     pub match_index: usize,
-    pub check_quorum_count: u8,
+    pub check_quorum_count: u32,
 }
 pub struct Machine {
     pub identifier: String,
@@ -199,7 +199,7 @@ impl Machine {
         // Start at one because we count towards a quorum
         let mut count = 1;
         for peer in self.peers.values() {
-            if peer.check_quorum_count > 50 {
+            if peer.check_quorum_count > 500 {
                 count += 1;
             }
         }
@@ -1110,7 +1110,7 @@ mod tests {
 
         assert_eq!(m.state, PeerState::Leader);
 
-        for _ in 1..51 {
+        for _ in 1..501 {
             assert_eq!(m.state, PeerState::Leader);
 
             m.step(
