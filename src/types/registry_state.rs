@@ -92,6 +92,7 @@ pub struct RegistryState {
     webhook_send: tokio::sync::mpsc::Sender<Event>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    last_applied_index: Family<MachineMetricLabels, Gauge>,
 }
 
 impl RegistryState {
@@ -116,6 +117,7 @@ impl RegistryState {
             machine_identifier,
             manifest_waiters: Mutex::new(HashMap::new()),
             blob_waiters: Mutex::new(HashMap::new()),
+            last_applied_index,
         }
     }
 
@@ -357,10 +359,17 @@ impl RegistryState {
     pub async fn dispatch_entries(&self, event: RaftEvent) {
         match &event {
             RaftEvent::Committed {
-                start_index: _,
+                start_index: start_index,
                 entries,
             } => {
                 self.handle_raft_commit(entries.clone()).await;
+
+                let labels = MachineMetricLabels {
+                    identifier: self.machine_identifier.clone(),
+                };
+                self.last_applied_index
+                    .get_or_create(&labels)
+                    .set(start_index as u64);
             }
         }
 
