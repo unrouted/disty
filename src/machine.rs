@@ -97,6 +97,7 @@ struct Peer {
     pub identifier: String,
     pub next_index: usize,
     pub match_index: usize,
+    pub check_quorum_count: u8,
 }
 pub struct Machine {
     pub identifier: String,
@@ -137,6 +138,7 @@ impl Machine {
                         identifier: peer.name.clone(),
                         next_index: 0,
                         match_index: 0,
+                        check_quorum_count: 0,
                     },
                 );
             }
@@ -193,6 +195,20 @@ impl Machine {
         self.leader = None;
     }
 
+    fn check_quorum(&mut self) {
+        // Start at one because we count towards a quorum
+        let mut count = 1;
+        for peer in self.peers.values() {
+            if peer.check_quorum_count > 50 {
+                count += 1;
+            }
+        }
+
+        if count >= self.quorum() {
+            warn!("Machine: Could not reach majority of followers. Standing down.");
+            self.become_follower(self.term, None);
+        }
+    }
     fn become_follower(&mut self, term: usize, leader: Option<String>) {
         debug!("Became follower of {leader:?}");
 
@@ -585,6 +601,7 @@ impl Machine {
                 }
                 if matches!(self.state, PeerState::Leader) {
                     let mut peer = self.peers.get_mut(&envelope.source).unwrap();
+                    peer.check_quorum_count = 0;
                     peer.match_index =
                         std::cmp::min(log_index.unwrap(), self.stored_index.unwrap());
                     peer.next_index = peer.match_index + 1;
@@ -598,6 +615,7 @@ impl Machine {
                 }
                 if matches!(self.state, PeerState::Leader) {
                     let mut peer = self.peers.get_mut(&envelope.source).unwrap();
+                    peer.check_quorum_count = 0;
                     if peer.next_index > 1 {
                         peer.next_index -= 1;
                     }
@@ -608,6 +626,7 @@ impl Machine {
                 match self.state {
                     PeerState::Leader => {
                         self.broadcast_entries(log);
+                        self.check_quorum();
                     }
                     PeerState::Follower => {
                         // Heartbeat timeout - time to start thinking about elections
@@ -640,7 +659,7 @@ impl Machine {
     fn broadcast_entries(&mut self, log: &mut Log) {
         let mut messages: Vec<Envelope> = vec![];
 
-        for peer in self.peers.values() {
+        for peer in self.peers.values_mut() {
             let message = match self.stored_index {
                 None => Message::AppendEntries {
                     prev: None,
@@ -648,7 +667,7 @@ impl Machine {
                     leader_commit: self.commit_index,
                 },
                 Some(stored_index) => {
-                    let index = std::cmp::max(std::cmp::min(peer.next_index, stored_index), 1);
+                    let index = std::cmp::max(std::cmp::min(peer.next_index, stored_index), 0);
                     let term = log.get(index).term;
 
                     Message::AppendEntries {
@@ -665,6 +684,8 @@ impl Machine {
                 term: self.term,
                 message,
             });
+
+            peer.check_quorum_count += 1;
         }
         self.outbox.extend(messages);
 
@@ -1042,6 +1063,72 @@ mod tests {
     }
 
     #[test]
+    fn check_quorum_stand_down() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+
+        // A single prevote lets us become a candidate
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Candidate);
+
+        // A single vote lets us become a leader
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::VoteReply { reject: false },
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::Leader);
+
+        for _ in 1..51 {
+            assert_eq!(m.state, PeerState::Leader);
+
+            m.step(
+                &mut log,
+                &Envelope {
+                    source: "node2".to_string(),
+                    destination: "node1".to_string(),
+                    message: Message::Tick {},
+                    term: 0,
+                },
+            )
+            .unwrap();
+        }
+
+        assert_eq!(m.state, PeerState::Follower);
+    }
+
+    #[test]
     fn leader_handle_append_entries_reply_success() {
         let mut log = Log::default();
 
@@ -1180,11 +1267,13 @@ mod tests {
                     identifier: "node2".to_string(),
                     next_index: 4,
                     match_index: 3,
+                    check_quorum_count: 0,
                 },
                 Peer {
                     identifier: "node3".to_string(),
                     next_index: 4,
                     match_index: 3,
+                    check_quorum_count: 0,
                 }
             ]
         );
