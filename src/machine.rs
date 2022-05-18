@@ -443,11 +443,9 @@ impl Machine {
 
         self.stored_index = log.last_index();
 
-        if envelope.term > 0 {
-            if envelope.term < self.term {
-                debug!("Machine: Dropping message from old term");
-                return Ok(());
-            }
+        if envelope.term > 0 && envelope.term < self.term {
+            debug!("Machine: Dropping message from old term");
+            return Ok(());
         }
 
         match envelope.message.clone() {
@@ -1453,7 +1451,7 @@ mod tests {
         log.entries.extend(vec![LogEntry {
             term: 1,
             entry: RegistryAction::BlobMounted {
-                timestamp: timestamp.clone(),
+                timestamp,
                 digest: "sha256:1234".parse().unwrap(),
                 repository: "foo".parse().unwrap(),
                 user: "test".to_string(),
