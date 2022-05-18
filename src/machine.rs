@@ -17,14 +17,14 @@ const ELECTION_TICK_LOW: u64 = 150;
 const ELECTION_TICK_HIGH: u64 = 300;
 const HEARTBEAT_TICK: u64 = (ELECTION_TICK_LOW / 20) / 1000;
 
-fn find_first_inconsistency(ours: Vec<LogEntry>, theirs: Vec<LogEntry>) -> u64 {
+fn find_first_inconsistency(ours: Vec<LogEntry>, theirs: Vec<LogEntry>) -> usize {
     for (i, (our_entry, their_entry)) in ours.iter().zip(theirs.iter()).enumerate() {
         if our_entry.term != their_entry.term {
-            return i as u64;
+            return i;
         }
     }
 
-    std::cmp::min(ours.len() as u64, theirs.len() as u64)
+    std::cmp::min(ours.len(), theirs.len())
 }
 
 fn get_next_election_tick() -> tokio::time::Instant {
@@ -42,29 +42,34 @@ fn get_next_heartbeat_tick() -> tokio::time::Instant {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
+pub struct Position {
+    index: usize,
+    term: usize,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Deserialize, Serialize)]
 pub enum Message {
     Tick {},
     Vote {
-        index: u64,
+        index: usize,
     },
     VoteReply {
         reject: bool,
     },
     PreVote {
-        index: u64,
+        index: usize,
     },
     PreVoteReply {
         reject: bool,
     },
     AppendEntries {
-        leader_commit: u64,
-        prev_index: u64,
-        prev_term: u64,
+        leader_commit: Option<usize>,
+        prev: Option<Position>,
         entries: Vec<LogEntry>,
     },
+    AppendEntriesRejection {},
     AppendEntriesReply {
-        reject: bool,
-        log_index: Option<u64>,
+        log_index: Option<usize>,
     },
     AddEntries {
         entries: Vec<RegistryAction>,
@@ -75,7 +80,7 @@ pub enum Message {
 pub struct Envelope {
     pub source: String,
     pub destination: String,
-    pub term: u64,
+    pub term: usize,
     pub message: Message,
 }
 
@@ -90,8 +95,8 @@ pub enum PeerState {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Peer {
     pub identifier: String,
-    pub next_index: u64,
-    pub match_index: u64,
+    pub next_index: usize,
+    pub match_index: usize,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
@@ -101,7 +106,7 @@ struct MachineMetricLabels {
 pub struct Machine {
     pub identifier: String,
     pub state: PeerState,
-    pub term: u64,
+    pub term: usize,
     pub outbox: Vec<Envelope>,
     pub leader: Option<String>,
     peers: HashMap<String, Peer>,
@@ -110,16 +115,16 @@ pub struct Machine {
     vote_count: usize,
 
     // The index we are about to flush to disk
-    pub pending_index: u64,
+    pub pending_index: usize,
 
     // The index we have flushed to disk
-    pub stored_index: u64,
+    pub stored_index: Option<usize>,
 
     // The index we know has been written to disk for at least the quorum
-    pub commit_index: u64,
+    pub commit_index: usize,
 
     // The index this node has applied to its state machine
-    pub applied_index: u64,
+    pub applied_index: usize,
 
     obedient: bool,
     last_applied_index: Family<MachineMetricLabels, Gauge>,
@@ -199,7 +204,7 @@ impl Machine {
             obedient: true,
             outbox: vec![],
             pending_index: 0,
-            stored_index: 0,
+            stored_index: None,
             applied_index: 0,
             commit_index: 0,
             peers,
@@ -228,7 +233,7 @@ impl Machine {
         self.tick = get_next_heartbeat_tick();
     }
 
-    fn reset(&mut self, term: u64) {
+    fn reset(&mut self, term: usize) {
         if term != self.term {
             self.term = term;
             self.voted_for = None;
@@ -237,7 +242,7 @@ impl Machine {
         self.leader = None;
     }
 
-    fn become_follower(&mut self, term: u64, leader: Option<String>) {
+    fn become_follower(&mut self, term: usize, leader: Option<String>) {
         debug!("Became follower of {leader:?}");
 
         self.state = PeerState::Follower;
@@ -266,7 +271,7 @@ impl Machine {
                 self.envelope(
                     self.term + 1,
                     Message::PreVote {
-                        index: self.stored_index,
+                        index: self.stored_index.unwrap(),
                     },
                     p,
                 )
@@ -296,7 +301,7 @@ impl Machine {
                 self.envelope(
                     self.term,
                     Message::Vote {
-                        index: self.stored_index,
+                        index: self.stored_index.unwrap(),
                     },
                     p,
                 )
@@ -312,7 +317,7 @@ impl Machine {
         self.reset_election_tick();
 
         for peer in self.peers.values_mut() {
-            peer.next_index = self.stored_index + 1;
+            peer.next_index = self.stored_index.unwrap();
             peer.match_index = 0;
         }
 
@@ -369,9 +374,11 @@ impl Machine {
             return false;
         }
 
-        if self.stored_index > index {
-            debug!("Machine: We know more than them");
-            return false;
+        if let Some(stored_index) = self.stored_index {
+            if stored_index > index {
+                debug!("Machine: We know more than them");
+                return false;
+            }    
         }
 
         // We have already voted for this node
@@ -399,37 +406,40 @@ impl Machine {
         let mut commit_index = 0;
         let mut i = std::cmp::max(self.commit_index, 1);
 
-        if self.stored_index == self.commit_index {
-            return true;
-        }
-
-        while i <= self.stored_index {
-            if log.get(i).term != self.term {
-                i += 1;
-                continue;
+        if let Some(stored_index) = self.stored_index {
+            if stored_index == self.commit_index {
+                return true;
             }
-
-            // Start counting at 1 because we count as a vote
-            let mut match_count = 1;
-            for peer in self.peers.values() {
-                if peer.match_index >= i {
-                    match_count += 1
+    
+            while i <= stored_index {
+                if log.get(i).term != self.term {
+                    i += 1;
+                    continue;
                 }
+    
+                // Start counting at 1 because we count as a vote
+                let mut match_count = 1;
+                for peer in self.peers.values() {
+                    if peer.match_index >= i {
+                        match_count += 1
+                    }
+                }
+    
+                if match_count >= self.quorum() {
+                    commit_index = i;
+                }
+    
+                i += 1;
             }
-
-            if match_count >= self.quorum() {
-                commit_index = i;
+    
+            if commit_index <= self.commit_index {
+                return false;
             }
-
-            i += 1;
+    
+            self.commit_index = std::cmp::min(stored_index, commit_index);
+    
+            
         }
-
-        if commit_index <= self.commit_index {
-            return false;
-        }
-
-        self.commit_index = std::cmp::min(self.stored_index, commit_index);
-
         true
     }
 
@@ -438,7 +448,7 @@ impl Machine {
 
         log.truncate_index = None;
 
-        self.stored_index = log.last_index();
+        self.stored_index = Some(log.last_index());
 
         if envelope.term > 0 && envelope.term < self.term {
             debug!("Machine: Dropping message from old term");
@@ -508,35 +518,59 @@ impl Machine {
 
             Message::AppendEntries {
                 leader_commit,
-                prev_index,
-                prev_term,
+                prev,
                 entries,
             } => {
-                if prev_index > self.stored_index {
-                    debug!("Leader assumed we had log entry {prev_index} but we do not");
-                    self.reply(
-                        envelope,
-                        self.term,
-                        Message::AppendEntriesReply {
-                            reject: true,
-                            log_index: None,
-                        },
-                    );
-                    return Ok(());
-                }
+                let entries = match prev {
+                    None => {
+                        if self.stored_index.is_some() {
+                            debug!("Need to clear local state to recover");
+                            log.truncate(0);
+                        }
 
-                if prev_index > 0 && log.get(prev_index).term != prev_term {
-                    warn!("Log not valid - mismatched terms");
-                    self.reply(
-                        envelope,
-                        self.term,
-                        Message::AppendEntriesReply {
-                            reject: true,
-                            log_index: None,
-                        },
-                    );
-                    return Ok(());
-                }
+                        entries
+                    }
+                    Some(Position { index, term }) => {
+                        match self.stored_index {
+                            None => {}
+                            Some(stored_index) => {
+                                if index > stored_index {
+                                    debug!("Leader assumed we had log entry {index} but we do not");
+                                    self.reply(
+                                        envelope,
+                                        self.term,
+                                        Message::AppendEntriesRejection {},
+                                    );
+                                    return Ok(());
+                                }
+
+                                if log.get(index).term != term {
+                                    warn!("Log not valid - mismatched terms");
+                                    self.reply(
+                                        envelope,
+                                        self.term,
+                                        Message::AppendEntriesRejection {},
+                                    );
+                                    return Ok(());
+                                }
+
+                                let offset = find_first_inconsistency(
+                                    log[index..].to_vec(),
+                                    entries.clone(),
+                                );
+                                let prev_index = index + offset;
+                                let entries = entries[offset..].to_vec();
+
+                                if stored_index > prev_index {
+                                    warn!("Need to truncate log to recover quorum");
+                                    log.truncate(prev_index);
+                                }
+                            }
+                        };
+
+                        entries
+                    }
+                };
 
                 match self.state {
                     PeerState::Follower => {
@@ -550,49 +584,49 @@ impl Machine {
                 self.obedient = true;
                 self.leader = Some(envelope.source.clone());
 
-                let offset = find_first_inconsistency(
-                    log[prev_index as usize + 1..].to_vec(),
-                    entries.clone(),
-                );
-                let prev_index = prev_index + offset;
-                let entries = entries[offset as usize..].to_vec();
-
-                if self.stored_index > prev_index {
-                    warn!("Need to truncate log to recover quorum");
-                    log.truncate(prev_index);
-                }
-
                 for entry in entries {
                     log.append(entry.clone());
                 }
 
-                if leader_commit > self.commit_index {
-                    self.commit_index = std::cmp::min(leader_commit, self.stored_index);
+                // FIXME: As it stands stored_index won't advance immediately
+                // So log_index will lag, and the master will re-send stuff maybe?
+                // Investigate whether next_index and match_index help here
+
+                // If we have some stored commits and the leader has commmitted some stuff
+                // Advance self.commit_index
+                if let Some(stored_index) = self.stored_index {
+                    if let Some(leader_commit) = leader_commit {
+                        if leader_commit > self.commit_index {
+                            self.commit_index = std::cmp::min(leader_commit, stored_index);
+                        }
+                    }
                 }
 
                 self.reply(
                     envelope,
                     self.term,
                     Message::AppendEntriesReply {
-                        reject: false,
-                        log_index: Some(self.stored_index),
+                        log_index: self.stored_index,
                     },
                 );
             }
-            Message::AppendEntriesReply { reject, log_index } => {
+            Message::AppendEntriesReply { log_index } => {
                 if matches!(self.state, PeerState::Leader) {
                     let mut peer = self.peers.get_mut(&envelope.source).unwrap();
-
-                    if reject {
-                        if peer.next_index > 1 {
-                            peer.next_index -= 1;
-                        }
-                        return Ok(());
-                    }
-
-                    peer.match_index = std::cmp::min(log_index.unwrap(), self.stored_index);
+                    peer.match_index =
+                        std::cmp::min(log_index.unwrap(), self.stored_index.unwrap());
                     peer.next_index = peer.match_index + 1;
                     self.maybe_commit(log);
+                    return Ok(());
+                }
+            }
+            Message::AppendEntriesRejection {} => {
+                if matches!(self.state, PeerState::Leader) {
+                    let mut peer = self.peers.get_mut(&envelope.source).unwrap();
+                    if peer.next_index > 1 {
+                        peer.next_index -= 1;
+                    }
+                    return Ok(());
                 }
             }
             Message::Tick {} => {
@@ -619,7 +653,7 @@ impl Machine {
         Ok(())
     }
 
-    fn envelope(&self, term: u64, message: Message, peer: &Peer) -> Envelope {
+    fn envelope(&self, term: usize, message: Message, peer: &Peer) -> Envelope {
         Envelope {
             source: self.identifier.clone(),
             destination: peer.identifier.clone(),
@@ -632,20 +666,31 @@ impl Machine {
         let mut messages: Vec<Envelope> = vec![];
 
         for peer in self.peers.values() {
-            let prev_index =
-                std::cmp::max(std::cmp::min(peer.next_index - 1, self.stored_index), 1);
-            let prev_term = log.get(prev_index).term;
+            let message = match self.stored_index {
+                None => {
+                    Message::AppendEntries {
+                        prev: None,
+                        entries: log.entries.clone(),
+                        leader_commit: Some(self.commit_index),
+                    }
+                },
+                Some(stored_index) => {
+                    let index = std::cmp::max(std::cmp::min(peer.next_index - 1, stored_index), 1);
+                    let term = log.get(index).term;
+
+                    Message::AppendEntries {
+                        prev: Some(Position { index, term }),
+                        entries: log[index..].to_vec(),
+                        leader_commit: Some(self.commit_index),
+                    }
+                }
+            };
 
             messages.push(Envelope {
                 source: self.identifier.clone(),
                 destination: peer.identifier.clone(),
                 term: self.term,
-                message: Message::AppendEntries {
-                    prev_index,
-                    prev_term,
-                    entries: log[prev_index as usize..].to_vec(),
-                    leader_commit: self.commit_index,
-                },
+                message,
             });
         }
         self.outbox.extend(messages);
@@ -655,7 +700,7 @@ impl Machine {
         self.reset_heartbeat_tick();
     }
 
-    fn reply(&mut self, envelope: &Envelope, term: u64, message: Message) {
+    fn reply(&mut self, envelope: &Envelope, term: usize, message: Message) {
         self.outbox.push(Envelope {
             source: self.identifier.clone(),
             destination: envelope.source.clone(),
@@ -995,9 +1040,8 @@ mod tests {
                     destination: "node2".to_string(),
                     term: 2,
                     message: Message::AppendEntries {
-                        leader_commit: 0,
-                        prev_index: 1,
-                        prev_term: 2,
+                        leader_commit: Some(0),
+                        prev: Some(Position { index: 1, term: 2 }),
                         entries: vec![]
                     }
                 },
@@ -1006,9 +1050,8 @@ mod tests {
                     destination: "node3".to_string(),
                     term: 2,
                     message: Message::AppendEntries {
-                        leader_commit: 0,
-                        prev_index: 1,
-                        prev_term: 2,
+                        leader_commit: Some(0),
+                        prev: Some(Position { index: 1, term: 2 }),
                         entries: vec![]
                     }
                 }
@@ -1085,9 +1128,9 @@ mod tests {
                     destination: "node2".to_string(),
                     term: 2,
                     message: Message::AppendEntries {
-                        leader_commit: 0,
-                        prev_index: 3,
-                        prev_term: 1,
+                        leader_commit: Some(0),
+                        prev: Some(Position { index: 3, term: 1 }),
+
                         entries: vec![LogEntry {
                             term: 2,
                             entry: RegistryAction::Empty,
@@ -1099,9 +1142,9 @@ mod tests {
                     destination: "node3".to_string(),
                     term: 2,
                     message: Message::AppendEntries {
-                        leader_commit: 0,
-                        prev_index: 3,
-                        prev_term: 1,
+                        leader_commit: Some(0),
+                        prev: Some(Position { index: 3, term: 1 }),
+
                         entries: vec![LogEntry {
                             term: 2,
                             entry: RegistryAction::Empty,
@@ -1116,10 +1159,7 @@ mod tests {
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
-                message: Message::AppendEntriesReply {
-                    reject: false,
-                    log_index: Some(4),
-                },
+                message: Message::AppendEntriesReply { log_index: Some(4) },
                 term: 0,
             },
         )
@@ -1130,10 +1170,7 @@ mod tests {
             &Envelope {
                 source: "node3".to_string(),
                 destination: "node1".to_string(),
-                message: Message::AppendEntriesReply {
-                    reject: false,
-                    log_index: Some(4),
-                },
+                message: Message::AppendEntriesReply { log_index: Some(4) },
                 term: 0,
             },
         )
@@ -1170,9 +1207,8 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
-                    leader_commit: 0,
-                    prev_index: 0,
-                    prev_term: 0,
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 0, term: 0 }),
                     entries: vec![LogEntry {
                         term: 2,
                         entry: RegistryAction::Empty,
@@ -1202,10 +1238,7 @@ mod tests {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
                 term: 2,
-                message: Message::AppendEntriesReply {
-                    reject: false,
-                    log_index: Some(2),
-                }
+                message: Message::AppendEntriesReply { log_index: Some(2) }
             },]
         );
     }
@@ -1405,9 +1438,8 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
-                    leader_commit: 0,
-                    prev_index: 2,
-                    prev_term: 3,
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 2, term: 3 }),
                     entries: vec![],
                 },
                 term: 3,
@@ -1429,10 +1461,7 @@ mod tests {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
                 term: 2,
-                message: Message::AppendEntriesReply {
-                    reject: true,
-                    log_index: None,
-                }
+                message: Message::AppendEntriesRejection {}
             },]
         );
 
@@ -1442,9 +1471,8 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
-                    leader_commit: 0,
-                    prev_index: 1,
-                    prev_term: 1,
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 1, term: 1 }),
                     entries: vec![],
                 },
                 term: 3,
@@ -1453,23 +1481,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            log[1],
-            LogEntry {
-                term: 3,
-                entry: RegistryAction::Empty
-            }
-        );
-        assert_eq!(
             m.outbox,
             vec![Envelope {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
                 term: 2,
-                message: Message::AppendEntriesReply {
-                    reject: false,
-                    log_index: Some(2),
-                }
+                message: Message::AppendEntriesReply { log_index: Some(2) }
             },]
+        );
+
+        assert_eq!(
+            log.entries,
+            vec![LogEntry {
+                term: 3,
+                entry: RegistryAction::Empty
+            }]
         );
     }
 

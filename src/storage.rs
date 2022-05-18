@@ -10,7 +10,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub async fn new(config: Configuration) -> (Self, u64, Log) {
+    pub async fn new(config: Configuration) -> (Self, usize, Log) {
         let path = std::path::PathBuf::from(&config.storage).join("term");
         let mut log = Log::default();
 
@@ -44,7 +44,7 @@ impl Storage {
 
         println!("Debug: {buffer}");
 
-        let term_value: u64 = match serde_json::from_str(&buffer) {
+        let term_value: usize = match serde_json::from_str(&buffer) {
             Ok(term_value) => term_value,
             Err(err) => {
                 panic!("term file is corrupt: {err:?}");
@@ -82,7 +82,7 @@ impl Storage {
         (Storage { file, term }, term_value, log)
     }
 
-    pub async fn step(&mut self, log: &mut Log, term: u64) {
+    pub async fn step(&mut self, log: &mut Log, term: usize) {
         if let Err(err) = self.term.seek(SeekFrom::Start(0)).await {
             warn!("Error truncating term: {err:?}");
             return;

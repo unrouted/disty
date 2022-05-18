@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Deserialize)]
 pub struct Submission {
-    pub index: u64,
+    pub index: usize,
 }
 
 pub struct RpcClient {
@@ -134,7 +134,7 @@ impl RpcClient {
                         }) => {
                             println!("Result: {start_index} {entries:?}");
 
-                            let last_index = start_index + entries.len() as u64;
+                            let last_index = start_index + entries.len() as usize;
                             if index > last_index {
                                 println!("{index} > {last_index} - waiting for next commit");
                                 continue;

@@ -18,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
     Committed {
-        start_index: u64,
+        start_index: usize,
         entries: Vec<LogEntry>,
     },
 }
@@ -31,8 +31,8 @@ struct RaftQueueEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaftQueueResult {
-    pub index: u64,
-    pub term: u64,
+    pub index: usize,
+    pub term: usize,
 }
 
 pub struct Raft {
@@ -159,7 +159,7 @@ impl Raft {
             }
 
             storage.step(&mut log, machine.term).await;
-            machine.stored_index = log.last_index();
+            machine.stored_index = Some(log.last_index());
 
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {
@@ -176,7 +176,7 @@ impl Raft {
             if next_index - current_index > 0 {
                 println!("Commited");
                 if let Err(err) = self.events.send(RaftEvent::Committed {
-                    start_index: current_index as u64,
+                    start_index: current_index as usize,
                     entries: log[current_index..next_index].to_vec(),
                 }) {
                     warn!("Error while notifying of commit events: {err:?}");
