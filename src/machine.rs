@@ -211,7 +211,6 @@ impl Machine {
     }
     fn become_follower(&mut self, term: usize, leader: Option<String>) {
         debug!("Became follower of {leader:?}");
-
         self.state = PeerState::Follower;
         self.reset(term);
         self.leader = leader;
@@ -418,11 +417,6 @@ impl Machine {
 
         self.stored_index = log.last_index();
 
-        if envelope.term > 0 && envelope.term < self.term {
-            debug!("Machine: Dropping message from old term");
-            return Ok(());
-        }
-
         match envelope.message.clone() {
             Message::AddEntries { entries } => match self.state {
                 PeerState::Leader => {
@@ -440,12 +434,19 @@ impl Machine {
                 }
             },
             Message::Vote { index: _ } => {
+
+                if envelope.term < self.term {
+                    debug!("Machine: Vote: Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
+
                 if envelope.term <= self.term {
                     debug!("Vote for {} rejected", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
                     return Ok(());
                 }
 
+                debug!("Become follower because vote");
                 self.become_follower(envelope.term, None);
 
                 if !self.can_vote(envelope) {
@@ -462,6 +463,12 @@ impl Machine {
             }
 
             Message::VoteReply { reject } => {
+
+                if envelope.term < self.term {
+                    debug!("Machine:VoteReply:  Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
+
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
                     return Ok(());
@@ -477,6 +484,11 @@ impl Machine {
             }
 
             Message::PreVote { index: _ } => {
+                if envelope.term < self.term {
+                    debug!("Machine: PreVote: Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
+
                 if !self.can_vote(envelope) {
                     debug!("Vote for {} rejected", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
@@ -488,8 +500,8 @@ impl Machine {
             }
 
             Message::PreVoteReply { reject } => {
-                if envelope.term > self.term {
-                    self.become_follower(envelope.term, None);
+                if envelope.term < self.term {
+                    debug!("Machine: PreVoteReply: Dropping message from old term: {} {}", envelope.term, self.term);
                     return Ok(());
                 }
 
@@ -507,6 +519,11 @@ impl Machine {
                 prev,
                 entries,
             } => {
+                if envelope.term < self.term {
+                    debug!("Machine: Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
+
                 let entries = match prev {
                     None => {
                         if self.stored_index.is_some() {
@@ -596,6 +613,10 @@ impl Machine {
                 );
             }
             Message::AppendEntriesReply { log_index } => {
+                if envelope.term < self.term {
+                    debug!("Machine: AppendEntriesReply: Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
                 }
@@ -610,6 +631,10 @@ impl Machine {
                 }
             }
             Message::AppendEntriesRejection {} => {
+                if envelope.term < self.term {
+                    debug!("Machine: AppendEntriesRejection: Dropping message from old term: {} {}", envelope.term, self.term);
+                    return Ok(());
+                }
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
                 }
@@ -634,6 +659,7 @@ impl Machine {
                     }
                     PeerState::PreCandidate => {
                         // Pre-election timed out before receiving all votes
+                        debug!("PreCandidate tick");
                         self.become_follower(self.term, None);
                     }
                     PeerState::Candidate => {
@@ -871,6 +897,40 @@ mod tests {
     }
 
     #[test]
+    fn pre_vote_reject_old_term() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node1".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Tick {},
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+
+        // A single prevote lets us become a candidate
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVoteReply { reject: false },
+                term: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.state, PeerState::PreCandidate);
+    }
+
+    #[test]
     fn cluster_node_become_candidate() {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
@@ -897,7 +957,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: 0,
+                term: m.term,
             },
         )
         .unwrap();
@@ -952,7 +1012,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: 0,
+                term: m.term,
             },
         )
         .unwrap();
@@ -1004,7 +1064,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: 0,
+                term: m.term,
             },
         )
         .unwrap();
@@ -1020,7 +1080,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::VoteReply { reject: false },
-                term: 0,
+                term: 2,
             },
         )
         .unwrap();
@@ -1088,7 +1148,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: 0,
+                term: 2,
             },
         )
         .unwrap();
@@ -1103,7 +1163,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::VoteReply { reject: false },
-                term: 0,
+                term: 2,
             },
         )
         .unwrap();
@@ -1154,7 +1214,7 @@ mod tests {
                 source: "node1".to_string(),
                 destination: "node1".to_string(),
                 message: Message::Tick {},
-                term: 1,
+                term: 0,
             },
         )
         .unwrap();
@@ -1167,7 +1227,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: 0,
+                term: m.term,
             },
         )
         .unwrap();
@@ -1180,7 +1240,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::VoteReply { reject: false },
-                term: 0,
+                term: m.term,
             },
         )
         .unwrap();
@@ -1241,7 +1301,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntriesReply { log_index: Some(4) },
-                term: 0,
+                term: 2,
             },
         )
         .unwrap();
@@ -1252,7 +1312,7 @@ mod tests {
                 source: "node3".to_string(),
                 destination: "node1".to_string(),
                 message: Message::AppendEntriesReply { log_index: Some(4) },
-                term: 0,
+                term: 2,
             },
         )
         .unwrap();
