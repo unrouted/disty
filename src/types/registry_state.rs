@@ -7,9 +7,9 @@ use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use chrono::DateTime;
 use chrono::Utc;
+use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
-use prometheus_client::{encoding::text::Encode, metrics::family::Family};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use tokio::sync::oneshot;
@@ -359,7 +359,7 @@ impl RegistryState {
     pub async fn dispatch_entries(&self, event: RaftEvent) {
         match &event {
             RaftEvent::Committed {
-                start_index: start_index,
+                start_index,
                 entries,
             } => {
                 self.handle_raft_commit(entries.clone()).await;
@@ -369,7 +369,7 @@ impl RegistryState {
                 };
                 self.last_applied_index
                     .get_or_create(&labels)
-                    .set(start_index as u64);
+                    .set(*start_index as u64);
             }
         }
 
