@@ -528,9 +528,10 @@ impl Machine {
 
                         entries
                     }
+
                     Some(Position { index, term }) => {
                         match self.stored_index {
-                            None => {}
+                            None => entries,
                             Some(stored_index) => {
                                 if index > stored_index {
                                     debug!("Leader assumed we had log entry {index} but we do not");
@@ -557,16 +558,15 @@ impl Machine {
                                     entries.clone(),
                                 );
                                 let prev_index = index + offset;
-                                let entries = entries[offset..].to_vec();
 
                                 if stored_index > prev_index {
                                     warn!("Need to truncate log to recover quorum");
                                     log.truncate(prev_index);
                                 }
-                            }
-                        };
 
-                        entries
+                                entries[offset..].to_vec()
+                            }
+                        }
                     }
                 };
 
