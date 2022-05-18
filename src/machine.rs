@@ -1,8 +1,7 @@
 use log::{debug, warn};
-use prometheus_client::encoding::text::Encode;
-use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use prometheus_client::{encoding::text::Encode, metrics::family::Family};
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -98,11 +97,11 @@ struct Peer {
     pub next_index: usize,
     pub match_index: usize,
 }
-
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
 struct MachineMetricLabels {
     identifier: String,
 }
+
 pub struct Machine {
     pub identifier: String,
     pub state: PeerState,
@@ -127,58 +126,12 @@ pub struct Machine {
     pub applied_index: usize,
 
     obedient: bool,
-    last_applied_index: Family<MachineMetricLabels, Gauge>,
+
     last_committed: Family<MachineMetricLabels, Gauge>,
-    last_saved: Family<MachineMetricLabels, Gauge>,
-    last_term_saved: Family<MachineMetricLabels, Gauge>,
-    current_term: Family<MachineMetricLabels, Gauge>,
-    current_state: Family<MachineMetricLabels, Gauge>,
 }
 
 impl Machine {
     pub fn new(config: Configuration, registry: &mut Registry) -> Self {
-        let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_last_applied_index",
-            "Last index that was applied",
-            Box::new(last_applied_index.clone()),
-        );
-
-        let last_committed = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_last_committed",
-            "Last index that was committed",
-            Box::new(last_committed.clone()),
-        );
-
-        let last_saved = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_last_saved",
-            "Last index that was stored in the commit log",
-            Box::new(last_saved.clone()),
-        );
-
-        let last_term_saved = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_last_saved_term",
-            "Last term that was stored in the commit log",
-            Box::new(last_term_saved.clone()),
-        );
-
-        let current_term = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_current_term",
-            "The current term for a node",
-            Box::new(current_term.clone()),
-        );
-
-        let current_state = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_current_state",
-            "The current state for a node",
-            Box::new(current_state.clone()),
-        );
-
         let mut peers = HashMap::new();
         for peer in config.peers {
             if peer.name != config.identifier {
@@ -192,6 +145,13 @@ impl Machine {
                 );
             }
         }
+
+        let last_committed = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_committed",
+            "Last index that was committed",
+            Box::new(last_committed.clone()),
+        );
 
         Machine {
             identifier: config.identifier,
@@ -208,12 +168,7 @@ impl Machine {
             applied_index: 0,
             commit_index: None,
             peers,
-            last_applied_index,
             last_committed,
-            last_saved,
-            last_term_saved,
-            current_term,
-            current_state,
         }
     }
 
@@ -397,9 +352,9 @@ impl Machine {
         true
     }
 
-    fn maybe_commit(&mut self, log: &mut Log) -> bool {
+    fn maybe_commit(&mut self, log: &mut Log) {
         if self.stored_index == self.commit_index {
-            return true;
+            return;
         }
 
         let mut commit_index = None;
@@ -428,12 +383,20 @@ impl Machine {
             }
 
             if commit_index <= self.commit_index {
-                return false;
+                return;
             }
 
             self.commit_index = std::cmp::min(self.stored_index, commit_index);
+
+            if let Some(commit_index) = self.commit_index {
+                let labels = MachineMetricLabels {
+                    identifier: self.identifier.clone(),
+                };
+                self.last_committed
+                    .get_or_create(&labels)
+                    .set(commit_index as u64);
+            }
         }
-        true
     }
 
     pub fn step(&mut self, log: &mut Log, envelope: &Envelope) -> Result<(), String> {

@@ -1,6 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
-
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
+use prometheus_client::{encoding::text::Encode, metrics::family::Family};
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
 use tokio::{
     select,
     sync::{broadcast, Mutex},
@@ -14,6 +16,11 @@ use crate::{
     storage::Storage,
     types::Broadcast,
 };
+
+#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+struct MachineMetricLabels {
+    identifier: String,
+}
 
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
@@ -42,6 +49,11 @@ pub struct Raft {
     inbox_rx: Mutex<tokio::sync::mpsc::Receiver<RaftQueueEntry>>,
     pub events: broadcast::Sender<RaftEvent>,
     clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
+    last_applied_index: Family<MachineMetricLabels, Gauge>,
+    last_saved: Family<MachineMetricLabels, Gauge>,
+    last_term_saved: Family<MachineMetricLabels, Gauge>,
+    current_term: Family<MachineMetricLabels, Gauge>,
+    current_state: Family<MachineMetricLabels, Gauge>,
 }
 
 impl Raft {
@@ -49,9 +61,45 @@ impl Raft {
         config: Configuration,
         machine: Arc<Mutex<Machine>>,
         clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
+        registry: &mut Registry,
     ) -> Self {
         let (tx, _) = broadcast::channel::<RaftEvent>(100);
         let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<RaftQueueEntry>(100);
+
+        let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_applied_index",
+            "Last index that was applied",
+            Box::new(last_applied_index.clone()),
+        );
+
+        let last_saved = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_saved",
+            "Last index that was stored in the commit log",
+            Box::new(last_saved.clone()),
+        );
+
+        let last_term_saved = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_saved_term",
+            "Last term that was stored in the commit log",
+            Box::new(last_term_saved.clone()),
+        );
+
+        let current_term = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_current_term",
+            "The current term for a node",
+            Box::new(current_term.clone()),
+        );
+
+        let current_state = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_current_state",
+            "The current state for a node",
+            Box::new(current_state.clone()),
+        );
 
         Self {
             config,
@@ -60,6 +108,11 @@ impl Raft {
             inbox,
             inbox_rx: Mutex::new(inbox_rx),
             clients,
+            last_applied_index,
+            last_saved,
+            last_term_saved,
+            current_term,
+            current_state,
         }
     }
 
@@ -189,6 +242,22 @@ impl Raft {
                     }
                 }
             }
+
+            let labels = MachineMetricLabels {
+                identifier: self.config.identifier.clone(),
+            };
+            self.last_saved
+                .get_or_create(&labels)
+                .set(machine.stored_index.unwrap_or(0) as u64);
+            self.last_term_saved
+                .get_or_create(&labels)
+                .set(machine.applied_index as u64);
+            self.current_term
+                .get_or_create(&labels)
+                .set(machine.applied_index as u64);
+            self.current_state
+                .get_or_create(&labels)
+                .set(machine.applied_index as u64);
 
             next_tick = machine.tick;
         }

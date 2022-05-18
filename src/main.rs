@@ -61,7 +61,12 @@ async fn main() {
 
     let clients = crate::rpc::start_rpc_client(config.clone());
 
-    let raft = Arc::new(Raft::new(config.clone(), machine.clone(), clients));
+    let raft = Arc::new(Raft::new(
+        config.clone(),
+        machine.clone(),
+        clients,
+        &mut registry,
+    ));
 
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,
