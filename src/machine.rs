@@ -434,9 +434,11 @@ impl Machine {
                 }
             },
             Message::Vote { index: _ } => {
-
                 if envelope.term < self.term {
-                    debug!("Machine: Vote: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: Vote: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
 
@@ -463,9 +465,11 @@ impl Machine {
             }
 
             Message::VoteReply { reject } => {
-
                 if envelope.term < self.term {
-                    debug!("Machine:VoteReply:  Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine:VoteReply:  Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
 
@@ -485,7 +489,10 @@ impl Machine {
 
             Message::PreVote { index: _ } => {
                 if envelope.term < self.term {
-                    debug!("Machine: PreVote: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: PreVote: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
 
@@ -501,7 +508,10 @@ impl Machine {
 
             Message::PreVoteReply { reject } => {
                 if envelope.term < self.term {
-                    debug!("Machine: PreVoteReply: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: PreVoteReply: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
 
@@ -520,7 +530,10 @@ impl Machine {
                 entries,
             } => {
                 if envelope.term < self.term {
-                    debug!("Machine: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
 
@@ -614,7 +627,10 @@ impl Machine {
             }
             Message::AppendEntriesReply { log_index } => {
                 if envelope.term < self.term {
-                    debug!("Machine: AppendEntriesReply: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: AppendEntriesReply: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
                 if envelope.term > self.term {
@@ -632,7 +648,10 @@ impl Machine {
             }
             Message::AppendEntriesRejection {} => {
                 if envelope.term < self.term {
-                    debug!("Machine: AppendEntriesRejection: Dropping message from old term: {} {}", envelope.term, self.term);
+                    debug!(
+                        "Machine: AppendEntriesRejection: Dropping message from old term: {} {}",
+                        envelope.term, self.term
+                    );
                     return Ok(());
                 }
                 if envelope.term > self.term {
