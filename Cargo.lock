@@ -1021,7 +1021,8 @@ dependencies = [
 [[package]]
 name = "jwt-simple"
 version = "0.11.0"
-source = "git+https://github.com/jedisct1/rust-jwt-simple#8b5fef9b4d763b76452a0e68cb77d0cfb317767d"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cf3a9f4c365a97b89e846cdb1c18dddbeafa692ebef1005cea26b8f04386e43"
 dependencies = [
  "anyhow",
  "coarsetime",
