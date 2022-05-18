@@ -7,11 +7,15 @@ use crate::types::{Digest, RepositoryName};
 use crate::webhook::Event;
 use chrono::DateTime;
 use chrono::Utc;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
+use prometheus_client::{encoding::text::Encode, metrics::family::Family};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 
+use super::MachineMetricLabels;
 use super::{BlobEntry, ManifestEntry};
 
 #[derive(Default)]
@@ -94,8 +98,16 @@ impl RegistryState {
     pub fn new(
         webhook_send: tokio::sync::mpsc::Sender<Event>,
         machine_identifier: String,
+        registry: &mut Registry,
     ) -> RegistryState {
         let (tx, _) = tokio::sync::broadcast::channel::<RaftEvent>(100);
+
+        let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
+        registry.register(
+            "distribd_last_applied_index",
+            "Last index that was applied",
+            Box::new(last_applied_index.clone()),
+        );
 
         RegistryState {
             state: Mutex::new(Store::default()),
@@ -522,8 +534,9 @@ mod tests {
 
     fn setup_state() -> RegistryState {
         let (tx, _) = tokio::sync::mpsc::channel::<crate::webhook::Event>(100);
+        let mut registry = <prometheus_client::registry::Registry>::default();
 
-        RegistryState::new(tx, "foo".to_string())
+        RegistryState::new(tx, "foo".to_string(), &mut registry)
     }
 
     // BLOB TESTS

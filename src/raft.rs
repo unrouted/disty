@@ -9,6 +9,7 @@ use tokio::{
     time::Instant,
 };
 
+use crate::types::MachineMetricLabels;
 use crate::{
     config::Configuration,
     log::LogEntry,
@@ -16,11 +17,6 @@ use crate::{
     storage::Storage,
     types::Broadcast,
 };
-
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
-struct MachineMetricLabels {
-    identifier: String,
-}
 
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
@@ -49,7 +45,6 @@ pub struct Raft {
     inbox_rx: Mutex<tokio::sync::mpsc::Receiver<RaftQueueEntry>>,
     pub events: broadcast::Sender<RaftEvent>,
     clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
-    last_applied_index: Family<MachineMetricLabels, Gauge>,
     last_saved: Family<MachineMetricLabels, Gauge>,
     last_term_saved: Family<MachineMetricLabels, Gauge>,
     current_term: Family<MachineMetricLabels, Gauge>,
@@ -65,13 +60,6 @@ impl Raft {
     ) -> Self {
         let (tx, _) = broadcast::channel::<RaftEvent>(100);
         let (inbox, inbox_rx) = tokio::sync::mpsc::channel::<RaftQueueEntry>(100);
-
-        let last_applied_index = Family::<MachineMetricLabels, Gauge>::default();
-        registry.register(
-            "distribd_last_applied_index",
-            "Last index that was applied",
-            Box::new(last_applied_index.clone()),
-        );
 
         let last_saved = Family::<MachineMetricLabels, Gauge>::default();
         registry.register(
@@ -108,7 +96,6 @@ impl Raft {
             inbox,
             inbox_rx: Mutex::new(inbox_rx),
             clients,
-            last_applied_index,
             last_saved,
             last_term_saved,
             current_term,

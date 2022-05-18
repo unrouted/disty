@@ -6,6 +6,7 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::types::MachineMetricLabels;
 use crate::{
     config::Configuration,
     log::{Log, LogEntry},
@@ -97,11 +98,6 @@ struct Peer {
     pub next_index: usize,
     pub match_index: usize,
 }
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
-struct MachineMetricLabels {
-    identifier: String,
-}
-
 pub struct Machine {
     pub identifier: String,
     pub state: PeerState,

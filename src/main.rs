@@ -71,6 +71,7 @@ async fn main() {
     let state = Arc::new(crate::types::RegistryState::new(
         webhook_send,
         machine_identifier,
+        &mut registry,
     ));
 
     let rpc_client = Arc::new(rpc::RpcClient::new(
