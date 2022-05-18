@@ -1,8 +1,8 @@
 # distribd
 
-A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. The nodes can tolerate outages as long as there is a quorum.
+A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. A cluster of nodes can tolerate outages as long as there is a quorum.
 
-:exclamation: `distribd` is currently still in Alpha. :exclamation:
+:exclamation: `distribd` is currently still in Alpha. In particular, we just moved from Python to Rust. Stay away unless you want to help fix bugs. :exclamation:
 
 ## Is it for me?
 
@@ -14,7 +14,7 @@ There is no denying it, distribd is niche. You probably shouldn't use it.
 * If you already have a self-hosted GitLab and have modest requirements around access control from your kubernetes install, you probably should its container reigsry.
 * If you have a fault tolerant object store like MinIO or file store then you should just configure [distribution](https://github.com/docker/distribution/) to use it.
 
-On the other hand, if you have a self-hosted cluster, and want to run a simple fault tolerant minimal registry then distribd may be for you.
+On the other hand, if you have a small to medium self-hosted cluster, and want to run a simple fault tolerant minimal registry then distribd may be for you.
 
 ## How does it work?
 
