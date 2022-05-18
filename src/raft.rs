@@ -173,11 +173,20 @@ impl Raft {
             }
 
             if machine.commit_index > current_index {
-                if let Err(err) = self.events.send(RaftEvent::Committed {
-                    start_index: current_index.unwrap_or(0),
-                    entries: log[current_index..next_index].to_vec(),
-                }) {
-                    warn!("Error while notifying of commit events: {err:?}");
+                if let Some(next_index) = machine.commit_index {
+                    let ev = match current_index {
+                        None => RaftEvent::Committed {
+                            start_index: 0,
+                            entries: log.entries.clone(),
+                        },
+                        Some(current_index) => RaftEvent::Committed {
+                            start_index: current_index,
+                            entries: log[current_index..next_index].to_vec(),
+                        },
+                    };
+                    if let Err(err) = self.events.send(ev) {
+                        warn!("Error while notifying of commit events: {err:?}");
+                    }
                 }
             }
 
