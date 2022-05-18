@@ -43,7 +43,7 @@ pub fn get_upload_path(images_directory: &str, upload_id: &str) -> std::path::Pa
 }
 
 pub fn get_temp_path(images_directory: &str) -> std::path::PathBuf {
-    let upload_id = Uuid::new_v4().to_hyphenated().to_string();
+    let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
     let mut path = Path::new(&images_directory).to_path_buf();
     path.push("uploads");
@@ -53,7 +53,7 @@ pub fn get_temp_path(images_directory: &str) -> std::path::PathBuf {
 }
 
 pub fn get_temp_mirror_path(images_directory: &str) -> std::path::PathBuf {
-    let upload_id = Uuid::new_v4().to_hyphenated().to_string();
+    let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
     let mut path = Path::new(&images_directory).to_path_buf();
     path.push("uploads");

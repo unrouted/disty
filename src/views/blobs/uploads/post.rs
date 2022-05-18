@@ -197,7 +197,7 @@ pub(crate) async fn post(
         }
     }
 
-    let upload_id = Uuid::new_v4().to_hyphenated().to_string();
+    let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
     match digest {
         Some(digest) => {
