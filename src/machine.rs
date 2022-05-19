@@ -378,20 +378,21 @@ impl Machine {
                 }
 
                 if self.obedient {
-                    println!("Vote for {} rejected - sticky leader", envelope.source);
+                    debug!("Vote for {} rejected - sticky leader", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
                     return Ok(());
                 }
 
                 if envelope.term < self.term {
-                    println!("Vote for {} rejected - old term", envelope.source);
+                    debug!("Vote for {} rejected - old term", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
                     return Ok(());
                 }
 
+                println!("{:?} {}", self.voted_for, envelope.source);
                 if let Some(voted_for) = &self.voted_for {
                     if voted_for != &envelope.source {
-                        println!(
+                        debug!(
                             "Vote for {} rejected - we have already voted in this term term",
                             envelope.source
                         );
@@ -402,7 +403,7 @@ impl Machine {
 
                 self.voted_for = Some(envelope.source.clone());
 
-                println!("Will vote for {}", envelope.source);
+                debug!("Will vote for {}", envelope.source);
                 self.reply(envelope, self.term, Message::VoteReply { reject: false });
             }
             Message::VoteReply { reject } => {
@@ -430,20 +431,20 @@ impl Machine {
 
             Message::PreVote { index } => {
                 if self.obedient {
-                    println!("Vote for {} rejected - sticky leader", envelope.source);
+                    debug!("Vote for {} rejected - sticky leader", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
                     return Ok(());
                 }
 
                 if envelope.term < self.term {
-                    println!("Vote for {} rejected - old term", envelope.source);
+                    debug!("Vote for {} rejected - old term", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
                     return Ok(());
                 }
 
                 if let Some(voted_for) = &self.voted_for {
                     if voted_for != &envelope.source {
-                        println!(
+                        debug!(
                             "Vote for {} rejected - we have already voted in this term term",
                             envelope.source
                         );
@@ -453,7 +454,7 @@ impl Machine {
                 }
 
                 if index < self.pending_index {
-                    println!(
+                    debug!(
                         "Vote for {} rejected - we are more up to date",
                         envelope.source
                     );
@@ -461,7 +462,7 @@ impl Machine {
                     return Ok(());
                 }
 
-                println!("Will vote for {}", envelope.source);
+                debug!("Will vote for {}", envelope.source);
                 self.reply(envelope, self.term, Message::PreVoteReply { reject: false });
             }
 
@@ -1360,7 +1361,7 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 2,
                 message: Message::AppendEntriesReply { log_index: None }
-            },]
+            }]
         );
     }
 
@@ -1398,10 +1399,12 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 1,
                 message: Message::PreVoteReply { reject: true }
-            },]
+            }]
         );
         // Only a prevote, should not be set
         assert_eq!(m.voted_for, None);
+        // Term shoul not change during prevote
+        assert_eq!(m.term, 1);
     }
 
     #[test]
@@ -1433,10 +1436,12 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 2,
                 message: Message::PreVoteReply { reject: true }
-            },]
+            }]
         );
         // Only a prevote, should not be set
         assert_eq!(m.voted_for, None);
+        // Term should not change during prevote
+        assert_eq!(m.term, 2);
     }
 
     #[test]
@@ -1469,10 +1474,12 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 1,
                 message: Message::PreVoteReply { reject: true }
-            },]
+            }]
         );
         // Only a prevote, should not be changed
         assert_eq!(m.voted_for, Some("node3".to_string()));
+        // Term shoul not change during prevote
+        assert_eq!(m.term, 1);
     }
 
     #[test]
@@ -1506,10 +1513,12 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 1,
                 message: Message::PreVoteReply { reject: true }
-            },]
+            }]
         );
         // Only a prevote, should not be set
         assert_eq!(m.voted_for, None);
+        // Term shoul not change during prevote
+        assert_eq!(m.term, 1);
     }
 
     #[test]
@@ -1540,11 +1549,13 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 1,
                 message: Message::PreVoteReply { reject: false }
-            },]
+            }]
         );
 
         // Only a prevote, should not be set
         assert_eq!(m.voted_for, None);
+        // Term shoul not change during prevote
+        assert_eq!(m.term, 1);
     }
 
     #[test]
@@ -1569,7 +1580,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::Vote { index: 1 },
-                term: 1,
+                term: 2,
             },
         )
         .unwrap();
@@ -1579,10 +1590,15 @@ mod tests {
             vec![Envelope {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
-                term: 1,
+                term: 2,
                 message: Message::VoteReply { reject: true }
-            },]
+            }]
         );
+
+        // Vote was rejected
+        assert_eq!(m.voted_for, None);
+        // But we did accept that the term had changed
+        assert_eq!(m.term, 2);
     }
 
     #[test]
@@ -1614,8 +1630,13 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 2,
                 message: Message::VoteReply { reject: true }
-            },]
+            }]
         );
+
+        // Vote was rejected
+        assert_eq!(m.voted_for, None);
+        // And the term didn't change
+        assert_eq!(m.term, 2);
     }
 
     #[test]
@@ -1648,8 +1669,55 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 1,
                 message: Message::VoteReply { reject: true }
-            },]
+            }]
         );
+
+        // Vote was rejected
+        assert_eq!(m.voted_for, Some("node3".to_string()));
+        // And term hasn't changed
+        assert_eq!(m.term, 1);
+    }
+
+    #[test]
+    fn answer_vote_when_already_voted_but_new_term_starting() {
+        // Deny if already voted for another node  (§5.2, §5.4)
+
+        // An exception to this rule is if a new term has started
+        // The node should become a Follower and reset its term
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = false;
+        m.voted_for = Some("node3".to_string());
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 2,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::VoteReply { reject: false }
+            }]
+        );
+
+        // Voted
+        assert_eq!(m.voted_for, Some("node2".to_string()));
+        // And term has changed
+        assert_eq!(m.term, 2);
     }
 
     #[test]
@@ -1668,7 +1736,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::Vote { index: 1 },
-                term: 1,
+                term: 2,
             },
         )
         .unwrap();
@@ -1678,13 +1746,15 @@ mod tests {
             vec![Envelope {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
-                term: 1,
+                term: 2,
                 message: Message::VoteReply { reject: false }
-            },]
+            }]
         );
 
         // Has voted, so voted_for should be set.
         assert_eq!(m.voted_for, Some("node2".to_string()));
+        // And we did accept that the term had changed
+        assert_eq!(m.term, 2);
     }
 
     #[test]
@@ -1743,7 +1813,7 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 3,
                 message: Message::AppendEntriesRejection {}
-            },]
+            }]
         );
 
         m.step(
@@ -1768,7 +1838,7 @@ mod tests {
                 destination: "node2".to_string(),
                 term: 3,
                 message: Message::AppendEntriesReply { log_index: Some(1) }
-            },]
+            }]
         );
 
         assert_eq!(
