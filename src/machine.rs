@@ -159,7 +159,7 @@ impl Machine {
             tick: tokio::time::Instant::now(),
             vote_count: 0,
             voted_for: None,
-            obedient: true,
+            obedient: false,
             outbox: vec![],
             pending_index: 0,
             stored_index: None,
@@ -186,15 +186,6 @@ impl Machine {
         self.tick = get_next_heartbeat_tick();
     }
 
-    fn reset(&mut self, term: usize) {
-        if term != self.term {
-            self.term = term;
-            self.voted_for = None;
-        }
-
-        self.leader = None;
-    }
-
     fn check_quorum(&mut self) {
         // Start at one because we count towards a quorum
         let mut count = 1;
@@ -212,7 +203,8 @@ impl Machine {
     fn become_follower(&mut self, term: usize, leader: Option<String>) {
         debug!("Became follower of {leader:?}");
         self.state = PeerState::Follower;
-        self.reset(term);
+        self.term = term;
+        self.voted_for = None;
         self.leader = leader;
         self.reset_election_tick();
     }
@@ -249,9 +241,11 @@ impl Machine {
     fn become_candidate(&mut self, log: &mut Log) {
         debug!("Became candidate {}", self.identifier);
         self.state = PeerState::Candidate;
-        self.reset(self.term + 1);
+
+        self.term += 1;
         self.vote_count = 1;
         self.voted_for = Some(self.identifier.clone());
+        self.leader = None;
 
         if self.quorum() == 1 {
             self.become_leader(log);
@@ -279,7 +273,6 @@ impl Machine {
     fn become_leader(&mut self, log: &mut Log) {
         debug!("Became leader {}", self.identifier);
         self.state = PeerState::Leader;
-        self.reset(self.term);
         self.reset_election_tick();
 
         for peer in self.peers.values_mut() {
@@ -307,60 +300,6 @@ impl Machine {
 
     pub fn is_leader(&self) -> bool {
         matches!(self.state, PeerState::Leader)
-    }
-
-    fn can_vote(&self, envelope: &Envelope) -> bool {
-        if self.state == PeerState::Leader {
-            debug!("Machine: Can't vote whilst leader");
-            return false;
-        }
-
-        if self.obedient {
-            debug!("Machine: Can't vote whilst obedient");
-            return false;
-        }
-
-        let index = match envelope.message {
-            Message::PreVote { index } => {
-                if envelope.term > self.term {
-                    return true;
-                }
-
-                index
-            }
-            Message::Vote { index } => index,
-            _ => {
-                debug!("Machine: Can only vote due to PreVote or Vote message");
-                return false;
-            }
-        };
-
-        if let Some(stored_index) = self.stored_index {
-            if stored_index > index {
-                debug!("Machine: We know more than them");
-                return false;
-            }
-        }
-
-        // We have already voted for this node
-        match &self.voted_for {
-            Some(voted_for) if voted_for == &envelope.source => {
-                debug!("Machine: We already voted for them");
-                return true;
-            }
-            _ => {}
-        }
-
-        // FIXME: Is last_term appropriate here???
-        if let Message::PreVote { index: _ } = envelope.message {
-            if envelope.term > self.term {
-                debug!("Machine: Future term");
-                return true;
-            }
-        }
-
-        debug!("Machine: Default case");
-        true
     }
 
     fn maybe_commit(&mut self, log: &mut Log) {
@@ -434,36 +373,38 @@ impl Machine {
                 }
             },
             Message::Vote { index: _ } => {
+                if envelope.term > self.term {
+                    self.become_follower(envelope.term, None);
+                }
+
+                if self.obedient {
+                    println!("Vote for {} rejected - sticky leader", envelope.source);
+                    self.reply(envelope, self.term, Message::VoteReply { reject: true });
+                    return Ok(());
+                }
+
                 if envelope.term < self.term {
-                    debug!(
-                        "Machine: Vote: Dropping message from old term: {} {}",
-                        envelope.term, self.term
-                    );
-                    return Ok(());
-                }
-
-                if envelope.term <= self.term {
-                    debug!("Vote for {} rejected", envelope.source);
+                    println!("Vote for {} rejected - old term", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
                     return Ok(());
                 }
 
-                debug!("Become follower because vote");
-                self.become_follower(envelope.term, None);
-
-                if !self.can_vote(envelope) {
-                    debug!("Vote for {} rejected", envelope.source);
-                    self.reply(envelope, self.term, Message::VoteReply { reject: true });
-                    return Ok(());
+                if let Some(voted_for) = &self.voted_for {
+                    if voted_for != &envelope.source {
+                        println!(
+                            "Vote for {} rejected - we have already voted in this term term",
+                            envelope.source
+                        );
+                        self.reply(envelope, self.term, Message::VoteReply { reject: true });
+                        return Ok(());
+                    }
                 }
 
-                debug!("Will vote for {}", envelope.source);
-                self.reply(envelope, self.term, Message::VoteReply { reject: false });
-
-                self.reset_election_tick();
                 self.voted_for = Some(envelope.source.clone());
-            }
 
+                println!("Will vote for {}", envelope.source);
+                self.reply(envelope, self.term, Message::VoteReply { reject: false });
+            }
             Message::VoteReply { reject } => {
                 if envelope.term < self.term {
                     debug!(
@@ -487,22 +428,40 @@ impl Machine {
                 }
             }
 
-            Message::PreVote { index: _ } => {
-                if envelope.term < self.term {
-                    debug!(
-                        "Machine: PreVote: Dropping message from old term: {} {}",
-                        envelope.term, self.term
-                    );
-                    return Ok(());
-                }
-
-                if !self.can_vote(envelope) {
-                    debug!("Vote for {} rejected", envelope.source);
+            Message::PreVote { index } => {
+                if self.obedient {
+                    println!("Vote for {} rejected - sticky leader", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
                     return Ok(());
                 }
 
-                debug!("Will prevote for {}", envelope.source);
+                if envelope.term < self.term {
+                    println!("Vote for {} rejected - old term", envelope.source);
+                    self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
+                    return Ok(());
+                }
+
+                if let Some(voted_for) = &self.voted_for {
+                    if voted_for != &envelope.source {
+                        println!(
+                            "Vote for {} rejected - we have already voted in this term term",
+                            envelope.source
+                        );
+                        self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
+                        return Ok(());
+                    }
+                }
+
+                if index < self.pending_index {
+                    println!(
+                        "Vote for {} rejected - we are more up to date",
+                        envelope.source
+                    );
+                    self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
+                    return Ok(());
+                }
+
+                println!("Will vote for {}", envelope.source);
                 self.reply(envelope, self.term, Message::PreVoteReply { reject: false });
             }
 
@@ -1406,11 +1365,20 @@ mod tests {
     }
 
     #[test]
-    fn answer_pre_vote() {
+    fn answer_pre_vote_deny_when_sticky() {
+        // Reply false if last AppendEntries call was received less than election timeout ago
+        // This achieves leader stickiness.
+
+        // We track this through the `self.obedient` flag which is set to true when we receive
+        // a valid AppendEntries and set to false when we timeout
+
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
+        m.state = PeerState::Follower;
         m.term = 1;
+        m.obedient = true;
+        m.voted_for = None;
 
         m.step(
             &mut log,
@@ -1418,12 +1386,11 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVote { index: 1 },
-                term: 2,
+                term: 1,
             },
         )
         .unwrap();
 
-        // Vote rejected because in same term and obedient
         assert_eq!(
             m.outbox,
             vec![Envelope {
@@ -1433,31 +1400,135 @@ mod tests {
                 message: Message::PreVoteReply { reject: true }
             },]
         );
+        // Only a prevote, should not be set
+        assert_eq!(m.voted_for, None);
+    }
 
-        // Becomes a PRE_CANDIDATE - no longer obedient
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node1".to_string(),
-                destination: "node1".to_string(),
-                message: Message::Tick {},
-                term: 0,
-            },
-        )
-        .unwrap();
+    #[test]
+    fn answer_pre_vote_deny_when_old_term() {
+        // Reply false if term < currentTerm
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
 
-        assert!(!m.obedient);
-        assert_eq!(m.state, PeerState::PreCandidate);
-        assert_eq!(m.term, 1);
+        m.state = PeerState::Follower;
+        m.term = 2;
+        m.obedient = false;
+        m.voted_for = None;
 
-        //  In a later term and not obedient
         m.step(
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
                 term: 2,
+                message: Message::PreVoteReply { reject: true }
+            },]
+        );
+        // Only a prevote, should not be set
+        assert_eq!(m.voted_for, None);
+    }
+
+    #[test]
+    fn answer_pre_vote_deny_when_already_voted() {
+        // Deny if already voted for another node
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = false;
+        m.voted_for = Some("node3".to_string());
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::PreVoteReply { reject: true }
+            },]
+        );
+        // Only a prevote, should not be changed
+        assert_eq!(m.voted_for, Some("node3".to_string()));
+    }
+
+    #[test]
+    fn answer_pre_vote_deny_when_candidate_stale() {
+        // Deny if their log index is much older than outs
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.pending_index = 5;
+        m.obedient = false;
+        m.voted_for = None;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::PreVoteReply { reject: true }
+            },]
+        );
+        // Only a prevote, should not be set
+        assert_eq!(m.voted_for, None);
+    }
+
+    #[test]
+    fn answer_pre_vote() {
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = false;
+        m.voted_for = None;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::PreVote { index: 1 },
+                term: 1,
             },
         )
         .unwrap();
@@ -1472,8 +1543,113 @@ mod tests {
             },]
         );
 
-        // Hasn't actually voted so this shouldn't be set
+        // Only a prevote, should not be set
         assert_eq!(m.voted_for, None);
+    }
+
+    #[test]
+    fn answer_vote_deny_when_sticky() {
+        // Reply false if last AppendEntries call was received less than election timeout ago
+        // This achieves leader stickiness.
+
+        // We track this through the `self.obedient` flag which is set to true when we receive
+        // a valid AppendEntries and set to false when we timeout
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = true;
+        m.voted_for = None;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: true }
+            },]
+        );
+    }
+
+    #[test]
+    fn answer_vote_deny_when_old_term() {
+        // Reply false if term < currentTerm (§5.1)
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 2;
+        m.obedient = false;
+        m.voted_for = None;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::VoteReply { reject: true }
+            },]
+        );
+    }
+
+    #[test]
+    fn answer_vote_deny_when_already_voted() {
+        // Deny if already voted for another node  (§5.2, §5.4)
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = false;
+        m.voted_for = Some("node3".to_string());
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: true }
+            },]
+        );
     }
 
     #[test]
@@ -1481,7 +1657,10 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
+        m.state = PeerState::Follower;
         m.term = 1;
+        m.obedient = false;
+        m.voted_for = None;
 
         m.step(
             &mut log,
@@ -1489,69 +1668,7 @@ mod tests {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::Vote { index: 1 },
-                term: 2,
-            },
-        )
-        .unwrap();
-
-        // Vote rejected because in same term and obedient
-        assert_eq!(
-            m.outbox,
-            vec![Envelope {
-                source: "node1".to_string(),
-                destination: "node2".to_string(),
-                term: 2,
-                message: Message::VoteReply { reject: true }
-            },]
-        );
-
-        // Becomes a PRE_CANDIDATE - no longer obedient
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node1".to_string(),
-                destination: "node1".to_string(),
-                message: Message::Tick {},
-                term: 0,
-            },
-        )
-        .unwrap();
-
-        assert!(!m.obedient);
-        assert_eq!(m.state, PeerState::PreCandidate);
-        assert_eq!(m.term, 2);
-
-        // Not obedient
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node2".to_string(),
-                destination: "node1".to_string(),
-                message: Message::Vote { index: 1 },
-                term: 2,
-            },
-        )
-        .unwrap();
-
-        // Bu vote in old term denied
-        assert_eq!(
-            m.outbox,
-            vec![Envelope {
-                source: "node1".to_string(),
-                destination: "node2".to_string(),
-                term: 2,
-                message: Message::VoteReply { reject: true }
-            },]
-        );
-
-        // Not obedient and vote in new term
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node2".to_string(),
-                destination: "node1".to_string(),
-                message: Message::Vote { index: 1 },
-                term: 3,
+                term: 1,
             },
         )
         .unwrap();
@@ -1561,12 +1678,12 @@ mod tests {
             vec![Envelope {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
-                term: 3,
+                term: 1,
                 message: Message::VoteReply { reject: false }
             },]
         );
 
-        // Hasn't actually voted so this shouldn't be set
+        // Has voted, so voted_for should be set.
         assert_eq!(m.voted_for, Some("node2".to_string()));
     }
 

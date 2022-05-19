@@ -74,3 +74,24 @@ jobs:
 
       - name: Run tests
         run: cargo test
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    container:
+      image: xd009642/tarpaulin:0.20.0-slim
+      options: --security-opt seccomp=unconfined
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Handle Rust dependencies caching
+        uses: Swatinem/rust-cache@v1
+
+      - name: Generate code coverage
+        run: cargo tarpaulin --out Xml
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error:     true
