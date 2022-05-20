@@ -276,7 +276,7 @@ impl Machine {
         self.reset_election_tick();
 
         for peer in self.peers.values_mut() {
-            peer.next_index = self.stored_index.unwrap_or(0);
+            peer.next_index = self.stored_index.unwrap_or(0) + 1;
             peer.match_index = 0;
         }
 
@@ -2157,6 +2157,62 @@ mod tests {
         .unwrap();
 
         assert_eq!(m.commit_index, Some(3));
+    }
+
+    #[test]
+    fn append_entries_rejection() {
+        // If AppendEntries fails because of log inconsistency, decrement nextIndex and retry
+
+        let mut log = Log::default();
+
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
+
+        let mut m = cluster_node_machine();
+        m.pending_index = Some(1);
+        m.stored_index = Some(1);
+        m.commit_index = Some(1);
+        m.term = 1;
+
+        m.become_leader(&mut log);
+
+        assert_eq!(
+            m.peers.get("node2"),
+            Some(&Peer {
+                identifier: "node2".to_string(),
+                next_index: 2,
+                match_index: 0,
+                check_quorum_count: 1,
+            })
+        );
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntriesRejection {},
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.peers.get("node2"),
+            Some(&Peer {
+                identifier: "node2".to_string(),
+                next_index: 1,
+                match_index: 0,
+                // AppendEntriesRejection should still reset CQC - we are still able to do RPC with leader
+                check_quorum_count: 0,
+            })
+        );
     }
 
     #[test]
