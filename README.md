@@ -1,6 +1,6 @@
 # distribd
 
-[![codecov](https://codecov.io/gh/Jc2k/distribd/branch/main/graph/badge.svg?token=8AIAEN68AO)](https://codecov.io/gh/Jc2k/distribd)
+[![codecov](https://codecov.io/gh/distribd/distribd/branch/main/graph/badge.svg?token=8AIAEN68AO)](https://codecov.io/gh/distribd/distribd)
 
 A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. A cluster of nodes can tolerate outages as long as there is a quorum.
 
