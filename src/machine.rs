@@ -372,7 +372,7 @@ impl Machine {
                     return Err("Rejected: Not leader".to_string());
                 }
             },
-            Message::Vote { index: _ } => {
+            Message::Vote { index } => {
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
                 }
@@ -385,6 +385,15 @@ impl Machine {
 
                 if envelope.term < self.term {
                     debug!("Vote for {} rejected - old term", envelope.source);
+                    self.reply(envelope, self.term, Message::VoteReply { reject: true });
+                    return Ok(());
+                }
+
+                if index < self.pending_index {
+                    debug!(
+                        "Vote for {} rejected - we are more up to date",
+                        envelope.source
+                    );
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
                     return Ok(());
                 }
@@ -1590,6 +1599,45 @@ mod tests {
         // Vote was rejected
         assert_eq!(m.voted_for, Some("node3".to_string()));
         // And term hasn't changed
+        assert_eq!(m.term, 1);
+    }
+
+    #[test]
+    fn answer_vote_deny_when_candidate_stale() {
+        // Deny if their log index is much older than outs
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.pending_index = 5;
+        m.obedient = false;
+        m.voted_for = None;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: true }
+            }]
+        );
+        // Did not vote,, should not be set
+        assert_eq!(m.voted_for, None);
+        // Term not changed by message
         assert_eq!(m.term, 1);
     }
 
