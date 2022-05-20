@@ -36,7 +36,7 @@ impl Log {
     pub fn truncate(&mut self, index: usize) {
         self.truncate_index = Some(index);
 
-        while self.last_index() >= Some(index) {
+        while self.last_index() > Some(index) {
             if self.entries.pop().is_none() {
                 break;
             }

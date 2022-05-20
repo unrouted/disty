@@ -510,6 +510,7 @@ impl Machine {
                         if self.pending_index.is_some() {
                             debug!("Need to clear local state to recover");
                             log.truncate(0);
+                            self.pending_index = log.last_index();
                         }
 
                         entries
@@ -548,6 +549,7 @@ impl Machine {
                                 if pending_index > prev_index {
                                     warn!("Need to truncate log to recover quorum");
                                     log.truncate(prev_index);
+                                    self.pending_index = log.last_index();
                                 }
 
                                 entries[offset..].to_vec()
@@ -558,6 +560,7 @@ impl Machine {
 
                 for entry in entries {
                     log.append(entry.clone());
+                    self.pending_index = log.last_index();
                 }
 
                 // FIXME: As it stands stored_index won't advance immediately
@@ -574,7 +577,7 @@ impl Machine {
                     envelope,
                     self.term,
                     Message::AppendEntriesReply {
-                        log_index: self.stored_index,
+                        log_index: self.pending_index,
                     },
                 );
             }
@@ -1319,7 +1322,7 @@ mod tests {
                 source: "node1".to_string(),
                 destination: "node2".to_string(),
                 term: 2,
-                message: Message::AppendEntriesReply { log_index: None }
+                message: Message::AppendEntriesReply { log_index: Some(0) }
             }]
         );
     }
@@ -1878,6 +1881,8 @@ mod tests {
 
     #[test]
     fn append_entries_revoke_previous_log_entry() {
+        // If an existing entry conflicts with a new one (same index but different terms)
+        // delete the existing entry and all that follow it (§3.5)
         let timestamp = Utc::now();
 
         let mut log = Log::default();
@@ -1899,8 +1904,18 @@ mod tests {
             entry: RegistryAction::Empty,
         }]);
 
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::BlobMounted {
+                timestamp,
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "bar".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
+
         let mut m = cluster_node_machine();
-        m.pending_index = Some(1);
+        m.pending_index = Some(2);
         m.term = 2;
 
         m.step(
@@ -1910,23 +1925,16 @@ mod tests {
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
                     leader_commit: Some(0),
-                    prev: Some(Position { index: 1, term: 2 }),
-                    entries: vec![],
+                    prev: Some(Position { index: 0, term: 1 }),
+                    entries: vec![LogEntry {
+                        term: 3,
+                        entry: RegistryAction::Empty,
+                    }],
                 },
                 term: 3,
             },
         )
         .unwrap();
-
-        assert_eq!(
-            m.outbox,
-            vec![Envelope {
-                source: "node1".to_string(),
-                destination: "node2".to_string(),
-                term: 3,
-                message: Message::AppendEntriesReply { log_index: Some(1) }
-            }]
-        );
 
         assert_eq!(
             log.entries,
@@ -1946,10 +1954,22 @@ mod tests {
                     }
                 },
                 LogEntry {
-                    term: 2,
+                    term: 3,
                     entry: RegistryAction::Empty
                 }
             ]
+        );
+
+        assert_eq!(m.pending_index, Some(1));
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 3,
+                message: Message::AppendEntriesReply { log_index: Some(1) }
+            }]
         );
     }
 
