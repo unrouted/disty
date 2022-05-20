@@ -442,17 +442,6 @@ impl Machine {
                     return Ok(());
                 }
 
-                if let Some(voted_for) = &self.voted_for {
-                    if voted_for != &envelope.source {
-                        debug!(
-                            "Vote for {} rejected - we have already voted in this term term",
-                            envelope.source
-                        );
-                        self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
-                        return Ok(());
-                    }
-                }
-
                 if index < self.pending_index {
                     debug!(
                         "Vote for {} rejected - we are more up to date",
@@ -1406,44 +1395,6 @@ mod tests {
         assert_eq!(m.voted_for, None);
         // Term should not change during prevote
         assert_eq!(m.term, 2);
-    }
-
-    #[test]
-    fn answer_pre_vote_deny_when_already_voted() {
-        // Deny if already voted for another node
-
-        let mut log = Log::default();
-        let mut m = cluster_node_machine();
-
-        m.state = PeerState::Follower;
-        m.term = 1;
-        m.obedient = false;
-        m.voted_for = Some("node3".to_string());
-
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node2".to_string(),
-                destination: "node1".to_string(),
-                message: Message::PreVote { index: 1 },
-                term: 1,
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            m.outbox,
-            vec![Envelope {
-                source: "node1".to_string(),
-                destination: "node2".to_string(),
-                term: 1,
-                message: Message::PreVoteReply { reject: true }
-            }]
-        );
-        // Only a prevote, should not be changed
-        assert_eq!(m.voted_for, Some("node3".to_string()));
-        // Term shoul not change during prevote
-        assert_eq!(m.term, 1);
     }
 
     #[test]
