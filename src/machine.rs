@@ -876,40 +876,6 @@ mod tests {
     }
 
     #[test]
-    fn pre_vote_reject_old_term() {
-        let mut log = Log::default();
-        let mut m = cluster_node_machine();
-
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node1".to_string(),
-                destination: "node1".to_string(),
-                message: Message::Tick {},
-                term: 1,
-            },
-        )
-        .unwrap();
-
-        assert_eq!(m.state, PeerState::PreCandidate);
-
-        // A single prevote lets us become a candidate
-
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node2".to_string(),
-                destination: "node1".to_string(),
-                message: Message::PreVoteReply { reject: false },
-                term: 0,
-            },
-        )
-        .unwrap();
-
-        assert_eq!(m.state, PeerState::PreCandidate);
-    }
-
-    #[test]
     fn cluster_node_become_candidate() {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
