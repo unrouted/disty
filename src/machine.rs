@@ -1830,6 +1830,53 @@ mod tests {
     }
 
     #[test]
+    fn append_entries_reject_wrong_term_at_pre_index() {
+        // Reply false if log doesn't contain term at that entry at prevLogIndex  (§3.5)
+
+        let mut log = Log::default();
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::Empty,
+        }]);
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::Empty,
+        }]);
+
+        let mut m = cluster_node_machine();
+        m.term = 2;
+        m.pending_index = Some(1);
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 1, term: 1 }),
+                    entries: vec![LogEntry {
+                        term: 1,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 2,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::AppendEntriesRejection {}
+            }]
+        );
+    }
+
+    #[test]
     fn append_entries_revoke_previous_log_entry() {
         let timestamp = Utc::now();
 
