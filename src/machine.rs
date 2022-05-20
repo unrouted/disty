@@ -1636,6 +1636,44 @@ mod tests {
     }
 
     #[test]
+    fn answer_vote_when_already_voted_for_same_peer() {
+        // If votedFor == candidateId, grant vote
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+
+        m.state = PeerState::Follower;
+        m.term = 1;
+        m.obedient = false;
+        m.voted_for = Some("node2".to_string());
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::Vote { index: 1 },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::VoteReply { reject: false }
+            }]
+        );
+
+        // State shouldn't have really changed
+        assert_eq!(m.voted_for, Some("node2".to_string()));
+        assert_eq!(m.term, 1);
+    }
+
+    #[test]
     fn answer_vote() {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
