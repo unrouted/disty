@@ -1974,6 +1974,117 @@ mod tests {
     }
 
     #[test]
+    fn append_entries_happy_path() {
+        // Append any new entries not already in the log
+        let timestamp = Utc::now();
+
+        let mut log = Log::default();
+
+        // Recovered from saved log
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::BlobMounted {
+                timestamp,
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "foo".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
+
+        // Committed when became leader
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::Empty,
+        }]);
+
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::BlobMounted {
+                timestamp,
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "bar".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
+
+        let mut m = cluster_node_machine();
+        m.pending_index = Some(2);
+        m.term = 2;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 2, term: 2 }),
+                    entries: vec![LogEntry {
+                        term: 3,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 3,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            log.entries,
+            vec![
+                LogEntry {
+                    term: 1,
+                    entry: RegistryAction::BlobMounted {
+                        timestamp,
+                        digest: Digest {
+                            algo: "sha256".to_string(),
+                            hash: "1234".to_string()
+                        },
+                        repository: RepositoryName {
+                            name: "foo".to_string()
+                        },
+                        user: "test".to_string()
+                    }
+                },
+                LogEntry {
+                    term: 2,
+                    entry: RegistryAction::Empty
+                },
+                LogEntry {
+                    term: 2,
+                    entry: RegistryAction::BlobMounted {
+                        timestamp,
+                        digest: Digest {
+                            algo: "sha256".to_string(),
+                            hash: "1234".to_string()
+                        },
+                        repository: RepositoryName {
+                            name: "bar".to_string()
+                        },
+                        user: "test".to_string()
+                    }
+                },
+                LogEntry {
+                    term: 3,
+                    entry: RegistryAction::Empty
+                }
+            ]
+        );
+
+        assert_eq!(m.pending_index, Some(3));
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 3,
+                message: Message::AppendEntriesReply { log_index: Some(3) }
+            }]
+        );
+    }
+
+    #[test]
     fn find_inconsistencies() {
         let n = find_first_inconsistency(
             vec![
