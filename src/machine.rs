@@ -490,10 +490,8 @@ impl Machine {
                 entries,
             } => {
                 if envelope.term < self.term {
-                    debug!(
-                        "Machine: Dropping message from old term: {} {}",
-                        envelope.term, self.term
-                    );
+                    debug!("AppendEntries from old term; rejecting");
+                    self.reply(envelope, self.term, Message::AppendEntriesRejection {});
                     return Ok(());
                 }
 
@@ -1721,6 +1719,43 @@ mod tests {
         assert_eq!(m.voted_for, Some("node2".to_string()));
         // And we did accept that the term had changed
         assert_eq!(m.term, 2);
+    }
+
+    #[test]
+    fn append_entries_reject_old_term() {
+        // Reply false if term < current term (§3.3)
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+        m.term = 2;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 1, term: 3 }),
+                    entries: vec![LogEntry {
+                        term: 1,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 2,
+                message: Message::AppendEntriesRejection {}
+            }]
+        );
     }
 
     #[test]
