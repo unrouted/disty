@@ -1910,39 +1910,6 @@ mod tests {
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
                     leader_commit: Some(0),
-                    prev: Some(Position { index: 1, term: 3 }),
-                    entries: vec![],
-                },
-                term: 3,
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            log.entries[1],
-            LogEntry {
-                term: 2,
-                entry: RegistryAction::Empty
-            }
-        );
-
-        assert_eq!(
-            m.outbox,
-            vec![Envelope {
-                source: "node1".to_string(),
-                destination: "node2".to_string(),
-                term: 3,
-                message: Message::AppendEntriesRejection {}
-            }]
-        );
-
-        m.step(
-            &mut log,
-            &Envelope {
-                source: "node2".to_string(),
-                destination: "node1".to_string(),
-                message: Message::AppendEntries {
-                    leader_commit: Some(0),
                     prev: Some(Position { index: 1, term: 2 }),
                     entries: vec![],
                 },
