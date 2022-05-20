@@ -2083,6 +2083,81 @@ mod tests {
             }]
         );
     }
+    #[test]
+    fn append_entries_bump_commit_index() {
+        // If leaderCommit > commitIndex, set commitIndex =
+        // min(leadeCommit, index of last new entry)
+        let timestamp = Utc::now();
+
+        let mut log = Log::default();
+
+        // Recovered from saved log
+        log.entries.extend(vec![LogEntry {
+            term: 1,
+            entry: RegistryAction::BlobMounted {
+                timestamp,
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "foo".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
+
+        // Committed when became leader
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::Empty,
+        }]);
+
+        log.entries.extend(vec![LogEntry {
+            term: 2,
+            entry: RegistryAction::BlobMounted {
+                timestamp,
+                digest: "sha256:1234".parse().unwrap(),
+                repository: "bar".parse().unwrap(),
+                user: "test".to_string(),
+            },
+        }]);
+
+        let mut m = cluster_node_machine();
+        m.pending_index = Some(2);
+        m.stored_index = Some(2);
+        m.term = 2;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(3),
+                    prev: Some(Position { index: 2, term: 2 }),
+                    entries: vec![LogEntry {
+                        term: 3,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 3,
+            },
+        )
+        .unwrap();
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(3),
+                    prev: Some(Position { index: 3, term: 3 }),
+                    entries: vec![],
+                },
+                term: 3,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(m.commit_index, Some(3));
+    }
 
     #[test]
     fn find_inconsistencies() {
