@@ -177,7 +177,7 @@ impl Raft {
                 Ok(()) => {
                     if let Some(callback) = callback {
                         let res = callback.send(Ok(RaftQueueResult {
-                            index: machine.pending_index,
+                            index: machine.pending_index.unwrap_or(0),
                             term: log.last_term(),
                         }));
 

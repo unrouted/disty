@@ -111,7 +111,7 @@ pub struct Machine {
     vote_count: usize,
 
     // The index we are about to flush to disk
-    pub pending_index: usize,
+    pub pending_index: Option<usize>,
 
     // The index we have flushed to disk
     pub stored_index: Option<usize>,
@@ -161,7 +161,7 @@ impl Machine {
             voted_for: None,
             obedient: false,
             outbox: vec![],
-            pending_index: 0,
+            pending_index: None,
             stored_index: None,
             applied_index: 0,
             commit_index: None,
@@ -389,7 +389,7 @@ impl Machine {
                     return Ok(());
                 }
 
-                if index < self.pending_index {
+                if Some(index) < self.pending_index {
                     debug!(
                         "Vote for {} rejected - we are more up to date",
                         envelope.source
@@ -450,7 +450,7 @@ impl Machine {
                     return Ok(());
                 }
 
-                if index < self.pending_index {
+                if Some(index) < self.pending_index {
                     debug!(
                         "Vote for {} rejected - we are more up to date",
                         envelope.source
@@ -487,63 +487,10 @@ impl Machine {
                 entries,
             } => {
                 if envelope.term < self.term {
-                    debug!("AppendEntries from old term; rejecting");
+                    println!("AppendEntries from old term; rejecting");
                     self.reply(envelope, self.term, Message::AppendEntriesRejection {});
                     return Ok(());
                 }
-
-                let entries = match prev {
-                    None => {
-                        if self.stored_index.is_some() {
-                            debug!("Need to clear local state to recover");
-                            log.truncate(0);
-                        }
-
-                        entries
-                    }
-
-                    Some(Position { index, term }) => match self.stored_index {
-                        None => entries,
-                        Some(stored_index) => {
-                            if index > stored_index {
-                                debug!("Leader assumed we had log entry {index} but we do not");
-                                self.reply(
-                                    envelope,
-                                    envelope.term,
-                                    Message::AppendEntriesRejection {},
-                                );
-                                return Ok(());
-                            }
-
-                            if log.get(index).term != term {
-                                debug!(
-                                    "Log not valid - mismatched terms: {} vs {}",
-                                    log.get(index).term,
-                                    term
-                                );
-                                self.reply(
-                                    envelope,
-                                    envelope.term,
-                                    Message::AppendEntriesRejection {},
-                                );
-                                return Ok(());
-                            }
-
-                            let offset = find_first_inconsistency(
-                                log.entries[index..].to_vec(),
-                                entries.clone(),
-                            );
-                            let prev_index = index + offset;
-
-                            if stored_index > prev_index {
-                                warn!("Need to truncate log to recover quorum");
-                                log.truncate(prev_index);
-                            }
-
-                            entries[offset..].to_vec()
-                        }
-                    },
-                };
 
                 match self.state {
                     PeerState::Follower => {
@@ -557,6 +504,57 @@ impl Machine {
 
                 self.obedient = true;
                 self.leader = Some(envelope.source.clone());
+
+                let entries = match prev {
+                    None => {
+                        if self.pending_index.is_some() {
+                            debug!("Need to clear local state to recover");
+                            log.truncate(0);
+                        }
+
+                        entries
+                    }
+
+                    Some(Position { index, term }) => {
+                        if Some(index) > self.pending_index {
+                            println!("Leader assumed we had log entry {index} but we do not");
+                            self.reply(envelope, envelope.term, Message::AppendEntriesRejection {});
+                            return Ok(());
+                        }
+
+                        match self.pending_index {
+                            None => entries,
+                            Some(pending_index) => {
+                                if log.get(index).term != term {
+                                    println!(
+                                        "Log not valid - mismatched terms: {} vs {}",
+                                        log.get(index).term,
+                                        term
+                                    );
+                                    self.reply(
+                                        envelope,
+                                        envelope.term,
+                                        Message::AppendEntriesRejection {},
+                                    );
+                                    return Ok(());
+                                }
+
+                                let offset = find_first_inconsistency(
+                                    log.entries[index..].to_vec(),
+                                    entries.clone(),
+                                );
+                                let prev_index = index + offset;
+
+                                if pending_index > prev_index {
+                                    warn!("Need to truncate log to recover quorum");
+                                    log.truncate(prev_index);
+                                }
+
+                                entries[offset..].to_vec()
+                            }
+                        }
+                    }
+                };
 
                 for entry in entries {
                     log.append(entry.clone());
@@ -1291,7 +1289,7 @@ mod tests {
                 destination: "node1".to_string(),
                 message: Message::AppendEntries {
                     leader_commit: Some(0),
-                    prev: Some(Position { index: 0, term: 0 }),
+                    prev: None,
                     entries: vec![LogEntry {
                         term: 2,
                         entry: RegistryAction::Empty,
@@ -1414,7 +1412,7 @@ mod tests {
 
         m.state = PeerState::Follower;
         m.term = 1;
-        m.pending_index = 5;
+        m.pending_index = Some(5);
         m.obedient = false;
         m.voted_for = None;
 
@@ -1610,7 +1608,7 @@ mod tests {
 
         m.state = PeerState::Follower;
         m.term = 1;
-        m.pending_index = 5;
+        m.pending_index = Some(5);
         m.obedient = false;
         m.voted_for = None;
 
@@ -1795,6 +1793,43 @@ mod tests {
     }
 
     #[test]
+    fn append_entries_reject_missing_pre_index() {
+        // Reply false if log doesn't contain an entry at prevLogIndex  (§3.5)
+
+        let mut log = Log::default();
+        let mut m = cluster_node_machine();
+        m.term = 1;
+
+        m.step(
+            &mut log,
+            &Envelope {
+                source: "node2".to_string(),
+                destination: "node1".to_string(),
+                message: Message::AppendEntries {
+                    leader_commit: Some(0),
+                    prev: Some(Position { index: 25, term: 3 }),
+                    entries: vec![LogEntry {
+                        term: 1,
+                        entry: RegistryAction::Empty,
+                    }],
+                },
+                term: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            m.outbox,
+            vec![Envelope {
+                source: "node1".to_string(),
+                destination: "node2".to_string(),
+                term: 1,
+                message: Message::AppendEntriesRejection {}
+            }]
+        );
+    }
+
+    #[test]
     fn append_entries_revoke_previous_log_entry() {
         let timestamp = Utc::now();
 
@@ -1818,6 +1853,7 @@ mod tests {
         }]);
 
         let mut m = cluster_node_machine();
+        m.pending_index = Some(1);
         m.term = 2;
 
         m.step(
