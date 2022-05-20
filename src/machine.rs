@@ -398,7 +398,6 @@ impl Machine {
                     return Ok(());
                 }
 
-                println!("{:?} {}", self.voted_for, envelope.source);
                 if let Some(voted_for) = &self.voted_for {
                     if voted_for != &envelope.source {
                         debug!(
