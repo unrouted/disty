@@ -155,13 +155,20 @@ mod test {
         }
 
         {
+            let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+        }
+
+        {
             let url = url.clone().join("bar/foo/blobs/uploads?from=foo%2Fbar&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
             let resp = client.post(url).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::CREATED);
         }
 
         {
-            let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
             let resp = client.get(url).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK);
             assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());

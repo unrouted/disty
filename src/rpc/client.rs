@@ -136,7 +136,7 @@ impl RpcClient {
                         }) => {
                             let start_index = start_index.unwrap_or(0);
 
-                            let last_index = start_index + entries.len() as usize;
+                            let last_index = start_index + entries.len() - 1;
                             if index > last_index {
                                 continue;
                             }
