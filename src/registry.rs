@@ -191,4 +191,53 @@ mod test {
             assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
         }
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn upload_blob_multiple_finish_with_put() {
+        let TestInstance { client, url } = configure();
+
+        let upload_id = {
+            let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+            let resp = client.post(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+            resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+        };
+
+        {
+            let url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+
+            for chonk in ["FO", "OB"] {
+                let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+                assert_eq!(resp.status(), StatusCode::ACCEPTED);
+            }
+        }
+
+        {
+            let mut url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+            url.query_pairs_mut().append_pair(
+                "digest",
+                "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            );
+
+            let resp = client.put(url.clone()).body("AR").send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        {
+            let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+        }
+    }
 }
