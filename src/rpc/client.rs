@@ -67,13 +67,17 @@ impl RpcClient {
     async fn get_leader(&self) -> Option<Destination> {
         let machine = self.machine.lock().await;
 
-        if machine.is_leader() {
-            return Some(Destination::Local);
-        }
+        loop {
+            if machine.is_leader() {
+                return Some(Destination::Local);
+            }
 
-        match &machine.leader {
-            Some(leader) => self.destinations.get(leader).cloned(),
-            None => None,
+            match &machine.leader {
+                Some(leader) => return self.destinations.get(leader).cloned(),
+                None => {}
+            };
+
+            self.raft.leader.clone().changed().await;
         }
     }
 
@@ -122,8 +126,6 @@ impl RpcClient {
             }
         };
 
-        println!("Got RaftQueueReault: {result:?}");
-
         match result {
             Ok(RaftQueueResult { index, term }) => {
                 loop {
@@ -132,28 +134,21 @@ impl RpcClient {
                             start_index,
                             entries,
                         }) => {
-                            println!("Result: {start_index} {entries:?}");
+                            let start_index = start_index.unwrap_or(0);
 
                             let last_index = start_index + entries.len() as usize;
                             if index > last_index {
-                                println!("{index} > {last_index} - waiting for next commit");
                                 continue;
                             }
                             if start_index > index {
                                 // We missed the event we wanted
-                                println!("Somehow missed some data");
                                 return false;
                                 // return Err("Event stream missed some data".to_string());
                             }
-                            let offset = index - start_index - 1;
-                            println!(
-                                "GET RESULT SET: {index} {start_index} {offset} {}",
-                                entries.len()
-                            );
+                            let offset = index - start_index;
                             let actual_term = match entries.get(offset as usize) {
                                 Some(LogEntry { term, entry: _ }) => term,
                                 None => {
-                                    println!("Offset missing");
                                     return false;
 
                                     // return Err("Offset missing".to_string());
@@ -161,12 +156,9 @@ impl RpcClient {
                             };
 
                             if &term != actual_term {
-                                println!("Term didn't match");
                                 return false;
                                 // return Err("Commit failed".to_string());
                             }
-
-                            println!("Success");
 
                             return true;
                         }

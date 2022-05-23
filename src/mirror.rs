@@ -302,7 +302,6 @@ pub(crate) fn start_mirroring(
                 },
                 _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
                 Ok(event) = rx.recv() => {
-                    println!("{:?}", event);
                     requests.extend(get_tasks_from_raft_event(event));
                 }
             };

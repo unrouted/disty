@@ -35,8 +35,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     true
 }
 
-#[rocket::main]
-async fn main() {
+async fn launch() {
     let config = crate::config::config();
     let machine_identifier = config.identifier.clone();
 
@@ -148,4 +147,9 @@ async fn main() {
     });
 
     raft.run(broadcasts).await;
+}
+
+#[rocket::main]
+async fn main() {
+    launch().await
 }

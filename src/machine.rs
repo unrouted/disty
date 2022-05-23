@@ -364,6 +364,11 @@ impl Machine {
                             term: self.term,
                             entry: entry.clone(),
                         });
+
+                        self.pending_index = match self.pending_index {
+                            Some(pending_index) => Some(pending_index + 1),
+                            None => Some(0),
+                        }
                     }
                     self.maybe_commit(log);
                     self.broadcast_entries(log);
@@ -487,7 +492,7 @@ impl Machine {
                 entries,
             } => {
                 if envelope.term < self.term {
-                    println!("AppendEntries from old term; rejecting");
+                    debug!("AppendEntries from old term; rejecting");
                     self.reply(envelope, self.term, Message::AppendEntriesRejection {});
                     return Ok(());
                 }
@@ -518,7 +523,7 @@ impl Machine {
 
                     Some(Position { index, term }) => {
                         if Some(index) > self.pending_index {
-                            println!("Leader assumed we had log entry {index} but we do not");
+                            debug!("Leader assumed we had log entry {index} but we do not");
                             self.reply(envelope, envelope.term, Message::AppendEntriesRejection {});
                             return Ok(());
                         }
@@ -527,7 +532,7 @@ impl Machine {
                             None => entries,
                             Some(pending_index) => {
                                 if log.get(index).term != term {
-                                    println!(
+                                    debug!(
                                         "Log not valid - mismatched terms: {} vs {}",
                                         log.get(index).term,
                                         term

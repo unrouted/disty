@@ -364,12 +364,14 @@ impl RegistryState {
             } => {
                 self.handle_raft_commit(entries.clone()).await;
 
-                let labels = MachineMetricLabels {
-                    identifier: self.machine_identifier.clone(),
-                };
-                self.last_applied_index
-                    .get_or_create(&labels)
-                    .set(*start_index as u64);
+                if let Some(start_index) = start_index {
+                    let labels = MachineMetricLabels {
+                        identifier: self.machine_identifier.clone(),
+                    };
+                    self.last_applied_index
+                        .get_or_create(&labels)
+                        .set(*start_index as u64);
+                }
             }
         }
 

@@ -9,7 +9,6 @@ use tokio::{
     time::Instant,
 };
 
-use crate::types::MachineMetricLabels;
 use crate::{
     config::Configuration,
     log::LogEntry,
@@ -17,11 +16,12 @@ use crate::{
     storage::Storage,
     types::Broadcast,
 };
+use crate::{machine::PeerState, types::MachineMetricLabels};
 
 #[derive(Clone, Debug)]
 pub enum RaftEvent {
     Committed {
-        start_index: usize,
+        start_index: Option<usize>,
         entries: Vec<LogEntry>,
     },
 }
@@ -44,6 +44,8 @@ pub struct Raft {
     inbox: tokio::sync::mpsc::Sender<RaftQueueEntry>,
     inbox_rx: Mutex<tokio::sync::mpsc::Receiver<RaftQueueEntry>>,
     pub events: broadcast::Sender<RaftEvent>,
+    pub leader: tokio::sync::watch::Receiver<Option<String>>,
+    leader_tx: tokio::sync::watch::Sender<Option<String>>,
     clients: HashMap<String, tokio::sync::mpsc::Sender<Envelope>>,
     last_saved: Family<MachineMetricLabels, Gauge>,
     last_term_saved: Family<MachineMetricLabels, Gauge>,
@@ -89,12 +91,16 @@ impl Raft {
             Box::new(current_state.clone()),
         );
 
+        let (leader_tx, leader) = tokio::sync::watch::channel::<Option<String>>(None);
+
         Self {
             config,
             machine,
             events: tx,
             inbox,
             inbox_rx: Mutex::new(inbox_rx),
+            leader,
+            leader_tx,
             clients,
             last_saved,
             last_term_saved,
@@ -133,8 +139,6 @@ impl Raft {
             return Err(format!("Error whilst queueing envelope: {err:?}"));
         }
 
-        println!("Waiting");
-
         match rx.await {
             Ok(res) => res,
             Err(err) => Err(format!("Error waiting for raft state machine: {err:?}")),
@@ -149,6 +153,7 @@ impl Raft {
         {
             let mut machine = self.machine.lock().await;
             machine.term = term;
+            machine.pending_index = log.last_index();
         }
 
         loop {
@@ -216,11 +221,11 @@ impl Raft {
                 if let Some(next_index) = machine.commit_index {
                     let ev = match current_index {
                         None => RaftEvent::Committed {
-                            start_index: 0,
+                            start_index: None,
                             entries: log.entries.clone(),
                         },
                         Some(current_index) => RaftEvent::Committed {
-                            start_index: current_index,
+                            start_index: Some(current_index),
                             entries: log.entries[current_index..next_index].to_vec(),
                         },
                     };
@@ -228,6 +233,15 @@ impl Raft {
                         warn!("Error while notifying of commit events: {err:?}");
                     }
                 }
+            }
+
+            let leader = match machine.state {
+                PeerState::Leader => Some(machine.identifier.clone()),
+                _ => machine.leader.clone(),
+            };
+
+            if *self.leader_tx.borrow() != leader {
+                self.leader_tx.send_replace(leader);
             }
 
             let labels = MachineMetricLabels {

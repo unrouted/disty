@@ -86,12 +86,8 @@ pub fn launch(
 #[cfg(test)]
 mod test {
     use super::*;
-    use rocket::local::blocking::Client;
-
-    fn client() -> Client {
-        let server = rocket::build().mount("/", super::routes());
-        Client::tracked(server).expect("valid rocket instance")
-    }
+    use reqwest::{Client, StatusCode, Url};
+    use serial_test::serial;
 
     #[test]
     fn test_rewriting_ruls_middleware() {
@@ -106,17 +102,93 @@ mod test {
         );
     }
 
-    /*
-    #[test]
-    fn put_sha_query_param_fail() {
-        let client = client();
-        let response = client
-            .put("/REPOSITORY/blobs/uploads/UPLOADID?digest=sha255:hello")
-            .dispatch();
-        assert_eq!(response.status(), Status::NotFound);
+    struct TestInstance {
+        url: Url,
+        client: Client,
     }
-    */
+    fn configure() -> TestInstance {
+        tokio::spawn(crate::launch());
 
-    #[test]
-    fn put() {}
+        let url = Url::parse("http://localhost:8000/v2/").unwrap();
+        let client = reqwest::Client::builder().build().unwrap();
+
+        TestInstance { url, client }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn get_root() {
+        let TestInstance { client, url } = configure();
+
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn upload_whole_blob() {
+        let TestInstance { client, url } = configure();
+
+        {
+            let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let resp = client.post(url).body("FOOBAR").send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        {
+            let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn upload_blob_multiple() {
+        let TestInstance { client, url } = configure();
+
+        let upload_id = {
+            let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+            let resp = client.post(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+            resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+        };
+
+        {
+            let url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+
+            for chonk in ["FO", "OB", "AR"] {
+                let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+                assert_eq!(resp.status(), StatusCode::ACCEPTED);
+            }
+        }
+
+        {
+            let mut url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+            url.query_pairs_mut().append_pair(
+                "digest",
+                "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            );
+
+            let resp = client.put(url.clone()).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        {
+            let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+        }
+    }
 }

@@ -42,8 +42,6 @@ impl Storage {
             }
         };
 
-        println!("Debug: {buffer}");
-
         let term_value: usize = match serde_json::from_str(&buffer) {
             Ok(term_value) => term_value,
             Err(err) => {
