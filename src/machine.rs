@@ -191,12 +191,12 @@ impl Machine {
         // Start at one because we count towards a quorum
         let mut count = 1;
         for peer in self.peers.values() {
-            if peer.check_quorum_count > 500 {
+            if peer.check_quorum_count <= 500 {
                 count += 1;
             }
         }
 
-        if count >= self.quorum() {
+        if count < self.quorum() {
             warn!("Machine: Could not reach majority of followers. Standing down.");
             self.become_follower(self.term, None);
         }
