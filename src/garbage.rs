@@ -122,20 +122,17 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
 }
 
 async fn do_garbage_collect_phase2(
-    machine: &Mutex<Machine>,
+    config: &Configuration,
     state: &RegistryState,
     submission: Arc<RpcClient>,
     images_directory: &str,
 ) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
-    // FIXME: This doesn't change - just grab it from Configuration or something
-    let identifier = machine.lock().await.identifier.clone();
-
     let mut actions = vec![];
 
     for entry in state.get_orphaned_manifests().await {
-        if !entry.manifest.locations.contains(&identifier) {
+        if !entry.manifest.locations.contains(&config.identifier) {
             continue;
         }
 
@@ -151,13 +148,13 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: identifier.clone(),
+            location: config.identifier.clone(),
             user: "$system".to_string(),
         });
     }
 
     for entry in state.get_orphaned_blobs().await {
-        if !entry.blob.locations.contains(&identifier) {
+        if !entry.blob.locations.contains(&config.identifier) {
             continue;
         }
 
@@ -173,7 +170,7 @@ async fn do_garbage_collect_phase2(
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
             digest: entry.digest.clone(),
-            location: identifier.clone(),
+            location: config.identifier.clone(),
             user: "$system".to_string(),
         });
     }
@@ -196,7 +193,7 @@ pub async fn do_garbage_collect(
 ) {
     loop {
         do_garbage_collect_phase1(&machine, &state, submission.clone()).await;
-        do_garbage_collect_phase2(&machine, &state, submission.clone(), &config.storage).await;
+        do_garbage_collect_phase2(&config, &state, submission.clone(), &config.storage).await;
 
         select! {
             _ = broadcasts.recv() => {
