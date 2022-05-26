@@ -86,8 +86,10 @@ pub fn launch(
 #[cfg(test)]
 mod test {
     use super::*;
-    use reqwest::{Client, StatusCode, Url};
-    use serial_test::serial;
+    use reqwest::{StatusCode, Url};
+    use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+    use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+    use serial_test::file_serial;
 
     #[test]
     fn test_rewriting_ruls_middleware() {
@@ -104,19 +106,23 @@ mod test {
 
     struct TestInstance {
         url: Url,
-        client: Client,
+        client: ClientWithMiddleware,
     }
     fn configure() -> TestInstance {
         tokio::spawn(crate::launch());
 
         let url = Url::parse("http://localhost:8000/v2/").unwrap();
-        let client = reqwest::Client::builder().build().unwrap();
+
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+            .build();
 
         TestInstance { url, client }
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn get_root() {
         let TestInstance { client, url } = configure();
 
@@ -125,7 +131,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn upload_whole_blob() {
         let TestInstance { client, url } = configure();
 
@@ -144,7 +150,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn upload_cross_mount() {
         let TestInstance { client, url } = configure();
 
@@ -176,7 +182,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn upload_blob_multiple() {
         let TestInstance { client, url } = configure();
 
@@ -225,7 +231,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn upload_blob_multiple_finish_with_put() {
         let TestInstance { client, url } = configure();
 
@@ -274,7 +280,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
+    #[file_serial]
     async fn delete_blob() {
         let TestInstance { client, url } = configure();
 
