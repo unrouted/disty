@@ -11,7 +11,7 @@ use tokio::{
 
 use crate::{
     config::Configuration,
-    log::LogEntry,
+    log::{Log, LogEntry},
     machine::{Envelope, Machine, Message},
     storage::Storage,
     types::Broadcast,
@@ -145,16 +145,13 @@ impl Raft {
         }
     }
 
-    pub async fn run(&self, mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>) {
+    pub async fn run(
+        &self,
+        mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
+        storage: &mut Storage,
+        log: &mut Log,
+    ) {
         let mut next_tick = Instant::now();
-
-        let (mut storage, term, mut log) = Storage::new(self.config.clone()).await;
-
-        {
-            let mut machine = self.machine.lock().await;
-            machine.term = term;
-            machine.pending_index = log.last_index();
-        }
 
         loop {
             let RaftQueueEntry { envelope, callback } = select! {
@@ -178,7 +175,7 @@ impl Raft {
             let mut machine = self.machine.lock().await;
             let current_index = machine.commit_index;
 
-            let need_post_store = match machine.step(&mut log, &envelope) {
+            let need_post_store = match machine.step(log, &envelope) {
                 Ok(stored) => stored,
                 Err(err) => {
                     error!("Raft: State machine rejected message {envelope:?} with: {err}");
@@ -186,12 +183,12 @@ impl Raft {
                 }
             };
 
-            storage.step(&mut log, machine.term).await;
+            storage.step(log, machine.term).await;
 
             machine.stored_index = log.last_index();
 
             if need_post_store {
-                match machine.post_store(&mut log, &envelope) {
+                match machine.post_store(log, &envelope) {
                     Ok(()) => {
                         if let Some(callback) = callback {
                             let res = callback.send(Ok(RaftQueueResult {

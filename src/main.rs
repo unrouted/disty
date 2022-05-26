@@ -27,6 +27,8 @@ use tokio::sync::{broadcast::error::RecvError, Mutex};
 use types::Broadcast;
 use webhook::start_webhook_worker;
 
+use crate::storage::Storage;
+
 fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
     if !path.exists() {
@@ -57,6 +59,15 @@ async fn launch() {
     );
 
     let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
+
+    let (mut storage, term, mut log) = Storage::new(config.clone()).await;
+
+    {
+        let mut machine = machine.lock().await;
+        machine.term = term;
+        machine.pending_index = log.last_index();
+        machine.stored_index = log.last_index();
+    }
 
     let clients = crate::rpc::start_rpc_client(config.clone());
 
@@ -146,7 +157,7 @@ async fn launch() {
         }
     });
 
-    raft.run(broadcasts).await;
+    raft.run(broadcasts, &mut storage, &mut log).await;
 }
 
 #[rocket::main]
