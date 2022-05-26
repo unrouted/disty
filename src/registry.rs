@@ -89,7 +89,7 @@ mod test {
     use reqwest::{StatusCode, Url};
     use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
     use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-    use serial_test::file_serial;
+    use serial_test::serial;
 
     #[test]
     fn test_rewriting_ruls_middleware() {
@@ -122,7 +122,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn get_root() {
         let TestInstance { client, url } = configure();
 
@@ -131,7 +131,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn upload_whole_blob() {
         let TestInstance { client, url } = configure();
 
@@ -150,7 +150,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn upload_cross_mount() {
         let TestInstance { client, url } = configure();
 
@@ -182,7 +182,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn upload_blob_multiple() {
         let TestInstance { client, url } = configure();
 
@@ -231,7 +231,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn upload_blob_multiple_finish_with_put() {
         let TestInstance { client, url } = configure();
 
@@ -280,7 +280,7 @@ mod test {
     }
 
     #[tokio::test]
-    #[file_serial]
+    #[serial]
     async fn delete_blob() {
         let TestInstance { client, url } = configure();
 
