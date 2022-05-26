@@ -290,8 +290,6 @@ mod test {
             assert_eq!(resp.status(), StatusCode::ACCEPTED);
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
-
         {
             let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
             let resp = client.get(url).send().await.unwrap();

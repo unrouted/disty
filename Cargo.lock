@@ -475,6 +475,7 @@ dependencies = [
 name = "distribd"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "data-encoding",
  "figment",

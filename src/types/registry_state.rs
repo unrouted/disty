@@ -430,9 +430,7 @@ impl RegistryState {
                     digest,
                     repository,
                 } => {
-                    println!("BlobUnmounted: {repository} -> {digest}");
                     if let Some(blob) = store.get_mut_blob(&digest, timestamp) {
-                        println!("SUCCESS");
                         blob.repositories.remove(&repository);
                     }
                 }

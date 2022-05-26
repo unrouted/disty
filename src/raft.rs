@@ -178,33 +178,44 @@ impl Raft {
             let mut machine = self.machine.lock().await;
             let current_index = machine.commit_index;
 
-            match machine.step(&mut log, &envelope) {
-                Ok(()) => {
-                    if let Some(callback) = callback {
-                        let res = callback.send(Ok(RaftQueueResult {
-                            index: machine.pending_index.unwrap_or(0),
-                            term: log.last_term(),
-                        }));
-
-                        if let Err(err) = res {
-                            warn!("Error whilst running callback: {err:?}");
-                        }
-                    }
-                }
+            let need_post_store = match machine.step(&mut log, &envelope) {
+                Ok(stored) => stored,
                 Err(err) => {
                     error!("Raft: State machine rejected message {envelope:?} with: {err}");
+                    false
+                }
+            };
 
-                    if let Some(callback) = callback {
-                        let res = callback.send(Err(err));
-                        if let Err(err) = res {
-                            warn!("Error whilst running callback: {err:?}");
+            storage.step(&mut log, machine.term).await;
+
+            machine.stored_index = log.last_index();
+
+            if need_post_store {
+                match machine.post_store(&mut log, &envelope) {
+                    Ok(()) => {
+                        if let Some(callback) = callback {
+                            let res = callback.send(Ok(RaftQueueResult {
+                                index: machine.pending_index.unwrap_or(0),
+                                term: log.last_term(),
+                            }));
+
+                            if let Err(err) = res {
+                                warn!("Error whilst running callback: {err:?}");
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        error!("Raft: State machine rejected message {envelope:?} with: {err}");
+
+                        if let Some(callback) = callback {
+                            let res = callback.send(Err(err));
+                            if let Err(err) = res {
+                                warn!("Error whilst running callback: {err:?}");
+                            }
                         }
                     }
                 }
             }
-
-            storage.step(&mut log, machine.term).await;
-            machine.stored_index = log.last_index();
 
             for envelope in machine.outbox.iter().cloned() {
                 match self.clients.get(&envelope.destination) {
@@ -224,10 +235,14 @@ impl Raft {
                             start_index: None,
                             entries: log.entries.clone(),
                         },
-                        Some(current_index) => RaftEvent::Committed {
-                            start_index: Some(current_index),
-                            entries: log.entries[current_index..next_index].to_vec(),
-                        },
+                        Some(current_index) => {
+                            RaftEvent::Committed {
+                                start_index: Some(current_index),
+                                // current_index + 1 - because we don't want to send current_index again
+                                // next_index + 1 - because slice[0..1] to select an item (i.e. b not inclusive)
+                                entries: log.entries[current_index + 1..next_index + 1].to_vec(),
+                            }
+                        }
                     };
                     if let Err(err) = self.events.send(ev) {
                         warn!("Error while notifying of commit events: {err:?}");

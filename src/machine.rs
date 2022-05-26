@@ -1,3 +1,4 @@
+use anyhow::Result;
 use log::{debug, warn};
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
@@ -349,7 +350,7 @@ impl Machine {
         }
     }
 
-    pub fn step(&mut self, log: &mut Log, envelope: &Envelope) -> Result<(), String> {
+    pub fn step(&mut self, log: &mut Log, envelope: &Envelope) -> Result<bool, String> {
         self.outbox.clear();
 
         log.truncate_index = None;
@@ -370,8 +371,8 @@ impl Machine {
                             None => Some(0),
                         }
                     }
-                    self.maybe_commit(log);
-                    self.broadcast_entries(log);
+
+                    return Ok(true);
                 }
                 _ => {
                     return Err("Rejected: Not leader".to_string());
@@ -385,13 +386,13 @@ impl Machine {
                 if self.obedient {
                     debug!("Vote for {} rejected - sticky leader", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if envelope.term < self.term {
                     debug!("Vote for {} rejected - old term", envelope.source);
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if Some(index) < self.pending_index {
@@ -400,7 +401,7 @@ impl Machine {
                         envelope.source
                     );
                     self.reply(envelope, self.term, Message::VoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if let Some(voted_for) = &self.voted_for {
@@ -410,7 +411,7 @@ impl Machine {
                             envelope.source
                         );
                         self.reply(envelope, self.term, Message::VoteReply { reject: true });
-                        return Ok(());
+                        return Ok(false);
                     }
                 }
 
@@ -425,12 +426,12 @@ impl Machine {
                         "Machine:VoteReply:  Dropping message from old term: {} {}",
                         envelope.term, self.term
                     );
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if self.state == PeerState::Candidate && !reject {
@@ -446,13 +447,13 @@ impl Machine {
                 if self.obedient {
                     debug!("Vote for {} rejected - sticky leader", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if envelope.term < self.term {
                     debug!("Vote for {} rejected - old term", envelope.source);
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if Some(index) < self.pending_index {
@@ -461,7 +462,7 @@ impl Machine {
                         envelope.source
                     );
                     self.reply(envelope, self.term, Message::PreVoteReply { reject: true });
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 debug!("Will vote for {}", envelope.source);
@@ -474,7 +475,7 @@ impl Machine {
                         "Machine: PreVoteReply: Dropping message from old term: {} {}",
                         envelope.term, self.term
                     );
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if self.state == PeerState::PreCandidate && !reject {
@@ -487,14 +488,14 @@ impl Machine {
             }
 
             Message::AppendEntries {
-                leader_commit,
+                leader_commit: _,
                 prev,
                 entries,
             } => {
                 if envelope.term < self.term {
                     debug!("AppendEntries from old term; rejecting");
                     self.reply(envelope, self.term, Message::AppendEntriesRejection {});
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 match self.state {
@@ -525,7 +526,7 @@ impl Machine {
                         if Some(index) > self.pending_index {
                             debug!("Leader assumed we had log entry {index} but we do not");
                             self.reply(envelope, envelope.term, Message::AppendEntriesRejection {});
-                            return Ok(());
+                            return Ok(false);
                         }
 
                         match self.pending_index {
@@ -542,7 +543,7 @@ impl Machine {
                                         envelope.term,
                                         Message::AppendEntriesRejection {},
                                     );
-                                    return Ok(());
+                                    return Ok(false);
                                 }
 
                                 let offset = find_first_inconsistency(
@@ -568,23 +569,7 @@ impl Machine {
                     self.pending_index = log.last_index();
                 }
 
-                // FIXME: As it stands stored_index won't advance immediately
-                // So log_index will lag, and the master will re-send stuff maybe?
-                // Investigate whether next_index and match_index help here
-
-                // If we have some stored commits and the leader has commmitted some stuff
-                // Advance self.commit_index
-                if leader_commit > self.commit_index {
-                    self.commit_index = std::cmp::min(leader_commit, self.stored_index);
-                }
-
-                self.reply(
-                    envelope,
-                    self.term,
-                    Message::AppendEntriesReply {
-                        log_index: self.pending_index,
-                    },
-                );
+                return Ok(true);
             }
             Message::AppendEntriesReply { log_index } => {
                 if envelope.term < self.term {
@@ -592,7 +577,7 @@ impl Machine {
                         "Machine: AppendEntriesReply: Dropping message from old term: {} {}",
                         envelope.term, self.term
                     );
-                    return Ok(());
+                    return Ok(false);
                 }
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
@@ -604,7 +589,7 @@ impl Machine {
                         std::cmp::min(log_index.unwrap(), self.stored_index.unwrap());
                     peer.next_index = peer.match_index + 1;
                     self.maybe_commit(log);
-                    return Ok(());
+                    return Ok(false);
                 }
             }
             Message::AppendEntriesRejection {} => {
@@ -613,7 +598,7 @@ impl Machine {
                         "Machine: AppendEntriesRejection: Dropping message from old term: {} {}",
                         envelope.term, self.term
                     );
-                    return Ok(());
+                    return Ok(false);
                 }
                 if envelope.term > self.term {
                     self.become_follower(envelope.term, None);
@@ -624,7 +609,7 @@ impl Machine {
                     if peer.next_index > 1 {
                         peer.next_index -= 1;
                     }
-                    return Ok(());
+                    return Ok(false);
                 }
             }
             Message::Tick {} => {
@@ -648,6 +633,37 @@ impl Machine {
                     }
                 }
             }
+        }
+
+        Ok(false)
+    }
+
+    pub fn post_store(&mut self, log: &mut Log, envelope: &Envelope) -> Result<(), String> {
+        match envelope.message.clone() {
+            Message::AddEntries { entries: _ } => {
+                if self.state == PeerState::Leader {
+                    self.maybe_commit(log);
+                    self.broadcast_entries(log);
+                }
+            }
+            Message::AppendEntries {
+                leader_commit,
+                prev: _,
+                entries: _,
+            } => {
+                if leader_commit > self.commit_index {
+                    self.commit_index = std::cmp::min(leader_commit, self.stored_index);
+                }
+
+                self.reply(
+                    envelope,
+                    self.term,
+                    Message::AppendEntriesReply {
+                        log_index: self.stored_index,
+                    },
+                );
+            }
+            _ => {}
         }
 
         Ok(())
@@ -781,12 +797,22 @@ mod tests {
         Machine::new(cluster_node_configuration(), &mut registry)
     }
 
+    fn step(machine: &mut Machine, log: &mut Log, envelope: &Envelope) -> Result<(), String> {
+        let need_post_store = machine.step(log, envelope)?;
+        machine.stored_index = log.last_index();
+        if need_post_store {
+            machine.post_store(log, envelope).unwrap();
+        }
+        Ok(())
+    }
+
     #[test]
     fn single_node_become_leader() {
         let mut log = Log::default();
         let mut m = single_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -806,7 +832,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -845,7 +872,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -861,7 +889,8 @@ mod tests {
 
         // Next tick occurs after voting period times out
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -881,7 +910,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -897,13 +927,14 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: m.term,
+                term: 1,
             },
         )
         .unwrap();
@@ -936,7 +967,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -952,13 +984,14 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: m.term,
+                term: 1,
             },
         )
         .unwrap();
@@ -968,7 +1001,8 @@ mod tests {
 
         // But a tick before enough votes means we stay a follower
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -988,7 +1022,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -1004,13 +1039,14 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: m.term,
+                term: 1,
             },
         )
         .unwrap();
@@ -1020,7 +1056,8 @@ mod tests {
 
         // A single vote lets us become a leader
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1073,7 +1110,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -1088,7 +1126,8 @@ mod tests {
 
         // A single prevote lets us become a candidate
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1103,7 +1142,8 @@ mod tests {
 
         // A single vote lets us become a leader
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1119,7 +1159,8 @@ mod tests {
         for _ in 1..501 {
             assert_eq!(m.state, PeerState::Leader);
 
-            m.step(
+            step(
+                &mut m,
                 &mut log,
                 &Envelope {
                     source: "node2".to_string(),
@@ -1154,7 +1195,8 @@ mod tests {
         let mut m = cluster_node_machine();
         m.term = 1;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node1".to_string(),
@@ -1167,26 +1209,28 @@ mod tests {
 
         assert_eq!(m.state, PeerState::PreCandidate);
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::PreVoteReply { reject: false },
-                term: m.term,
+                term: 1,
             },
         )
         .unwrap();
 
         assert_eq!(m.state, PeerState::Candidate);
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
                 destination: "node1".to_string(),
                 message: Message::VoteReply { reject: false },
-                term: m.term,
+                term: 2,
             },
         )
         .unwrap();
@@ -1241,7 +1285,8 @@ mod tests {
             ]
         );
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1252,7 +1297,8 @@ mod tests {
         )
         .unwrap();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node3".to_string(),
@@ -1290,7 +1336,8 @@ mod tests {
         let mut log = Log::default();
         let mut m = cluster_node_machine();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1318,7 +1365,7 @@ mod tests {
                 entry: RegistryAction::Empty,
             }]
         );
-        assert_eq!(m.commit_index, None);
+        assert_eq!(m.commit_index, Some(0));
 
         assert_eq!(m.outbox.len(), 1);
         assert_eq!(
@@ -1348,7 +1395,8 @@ mod tests {
         m.obedient = true;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1385,7 +1433,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1424,7 +1473,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1460,7 +1510,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1503,7 +1554,8 @@ mod tests {
         m.obedient = true;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1541,7 +1593,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1580,7 +1633,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = Some("node3".to_string());
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1620,7 +1674,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1661,7 +1716,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = Some("node3".to_string());
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1700,7 +1756,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = Some("node2".to_string());
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1736,7 +1793,8 @@ mod tests {
         m.obedient = false;
         m.voted_for = None;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1771,7 +1829,8 @@ mod tests {
         let mut m = cluster_node_machine();
         m.term = 2;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1808,7 +1867,8 @@ mod tests {
         let mut m = cluster_node_machine();
         m.term = 1;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1855,7 +1915,8 @@ mod tests {
         m.term = 2;
         m.pending_index = Some(1);
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -1923,7 +1984,8 @@ mod tests {
         m.pending_index = Some(2);
         m.term = 2;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -2016,7 +2078,8 @@ mod tests {
         m.pending_index = Some(2);
         m.term = 2;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -2128,7 +2191,8 @@ mod tests {
         m.stored_index = Some(2);
         m.term = 2;
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -2146,7 +2210,8 @@ mod tests {
         )
         .unwrap();
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
@@ -2197,7 +2262,8 @@ mod tests {
             })
         );
 
-        m.step(
+        step(
+            &mut m,
             &mut log,
             &Envelope {
                 source: "node2".to_string(),
