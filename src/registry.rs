@@ -358,4 +358,47 @@ mod test {
             assert_eq!(value, payload);
         }
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_tags() {
+        let TestInstance { client, url } = configure();
+
+        let payload = json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        {
+            let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                CONTENT_TYPE,
+                "application/vnd.docker.distribution.manifest.list.v2+json"
+                    .parse()
+                    .unwrap(),
+            );
+
+            let resp = client
+                .put(url)
+                .json(&payload)
+                .headers(headers)
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        {
+            let url = url.join("foo/bar/tags/list").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+
+            let value: Value = resp.json().await.unwrap();
+            assert_eq!(value, json!({"name": "foo/bar", "tags": ["latest"]}));
+        }
+    }
 }
