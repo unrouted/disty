@@ -56,8 +56,10 @@ pub struct Extractor {
     schemas: HashMap<String, Value>,
 }
 
+#[derive(Debug)]
 pub enum ExtractError {
     UnknownError,
+    SchemaValidationError,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -199,7 +201,7 @@ impl Extractor {
         };
 
         if !self.validate(content_type, &data) {
-            return Err(ExtractError::UnknownError {});
+            return Err(ExtractError::SchemaValidationError {});
         }
 
         let dependencies = self.extract_one(content_type, &data);
