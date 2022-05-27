@@ -404,6 +404,61 @@ mod test {
 
     #[tokio::test]
     #[serial]
+    async fn delete_tag() {
+        let TestInstance { client, url } = configure();
+
+        let payload = json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        {
+            let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                CONTENT_TYPE,
+                "application/vnd.docker.distribution.manifest.list.v2+json"
+                    .parse()
+                    .unwrap(),
+            );
+
+            let resp = client
+                .put(url)
+                .json(&payload)
+                .headers(headers)
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        // Confirm upload worked
+        {
+            let url = url.join("foo/bar/manifests/latest").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
+
+        // Delete manifest
+        {
+            let url = url.join("foo/bar/manifests/latest").unwrap();
+            let resp = client.delete(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        }
+
+        // Confirm delete worked
+        {
+            let url = url.join("foo/bar/manifests/latest").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn delete_upload() {
         let TestInstance { client, url } = configure();
 
