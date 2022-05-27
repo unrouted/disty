@@ -28,7 +28,6 @@ jsonl = { version="4.0.1", features=["tokio"]}
 anyhow = "1.0"
 
 [dev-dependencies]
-serial_test = "*"
 reqwest-retry = "*" 
 reqwest-middleware = "*"
 lazy_static = "*"

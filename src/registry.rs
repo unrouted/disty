@@ -96,8 +96,7 @@ mod test {
     use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
     use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
     use serde_json::{json, Value};
-    use serial_test::serial;
-    use simple_pool::ResourcePool;
+    use simple_pool::{ResourcePool, ResourcePoolGuard};
     use tempfile::TempDir;
 
     lazy_static! {
@@ -129,6 +128,7 @@ mod test {
         url: Url,
         client: ClientWithMiddleware,
         _tempdir: TempDir,
+        _address: ResourcePoolGuard<String>,
     }
     async fn configure() -> TestInstance {
         let tempdir = tempfile::tempdir().unwrap();
@@ -150,9 +150,13 @@ mod test {
             storage: tempdir.path().to_str().unwrap().to_owned(),
             ..Default::default()
         };
+        debug!("Launching registry with config: {:?}", config);
+
         tokio::spawn(crate::launch(config));
 
         let url = format!("http://{}:8000/v2/", address.clone());
+        debug!("Registry url: {url}");
+
         let url = Url::parse(&url).unwrap();
 
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
@@ -164,22 +168,31 @@ mod test {
             url,
             client,
             _tempdir: tempdir,
+            _address: address,
         }
     }
 
     #[tokio::test]
-    #[serial]
     async fn get_root() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]
-    #[serial]
     async fn upload_whole_blob() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         {
             let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -196,9 +209,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn upload_cross_mount() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         {
             let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -228,9 +245,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn upload_blob_multiple() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let upload_id = {
             let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -277,9 +298,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn upload_blob_multiple_finish_with_put() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let upload_id = {
             let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -326,9 +351,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn delete_blob() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         {
             let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -350,9 +379,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn upload_manifest() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let payload = json!({
             "schemaVersion": 2,
@@ -402,9 +435,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn list_tags() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let payload = json!({
             "schemaVersion": 2,
@@ -445,9 +482,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn delete_tag() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         let payload = json!({
             "schemaVersion": 2,
@@ -500,9 +541,13 @@ mod test {
     }
 
     #[tokio::test]
-    #[serial]
     async fn delete_upload() {
-        let TestInstance { client, url, .. } = configure().await;
+        let TestInstance {
+            client,
+            url,
+            _tempdir,
+            _address,
+        } = configure().await;
 
         // Initiate a multi-part upload
         let upload_id = {

@@ -9,7 +9,7 @@ use platform_dirs::AppDirs;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RaftConfig {
     pub address: String,
     pub port: u32,
@@ -24,7 +24,7 @@ impl Default for RaftConfig {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RegistryConfig {
     pub address: String,
     pub port: u32,
@@ -39,7 +39,7 @@ impl Default for RegistryConfig {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PrometheusConfig {
     pub address: String,
     pub port: u32,
@@ -54,7 +54,7 @@ impl Default for PrometheusConfig {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PublicKey {
     pub path: String,
     pub public_key: ES256PublicKey,
@@ -90,7 +90,7 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TokenConfig {
     pub issuer: String,
     pub service: String,
@@ -98,14 +98,14 @@ pub struct TokenConfig {
     pub public_key: PublicKey,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PeerConfig {
     pub name: String,
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MintConfig {
     pub realm: String,
     pub service: String,
@@ -113,7 +113,7 @@ pub struct MintConfig {
     pub password: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     pub url: String,
 
@@ -121,7 +121,7 @@ pub struct WebhookConfig {
     pub matcher: Regex,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub identifier: String,
     pub raft: RaftConfig,
