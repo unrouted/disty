@@ -172,6 +172,20 @@ mod test {
     use super::*;
 
     #[test]
+    fn entrypoint() {
+        std::env::set_var(
+            "XDG_CONFIG_HOME",
+            std::env::current_dir()
+                .unwrap()
+                .join("fixtures/etc")
+                .as_os_str(),
+        );
+
+        let config = config();
+        assert_eq!(config.identifier, "node1".to_string());
+    }
+
+    #[test]
     fn defaults() {
         let defaults: Configuration = Figment::from(Serialized::defaults(Configuration::default()))
             .extract()
