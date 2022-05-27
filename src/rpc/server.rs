@@ -30,7 +30,9 @@ fn configure(rocket: Rocket<Build>, raft: Arc<Raft>) -> Rocket<Build> {
 }
 
 pub(crate) fn start_rpc_server(config: Configuration, raft: Arc<Raft>) {
-    let figment = rocket::Config::figment().merge(("port", config.raft.port));
+    let figment = rocket::Config::figment()
+        .merge(("port", config.raft.port))
+        .merge(("address", config.raft.address.clone()));
 
     tokio::spawn(configure(rocket::custom(figment), raft).launch());
 }

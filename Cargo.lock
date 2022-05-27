@@ -482,6 +482,7 @@ dependencies = [
  "jsonl",
  "jsonschema",
  "jwt-simple",
+ "lazy_static",
  "log",
  "platform-dirs",
  "prometheus-client",
@@ -496,6 +497,8 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serial_test",
+ "simple-pool",
+ "tempfile",
  "tokio",
  "urlencoding",
  "uuid 1.1.0",
@@ -2156,6 +2159,12 @@ dependencies = [
  "digest 0.9.0",
  "rand_core",
 ]
+
+[[package]]
+name = "simple-pool"
+version = "0.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "221c4d7aa7a3aab1262af53537c9e24ce4436b72a8b7a1534ff371ae2f38c294"
 
 [[package]]
 name = "slab"

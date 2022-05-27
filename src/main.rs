@@ -21,6 +21,7 @@ mod webhook;
 
 use std::sync::Arc;
 
+use config::Configuration;
 use machine::Machine;
 use raft::Raft;
 use tokio::sync::{broadcast::error::RecvError, Mutex};
@@ -37,8 +38,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
     true
 }
 
-async fn launch() {
-    let config = crate::config::config();
+async fn launch(config: Configuration) {
     let machine_identifier = config.identifier.clone();
 
     if !create_dir(&config.storage, "uploads")
@@ -136,7 +136,7 @@ async fn launch() {
 
     let prometheus_conf = rocket::Config::figment()
         .merge(("port", config.prometheus.port))
-        .merge(("address", "0.0.0.0"));
+        .merge(("address", config.prometheus.address.clone()));
 
     tokio::spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
 
@@ -162,5 +162,7 @@ async fn launch() {
 
 #[rocket::main]
 async fn main() {
-    launch().await
+    let config = crate::config::config();
+
+    launch(config).await
 }
