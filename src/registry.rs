@@ -401,4 +401,57 @@ mod test {
             assert_eq!(value, json!({"name": "foo/bar", "tags": ["latest"]}));
         }
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn delete_upload() {
+        let TestInstance { client, url } = configure();
+
+        // Initiate a multi-part upload
+        let upload_id = {
+            let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+            let resp = client.post(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+            resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+        };
+
+        // Upload some data
+        {
+            let url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+
+            for chonk in ["FO", "OB", "AR"] {
+                let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+                assert_eq!(resp.status(), StatusCode::ACCEPTED);
+            }
+        }
+
+        // Delete upload
+        {
+            let url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+
+            let resp = client.delete(url.clone()).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        }
+
+        // Verify upload was cancelled
+        {
+            let url = url
+                .join("foo/bar/blobs/uploads/")
+                .unwrap()
+                .join(upload_id.to_str().unwrap())
+                .unwrap();
+
+            let resp = client.get(url.clone()).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        }
+    }
 }

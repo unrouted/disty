@@ -82,5 +82,10 @@ pub(crate) async fn delete(
         return Responses::UploadInvalid {};
     }
 
+    if let Err(err) = tokio::fs::remove_file(filename).await {
+        warn!("Error whilst deleting file: {err:?}");
+        return Responses::UploadInvalid {};
+    }
+
     Responses::Ok {}
 }

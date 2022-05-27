@@ -14,6 +14,7 @@ pub(crate) enum Responses {
     },
     AccessDenied {},
     UploadInvalid {},
+    UploadNotFound {},
     Ok {
         repository: RepositoryName,
         upload_id: String,
@@ -56,6 +57,17 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .header(Header::new("Content-Length", body.len().to_string()))
                     .sized_body(body.len(), Cursor::new(body))
                     .status(Status::BadRequest)
+                    .ok()
+            }
+            Responses::UploadNotFound {} => {
+                let body = crate::views::utils::simple_oci_error(
+                    "BLOB_UPLOAD_UNKNOWN",
+                    "blob upload unknown to registry",
+                );
+                Response::build()
+                    .header(Header::new("Content-Length", body.len().to_string()))
+                    .sized_body(body.len(), Cursor::new(body))
+                    .status(Status::NotFound)
                     .ok()
             }
             Responses::Ok {
@@ -110,7 +122,7 @@ pub(crate) async fn get(
 
     let filename = get_upload_path(&config.storage, &upload_id);
     if !filename.is_file() {
-        return Responses::UploadInvalid {};
+        return Responses::UploadNotFound {};
     }
 
     let size = match tokio::fs::metadata(filename).await {
