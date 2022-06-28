@@ -26,6 +26,8 @@ rand = "0.8.5"
 serde_regex = "1.1.0"
 jsonl = { version="4.0.1", features=["tokio"]}
 anyhow = "1.0"
+openraft = { git = "https://github.com/datafuselabs/openraft", rev = "2262c79f5195307402e7a0994771b4152c0d10b2" }
+sled = "0.34.7"
 
 [dev-dependencies]
 reqwest-retry = "*" 
