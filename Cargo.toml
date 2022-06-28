@@ -29,6 +29,13 @@ anyhow = "1.0"
 openraft = { git = "https://github.com/datafuselabs/openraft", rev = "2262c79f5195307402e7a0994771b4152c0d10b2" }
 sled = "0.34.7"
 
+async-trait = "0.1.36"
+clap = { version = "3.0.13", features = ["derive", "env"] }
+env_logger = "0.9.0"
+tracing = "0.1.29"
+tracing-futures = "0.2.4"
+walkdir = "2.3.2"
+
 [dev-dependencies]
 reqwest-retry = "*" 
 reqwest-middleware = "*"

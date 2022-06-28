@@ -81,7 +81,6 @@ impl<'de> Deserialize<'de> for PublicKey {
             let config_dir = app_dirs.config_dir;
             p = config_dir.join(p);
         }
-        debug!("Loading token verification key: {p:?}");
         let pem = std::fs::read_to_string(&p).unwrap();
         Ok(PublicKey {
             path: s,
