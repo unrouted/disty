@@ -6,6 +6,7 @@ use openraft::raft::VoteRequest;
 use openraft::raft::{
     AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotResponse, VoteResponse,
 };
+use prometheus_client::registry::Registry;
 use rocket::serde::json::Json;
 use rocket::Route;
 use rocket::{post, Build, Rocket, State};
@@ -13,6 +14,7 @@ use rocket::{post, Build, Rocket, State};
 use crate::app::ExampleApp;
 use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
+use crate::middleware::prometheus::{Port, HttpMetrics};
 
 #[post("/raft-vote", data = "<body>")]
 async fn vote(
@@ -48,14 +50,14 @@ fn routes() -> Vec<Route> {
     rocket::routes![vote, append, snapshot]
 }
 
-pub(crate) fn configure(rocket: Rocket<Build>, app: Arc<ExampleApp>) -> Rocket<Build> {
-    rocket.mount("/", routes()).manage(app)
+pub(crate) fn configure(rocket: Rocket<Build>, app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
+    rocket.mount("/", routes()).manage(app).attach(HttpMetrics::new(registry, Port::Raft))
 }
 
-pub(crate) fn launch(app: Arc<ExampleApp>) {
+pub(crate) fn launch(app: Arc<ExampleApp>, registry: &mut Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
         .merge(("address", app.settings.raft.address.clone()));
 
-    tokio::spawn(configure(rocket::custom(fig), app).launch());
+    tokio::spawn(configure(rocket::custom(fig), app, registry).launch());
 }

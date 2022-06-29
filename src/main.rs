@@ -3,6 +3,7 @@ use env_logger::Env;
 use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
+use prometheus_client::registry::Registry;
 use std::sync::Arc;
 
 use crate::app::ExampleApp;
@@ -18,6 +19,8 @@ mod config;
 pub mod matchengine;
 pub mod network;
 pub mod store;
+mod middleware;
+mod prometheus;
 
 pub type ExampleNodeId = u64;
 
@@ -33,6 +36,8 @@ pub async fn start_example_raft_node(
     http_addr: String,
 ) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
+
+    let mut registry = <prometheus_client::registry::Registry>::default();
 
     let mut config = Config::default().validate().unwrap();
     config.snapshot_policy = SnapshotPolicy::LogsSinceLast(500);
@@ -68,7 +73,8 @@ pub async fn start_example_raft_node(
         settings: crate::config::config(),
     });
 
-    crate::network::raft::launch(app);
+    crate::network::raft::launch(app.clone(), &mut registry);
+    crate::prometheus::launch(app, registry);
 
     Ok(())
 }
@@ -85,9 +91,6 @@ pub struct Opt {
 
 #[rocket::main]
 async fn main() -> std::io::Result<()> {
-    // Setup the logger
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
-
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 

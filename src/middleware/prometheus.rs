@@ -30,7 +30,15 @@ enum HttpMethod {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
+pub enum Port {
+    Raft,
+    Prometheus,
+    Registry,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Encode)]
 struct HttpRequestLabels {
+    port: Port,
     method: HttpMethod,
     path: String,
     status: String,
@@ -39,10 +47,11 @@ struct HttpRequestLabels {
 pub(crate) struct HttpMetrics {
     http_requests_total: Family<HttpRequestLabels, Counter>,
     http_requests_duration_seconds: Family<HttpRequestLabels, Histogram>,
+    port: Port,
 }
 
 impl HttpMetrics {
-    pub fn new(registry: &mut Registry) -> Self {
+    pub fn new(registry: &mut Registry, port: Port) -> Self {
         let http_requests_total = Family::<HttpRequestLabels, Counter>::default();
         registry.register(
             "distribd_http_requests_total",
@@ -63,6 +72,7 @@ impl HttpMetrics {
         HttpMetrics {
             http_requests_total,
             http_requests_duration_seconds,
+            port,
         }
     }
 }
@@ -107,6 +117,7 @@ impl Fairing for HttpMetrics {
             method,
             path,
             status,
+            port: self.port.clone(),
         };
 
         self.http_requests_total.get_or_create(&labels).inc();
@@ -118,83 +129,5 @@ impl Fairing for HttpMetrics {
                 .get_or_create(&labels)
                 .observe(duration_secs);
         }
-    }
-}
-
-pub(crate) enum Responses {
-    Ok {},
-}
-
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::Ok {} => Response::build().status(Status::Ok).ok(),
-        }
-    }
-}
-
-#[derive(Responder)]
-#[response(
-    status = 200,
-    content_type = "application/openmetrics-text; version=1.0.0; charset=utf-8"
-)]
-struct Metrics(Vec<u8>);
-
-#[get("/metrics")]
-async fn metrics(registry: &State<Arc<Mutex<Registry>>>) -> Metrics {
-    let mut encoded = Vec::new();
-    encode(&mut encoded, &registry.lock().unwrap()).unwrap();
-    Metrics(encoded)
-}
-
-#[get("/healthz")]
-pub(crate) async fn healthz() -> Responses {
-    Responses::Ok {}
-}
-
-fn routes() -> Vec<Route> {
-    routes![metrics, healthz]
-}
-
-pub(crate) fn configure(rocket: Rocket<Build>, registry: Registry) -> Rocket<Build> {
-    rocket
-        .mount("/", routes())
-        .manage(Arc::new(Mutex::new(registry)))
-}
-
-#[cfg(test)]
-mod test {
-    use prometheus_client::registry::Registry;
-    use rocket::{http::Status, local::blocking::Client};
-
-    fn client() -> Client {
-        let server = super::configure(rocket::build(), <Registry>::default());
-        Client::tracked(server).expect("valid rocket instance")
-    }
-
-    #[test]
-    fn test_404() {
-        // check that server is actually 404ing, not just 200ing everything
-        let client = client();
-        let response = client.get("/404").dispatch();
-        assert_eq!(response.status(), Status::NotFound);
-    }
-
-    #[test]
-    fn test_metrics() {
-        let client = client();
-        let response = client.get("/metrics").dispatch();
-        assert_eq!(response.status(), Status::Ok);
-        assert!(matches!(
-            response.headers().get_one("Content-Type"),
-            Some("application/openmetrics-text; version=1.0.0; charset=utf-8")
-        ));
-    }
-
-    #[test]
-    fn test_healthz() {
-        let client = client();
-        let response = client.get("/healthz").dispatch();
-        assert_eq!(response.status(), Status::Ok);
     }
 }
