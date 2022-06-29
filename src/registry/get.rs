@@ -17,7 +17,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );

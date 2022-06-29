@@ -223,7 +223,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Download has correct hash ({download_digest} vs {digest})");
 
-    if !crate::views::utils::validate_hash(&file_name, digest).await {
+    if !crate::registry::utils::validate_hash(&file_name, digest).await {
         debug!("Mirroring: Downloaded file for {url} is corrupt");
         return MirrorResult::Retry { request };
     };

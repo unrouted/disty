@@ -42,7 +42,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -54,7 +54,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -65,7 +65,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::DigestInvalid {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DIGEST_INVALID",
                     "provided digest did not match uploaded content",
                 );
@@ -76,7 +76,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::UploadInvalid {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "BLOB_UPLOAD_INVALID",
                     "the upload was invalid",
                 );
@@ -203,12 +203,12 @@ pub(crate) async fn post(
         Some(digest) => {
             let filename = get_upload_path(&config.storage, &upload_id);
 
-            if !crate::views::utils::upload_part(&filename, body).await {
+            if !crate::registry::utils::upload_part(&filename, body).await {
                 return Responses::UploadInvalid {};
             }
 
             // Validate upload
-            if !crate::views::utils::validate_hash(&filename, &digest).await {
+            if !crate::registry::utils::validate_hash(&filename, &digest).await {
                 return Responses::DigestInvalid {};
             }
 

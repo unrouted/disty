@@ -1,10 +1,19 @@
+mod blobs;
+mod get;
+mod manifests;
+mod tags;
+mod utils;
+
 use std::sync::Arc;
 
 use prometheus_client::registry::Registry;
 use regex::Captures;
-use rocket::{fairing::AdHoc, http::uri::Origin, Build, Rocket, Route};
+use rocket::{fairing::AdHoc, http::uri::Origin, Build, Rocket, Route, routes};
 
-use crate::{config::Configuration, rpc::RpcClient, types::RegistryState};
+use crate::{
+    app::ExampleApp,
+    middleware::prometheus::{HttpMetrics, Port},
+};
 
 pub fn rewrite_urls(url: &str) -> String {
     // /v2/foo/bar/manifests/tagname -> /v2/foo:bar/manifests/tagname
@@ -26,61 +35,49 @@ pub fn rewrite_urls(url: &str) -> String {
 pub fn routes() -> Vec<Route> {
     routes![
         // Uploads
-        crate::registry::blobs::uploads::delete::delete,
-        crate::registry::blobs::uploads::patch::patch,
-        crate::registry::blobs::uploads::post::post,
-        crate::registry::blobs::uploads::put::put,
-        crate::registry::blobs::uploads::get::get,
+        blobs::uploads::delete::delete,
+        blobs::uploads::patch::patch,
+        blobs::uploads::post::post,
+        blobs::uploads::put::put,
+        blobs::uploads::get::get,
         // Blobs
-        crate::registry::blobs::delete::delete,
-        crate::registry::blobs::get::get,
+        blobs::delete::delete,
+        blobs::get::get,
         // Manifests
-        crate::registry::manifests::put::put,
-        crate::registry::manifests::get::get,
-        crate::registry::manifests::get::get_by_tag,
-        crate::registry::manifests::delete::delete,
-        crate::registry::manifests::delete::delete_by_tag,
+        manifests::put::put,
+        manifests::get::get,
+        manifests::get::get_by_tag,
+        manifests::delete::delete,
+        manifests::delete::delete_by_tag,
         // Tags
-        crate::registry::tags::get::get,
+        tags::get::get,
         // Root
-        crate::registry::get::get,
+        get::get,
     ]
 }
 
-fn configure(
-    config: Configuration,
-    registry: &mut Registry,
-    state: Arc<RegistryState>,
-    rpc_client: Arc<RpcClient>,
-) -> Rocket<Build> {
-    let extractor = crate::extractor::Extractor::new(config.clone());
+fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
+    let extractor = crate::extractor::Extractor::new(app.settings.clone());
 
     let registry_conf = rocket::Config::figment()
-        .merge(("port", &config.registry.port))
-        .merge(("address", &config.registry.address));
+        .merge(("port", &app.settings.registry.port))
+        .merge(("address", &app.settings.registry.address));
 
     rocket::custom(registry_conf)
-        .attach(AdHoc::on_request("URL Rewriter", |req, _| {
+        .attach(AdHoc::on_request("Registry URL Rewriter", |req, _| {
             Box::pin(async move {
                 let origin = req.uri().to_string();
                 req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
             })
         }))
-        .manage(config)
-        .manage(state)
+        .manage(app)
         .manage(extractor)
-        .manage(rpc_client)
-        .attach(crate::prometheus::HttpMetrics::new(registry))
-        .mount("/v2/", crate::registry::routes())
+        .attach(HttpMetrics::new(registry, Port::Registry))
+        .mount("/v2/", routes())
 }
 
-pub fn launch(
-    config: Configuration,
-    registry: &mut Registry,
-    state: Arc<RegistryState>,
-    rpc_client: Arc<RpcClient>,
-) {
-    tokio::spawn(configure(config, registry, state, rpc_client).launch());
+pub fn launch(app: Arc<ExampleApp>, registry: &mut Registry) {
+    tokio::spawn(configure(app, registry).launch());
 }
 
 #[cfg(test)]
@@ -152,7 +149,7 @@ mod test {
         };
         debug!("Launching registry with config: {:?}", config);
 
-        tokio::spawn(crate::launch(config));
+        tokio::spawn(launch(config));
 
         let url = format!("http://{}:8000/v2/", address.clone());
         debug!("Registry url: {url}");

@@ -14,12 +14,15 @@ use crate::store::Restore;
 pub mod app;
 pub mod client;
 mod config;
+mod extractor;
 pub mod matchengine;
 mod middleware;
 pub mod network;
 mod prometheus;
+mod registry;
 pub mod store;
 mod types;
+mod utils;
 
 pub type ExampleNodeId = u64;
 
@@ -73,6 +76,7 @@ pub async fn start_example_raft_node(
     });
 
     crate::network::raft::launch(app.clone(), &mut registry);
+    crate::registry::launch(app.clone(), &mut registry);
     crate::prometheus::launch(app, registry);
 
     Ok(())
