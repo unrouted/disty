@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::{Bound, RangeBounds};
@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use chrono::{DateTime, Utc};
 use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
@@ -37,6 +38,7 @@ pub mod config;
 pub mod store;
 
 use crate::store::config::Config;
+use crate::types::{Blob, Digest, Manifest, RegistryAction, RepositoryName};
 
 #[derive(Debug)]
 pub struct ExampleSnapshot {
@@ -57,6 +59,7 @@ pub enum ExampleRequest {
     Set { key: String, value: String },
     Place { order: Order },
     Cancel { order: Order },
+    RepositoryTransaction { actions: Vec<RegistryAction> },
 }
 
 /**
@@ -97,18 +100,294 @@ pub struct StateMachineContent {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
-
-    // TODO: it should not be Option.
     pub last_membership: EffectiveMembership<ExampleNodeId>,
 
-    /// Application data.
-    pub data: BTreeMap<String, String>,
+    blobs: HashMap<Digest, Blob>,
+    manifests: HashMap<Digest, Manifest>,
+    tags: HashMap<RepositoryName, HashMap<String, Digest>>,
 
-    // ** Orderbook
+    // Leftovers
+    pub data: BTreeMap<String, String>,
     pub orderbook: OrderBook,
 }
 
 impl ExampleStateMachine {
+    fn get_mut_blob(&mut self, digest: &Digest, timestamp: DateTime<Utc>) -> Option<&mut Blob> {
+        if let Some(mut blob) = self.blobs.get_mut(digest) {
+            blob.updated = timestamp;
+            return Some(blob);
+        }
+
+        None
+    }
+
+    fn get_or_insert_blob(&mut self, digest: Digest, timestamp: DateTime<Utc>) -> &mut Blob {
+        let mut blob = self.blobs.entry(digest).or_insert_with(|| Blob {
+            created: timestamp,
+            updated: timestamp,
+            content_type: None,
+            size: None,
+            dependencies: Some(vec![]),
+            locations: HashSet::new(),
+            repositories: HashSet::new(),
+        });
+
+        blob.updated = timestamp;
+
+        blob
+    }
+
+    fn get_mut_manifest(
+        &mut self,
+        digest: &Digest,
+        timestamp: DateTime<Utc>,
+    ) -> Option<&mut Manifest> {
+        if let Some(mut manifest) = self.manifests.get_mut(digest) {
+            manifest.updated = timestamp;
+            return Some(manifest);
+        }
+
+        None
+    }
+
+    fn get_or_insert_manifest(
+        &mut self,
+        digest: Digest,
+        timestamp: DateTime<Utc>,
+    ) -> &mut Manifest {
+        let mut manifest = self.manifests.entry(digest).or_insert_with(|| Manifest {
+            created: timestamp,
+            updated: timestamp,
+            content_type: None,
+            size: None,
+            dependencies: Some(vec![]),
+            locations: HashSet::new(),
+            repositories: HashSet::new(),
+        });
+
+        manifest.updated = timestamp;
+
+        manifest
+    }
+
+    pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+        match self.blobs.get(hash) {
+            None => false,
+            Some(blob) => blob.repositories.contains(repository),
+        }
+    }
+
+    pub async fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
+        self.blobs.get(hash).cloned()
+    }
+
+    pub async fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
+        match self.blobs.get(hash) {
+            None => None,
+            Some(blob) => {
+                if blob.repositories.contains(repository) {
+                    return Some(blob.clone());
+                }
+                None
+            }
+        }
+    }
+
+    pub async fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
+        self.manifests.get(hash).cloned()
+    }
+    pub async fn get_manifest(
+        &self,
+        repository: &RepositoryName,
+        hash: &Digest,
+    ) -> Option<Manifest> {
+        match self.manifests.get(hash) {
+            None => None,
+            Some(manifest) => {
+                if manifest.repositories.contains(repository) {
+                    return Some(manifest.clone());
+                }
+                None
+            }
+        }
+    }
+    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
+        match self.tags.get(repository) {
+            Some(repository) => repository.get(tag).cloned(),
+            None => None,
+        }
+    }
+
+    pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+        self.tags
+            .get(repository)
+            .map(|repository| repository.keys().cloned().collect())
+    }
+
+    pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+        match self.manifests.get(hash) {
+            None => false,
+            Some(manifest) => manifest.repositories.contains(repository),
+        }
+    }
+
+    pub fn dispatch(&mut self, actions: &Vec<RegistryAction>) {
+        for action in actions {
+            match action {
+                RegistryAction::Empty {} => {}
+                RegistryAction::BlobStored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    let blob = self.get_or_insert_blob(digest.clone(), timestamp.clone());
+                    blob.locations.insert(location.clone());
+
+                    //if location == self.machine_identifier {
+                    //    self.blob_available(&digest).await;
+                    //}
+                }
+                RegistryAction::BlobUnstored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    if let Some(blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                        blob.locations.remove(location);
+
+                        if blob.locations.is_empty() {
+                            self.blobs.remove(&digest);
+                        }
+                    }
+                }
+                RegistryAction::BlobMounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    let blob = self.get_or_insert_blob(digest.clone(), timestamp.clone());
+                    blob.repositories.insert(repository.clone());
+                }
+                RegistryAction::BlobUnmounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    if let Some(blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                        blob.repositories.remove(&repository);
+                    }
+                }
+                RegistryAction::BlobInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                } => {
+                    if let Some(mut blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                        blob.dependencies = Some(dependencies.clone());
+                        blob.content_type = Some(content_type.clone());
+                    }
+                }
+                RegistryAction::BlobStat {
+                    timestamp,
+                    digest,
+                    size,
+                } => {
+                    if let Some(mut blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                        blob.size = Some(size.clone());
+                    }
+                }
+                RegistryAction::ManifestStored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    let manifest = self.get_or_insert_manifest(digest.clone(), timestamp.clone());
+                    manifest.locations.insert(location.clone());
+
+                    //if location == self.machine_identifier {
+                    //    self.manifest_available(&digest).await;
+                    // }
+                }
+                RegistryAction::ManifestUnstored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    if let Some(manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                        manifest.locations.remove(location);
+
+                        if manifest.locations.is_empty() {
+                            self.manifests.remove(&digest);
+                        }
+                    }
+                }
+                RegistryAction::ManifestMounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    let manifest = self.get_or_insert_manifest(digest.clone(), timestamp.clone());
+                    manifest.repositories.insert(repository.clone());
+                }
+                RegistryAction::ManifestUnmounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    if let Some(manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                        manifest.repositories.remove(&repository);
+
+                        if let Some(tags) = self.tags.get_mut(&repository) {
+                            tags.retain(|_, value| value != digest);
+                        }
+                    }
+                }
+                RegistryAction::ManifestInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                } => {
+                    if let Some(mut manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                        manifest.dependencies = Some(dependencies.clone());
+                        manifest.content_type = Some(content_type.clone());
+                    }
+                }
+                RegistryAction::ManifestStat {
+                    timestamp,
+                    digest,
+                    size,
+                } => {
+                    if let Some(mut manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                        manifest.size = Some(size.clone());
+                    }
+                }
+                RegistryAction::HashTagged {
+                    timestamp: _,
+                    user: _,
+                    digest,
+                    repository,
+                    tag,
+                } => {
+                    let repository = self
+                        .tags
+                        .entry(repository.clone())
+                        .or_insert_with(HashMap::new);
+                    repository.insert(tag.clone(), digest.clone());
+                }
+            }
+        }
+    }
+
     pub fn to_content(&self) -> StateMachineContent {
         let mut content = StateMachineContent {
             last_applied_log: self.last_applied_log,
@@ -514,26 +793,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
             match entry.payload {
                 EntryPayload::Blank => res.push(ExampleResponse { value: None }),
                 EntryPayload::Normal(ref req) => match req {
-                    ExampleRequest::Set { key, value } => {
-                        sm.data.insert(key.clone(), value.clone());
-                        res.push(ExampleResponse {
-                            value: Some(value.clone()),
-                        })
+                    ExampleRequest::RepositoryTransaction { actions } => {
+                        sm.dispatch(actions);
                     }
-                    ExampleRequest::Place { order } => {
-                        let mut o = order.clone();
-                        let mr = sm.orderbook.place_order(&mut o);
-                        res.push(ExampleResponse {
-                            value: Some(o.sequance.to_string()),
-                        })
-                    }
+                    ExampleRequest::Set { key, value } => {}
+                    ExampleRequest::Place { order } => {}
 
-                    ExampleRequest::Cancel { order } => {
-                        sm.orderbook.cancle(order);
-                        res.push(ExampleResponse {
-                            value: Some("OK".to_string()),
-                        })
-                    }
+                    ExampleRequest::Cancel { order } => {}
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = EffectiveMembership::new(Some(entry.log_id), mem.clone());

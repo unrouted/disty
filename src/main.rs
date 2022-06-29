@@ -19,6 +19,7 @@ mod middleware;
 pub mod network;
 mod prometheus;
 pub mod store;
+mod types;
 
 pub type ExampleNodeId = u64;
 

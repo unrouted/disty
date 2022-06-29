@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use super::{Digest, RepositoryName};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Blob {
     pub size: Option<u64>,
     pub content_type: Option<String>,
