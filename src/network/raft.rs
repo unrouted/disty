@@ -18,7 +18,7 @@ use crate::middleware::prometheus::{Port, HttpMetrics};
 
 #[post("/raft-vote", data = "<body>")]
 async fn vote(
-    app: &State<ExampleApp>,
+    app: &State<Arc<ExampleApp>>,
     body: Json<VoteRequest<ExampleNodeId>>,
 ) -> Json<Result<VoteResponse<u64>, VoteError<u64>>> {
     let app: &ExampleApp = app.inner();
@@ -28,7 +28,7 @@ async fn vote(
 
 #[post("/raft-append", data = "<body>")]
 async fn append(
-    app: &State<ExampleApp>,
+    app: &State<Arc<ExampleApp>>,
     body: Json<AppendEntriesRequest<ExampleTypeConfig>>,
 ) -> Json<Result<AppendEntriesResponse<u64>, AppendEntriesError<u64>>> {
     let app: &ExampleApp = app.inner();
@@ -38,7 +38,7 @@ async fn append(
 
 #[post("/raft-snapshot", data = "<body>")]
 async fn snapshot(
-    app: &State<ExampleApp>,
+    app: &State<Arc<ExampleApp>>,
     body: Json<InstallSnapshotRequest<ExampleTypeConfig>>,
 ) -> Json<Result<InstallSnapshotResponse<u64>, InstallSnapshotError<u64>>> {
     let app: &ExampleApp = app.inner();

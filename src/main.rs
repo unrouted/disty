@@ -94,5 +94,10 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(options.id, options.http_addr).await
+    start_example_raft_node(options.id, options.http_addr).await;
+
+    // Temporary hack
+    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
+
+    Ok(())
 }
