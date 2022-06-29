@@ -1,20 +1,16 @@
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use prometheus_client::encoding::text::{encode, Encode};
+use prometheus_client::encoding::text::Encode;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::Registry;
-use rocket::http::Status;
 use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
+use rocket::response::Response;
 use rocket::{
     fairing::{Fairing, Info, Kind},
     Data,
 };
-use rocket::{Build, Rocket, Route};
 
 #[derive(Clone, Hash, PartialEq, Eq, Encode)]
 enum HttpMethod {

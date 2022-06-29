@@ -12,9 +12,9 @@ use rocket::Route;
 use rocket::{post, Build, Rocket, State};
 
 use crate::app::ExampleApp;
+use crate::middleware::prometheus::{HttpMetrics, Port};
 use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
-use crate::middleware::prometheus::{Port, HttpMetrics};
 
 #[post("/raft-vote", data = "<body>")]
 async fn vote(
@@ -50,8 +50,15 @@ fn routes() -> Vec<Route> {
     rocket::routes![vote, append, snapshot]
 }
 
-pub(crate) fn configure(rocket: Rocket<Build>, app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
-    rocket.mount("/", routes()).manage(app).attach(HttpMetrics::new(registry, Port::Raft))
+pub(crate) fn configure(
+    rocket: Rocket<Build>,
+    app: Arc<ExampleApp>,
+    registry: &mut Registry,
+) -> Rocket<Build> {
+    rocket
+        .mount("/", routes())
+        .manage(app)
+        .attach(HttpMetrics::new(registry, Port::Raft))
 }
 
 pub(crate) fn launch(app: Arc<ExampleApp>, registry: &mut Registry) {

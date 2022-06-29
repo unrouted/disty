@@ -1,11 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use prometheus_client::encoding::text::{encode};
+use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
-use rocket::{State, get, routes};
+use rocket::{get, routes, State};
 use rocket::{Build, Rocket, Route};
 
 use crate::app::ExampleApp;
@@ -51,8 +51,7 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
         .mount("/", routes())
         .attach(HttpMetrics::new(&mut registry, Port::Prometheus))
         .manage(Arc::new(Mutex::new(registry)))
-    }
-
+}
 
 pub(crate) fn launch(app: Arc<ExampleApp>, mut registry: Registry) {
     let fig = rocket::Config::figment()
@@ -61,7 +60,6 @@ pub(crate) fn launch(app: Arc<ExampleApp>, mut registry: Registry) {
 
     tokio::spawn(configure(rocket::custom(fig), registry).launch());
 }
-
 
 #[cfg(test)]
 mod test {

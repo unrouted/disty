@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::{Bound, RangeBounds};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -173,6 +174,14 @@ fn get_sled_db(config: Config, node_id: ExampleNodeId) -> Db {
 }
 
 impl ExampleStore {
+    pub async fn open_test() -> Arc<ExampleStore> {
+        let path = Path::new("/tmp/journal/match-1.binlog");
+        if path.exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        Arc::new(ExampleStore::open_create(1))
+    }
+
     pub fn open_create(node_id: ExampleNodeId) -> ExampleStore {
         tracing::info!("open_create, node_id: {}", node_id);
 
@@ -641,5 +650,17 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                 }))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use openraft::testing::Suite;
+
+    use super::ExampleStore;
+
+    #[test]
+    pub fn test_store() {
+        Suite::test_all(ExampleStore::open_test).unwrap();
     }
 }

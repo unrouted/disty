@@ -1,9 +1,7 @@
 use clap::Parser;
-use env_logger::Env;
 use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
-use prometheus_client::registry::Registry;
 use std::sync::Arc;
 
 use crate::app::ExampleApp;
@@ -17,10 +15,10 @@ pub mod app;
 pub mod client;
 mod config;
 pub mod matchengine;
-pub mod network;
-pub mod store;
 mod middleware;
+pub mod network;
 mod prometheus;
+pub mod store;
 
 pub type ExampleNodeId = u64;
 
