@@ -33,10 +33,10 @@ openraft::declare_raft_types!(
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
 
-pub async fn start_example_raft_node(
+pub async fn start_registry_services(
     node_id: ExampleNodeId,
     http_addr: String,
-) -> std::io::Result<()> {
+) -> std::io::Result<Arc<ExampleApp>> {
     // Create a configuration for the raft instance.
 
     let mut registry = <prometheus_client::registry::Registry>::default();
@@ -77,9 +77,9 @@ pub async fn start_example_raft_node(
 
     crate::network::raft::launch(app.clone(), &mut registry);
     crate::registry::launch(app.clone(), &mut registry);
-    crate::prometheus::launch(app, registry);
+    crate::prometheus::launch(app.clone(), registry);
 
-    Ok(())
+    Ok(app)
 }
 
 #[derive(Parser, Clone, Debug)]
@@ -97,7 +97,7 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(options.id, options.http_addr).await;
+    start_registry_services(options.id, options.http_addr).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
