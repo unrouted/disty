@@ -7,8 +7,10 @@ use openraft::EntryPayload;
 use crate::config::Configuration;
 use crate::store::ExampleRequest;
 use crate::types::Blob;
+use crate::types::BlobEntry;
 use crate::types::Digest;
 use crate::types::Manifest;
+use crate::types::ManifestEntry;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::ExampleNodeId;
@@ -77,5 +79,15 @@ impl ExampleApp {
     pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         let state = self.store.state_machine.read().await;
         state.is_manifest_available(repository, hash)
+    }
+
+    pub async fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
+        let state = self.store.state_machine.read().await;
+        state.get_orphaned_blobs()
+    }
+
+    pub async fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
+        let state = self.store.state_machine.read().await;
+        state.get_orphaned_manifests()
     }
 }

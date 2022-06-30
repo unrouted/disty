@@ -273,10 +273,7 @@ fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
     tasks
 }
 
-pub(crate) fn start_mirroring(
-    app: Arc<ExampleApp>,
-    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
-) {
+pub(crate) fn start_mirroring(app: Arc<ExampleApp>) {
     let mut rx = state.events.subscribe();
 
     let mint = Mint::new(app.settings.mirroring.clone());

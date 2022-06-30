@@ -11,7 +11,6 @@ use tokio::fs::remove_file;
 use tokio::time::{sleep, Duration};
 
 use crate::app::ExampleApp;
-use crate::config::Configuration;
 use crate::{
     types::RegistryAction,
     utils::{get_blob_path, get_manifest_path},
@@ -20,7 +19,7 @@ use crate::{
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
 async fn do_garbage_collect_phase1(app: &Arc<ExampleApp>) {
-    if !machine.lock().await.is_leader() {
+    if let Err(err) = app.raft.is_leader().await {
         info!("Garbage collection: Phase 1: Not leader");
         return;
     }
@@ -173,7 +172,7 @@ async fn do_garbage_collect_phase2(app: &Arc<ExampleApp>) {
     }
 }
 
-pub async fn do_garbage_collect(config: Configuration, app: Arc<ExampleApp>) {
+pub async fn do_garbage_collect(app: Arc<ExampleApp>) {
     loop {
         do_garbage_collect_phase1(&app).await;
         do_garbage_collect_phase2(&app).await;

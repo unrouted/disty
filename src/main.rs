@@ -3,7 +3,6 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
 use std::sync::Arc;
-use webhook::start_webhook_worker;
 
 use crate::app::ExampleApp;
 use crate::network::raft_network_impl::ExampleNetwork;
@@ -32,7 +31,6 @@ mod webhook;
 pub type ExampleNodeId = u64;
 
 openraft::declare_raft_types!(
-    /// Declare the type configuration for example K/V store.
     pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId
 );
 
@@ -95,6 +93,8 @@ pub async fn start_registry_services(
     crate::network::raft::launch(app.clone(), &mut registry);
     crate::registry::launch(app.clone(), &mut registry);
     crate::prometheus::launch(app.clone(), registry);
+
+    crate::garbage::do_garbage_collect(app.clone());
 
     Ok(app)
 }

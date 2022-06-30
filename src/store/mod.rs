@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
+use log::warn;
 use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
@@ -36,7 +37,9 @@ pub mod config;
 pub mod store;
 
 use crate::store::config::Config;
-use crate::types::{Blob, Digest, Manifest, RegistryAction, RepositoryName};
+use crate::types::{
+    Blob, BlobEntry, Digest, Manifest, ManifestEntry, RegistryAction, RepositoryName,
+};
 
 #[derive(Debug)]
 pub struct ExampleSnapshot {
@@ -217,6 +220,68 @@ impl ExampleStateMachine {
             None => false,
             Some(manifest) => manifest.repositories.contains(repository),
         }
+    }
+
+    pub fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
+        let blobs: HashSet<Digest> = self.blobs.keys().cloned().collect();
+
+        let mut visited: HashSet<Digest> = HashSet::new();
+        let mut visiting: HashSet<Digest> = HashSet::new();
+
+        for manifest in self.manifests.values() {
+            if let Some(dependencies) = &manifest.dependencies {
+                visiting.extend(dependencies.iter().cloned());
+            }
+        }
+
+        while let Some(digest) = visiting.iter().next().cloned() {
+            match self.blobs.get(&digest) {
+                Some(blob) => match &blob.dependencies {
+                    Some(dependencies) => {
+                        visiting.extend(
+                            dependencies
+                                .iter()
+                                .cloned()
+                                .filter(|digest| !visited.contains(digest)),
+                        );
+                    }
+                    None => {}
+                },
+                _ => {
+                    warn!("Dangling dependency found: {digest} missing");
+                }
+            }
+
+            visiting.remove(&digest);
+            visited.insert(digest);
+        }
+
+        blobs
+            .difference(&visited)
+            .cloned()
+            .map(|digest| BlobEntry {
+                blob: self.blobs.get(&digest).unwrap().clone(),
+                digest,
+            })
+            .collect::<Vec<BlobEntry>>()
+    }
+
+    pub fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
+        let manifests: HashSet<Digest> = self.manifests.keys().cloned().collect();
+        let mut tags: HashSet<Digest> = HashSet::new();
+
+        for repo_tags in self.tags.values() {
+            tags.extend(repo_tags.values().cloned());
+        }
+
+        manifests
+            .difference(&tags)
+            .cloned()
+            .map(|digest| ManifestEntry {
+                manifest: self.manifests.get(&digest).unwrap().clone(),
+                digest,
+            })
+            .collect::<Vec<ManifestEntry>>()
     }
 
     pub fn dispatch(&mut self, actions: &Vec<RegistryAction>) {
