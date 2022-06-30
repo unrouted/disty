@@ -33,14 +33,27 @@ openraft::declare_raft_types!(
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
 
+fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
+    let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
+    if !path.exists() {
+        return std::fs::create_dir_all(path);
+    }
+    Ok(())
+}
+
 pub async fn start_registry_services(
     node_id: ExampleNodeId,
     http_addr: String,
 ) -> std::io::Result<Arc<ExampleApp>> {
-    // Create a configuration for the raft instance.
+    let settings = crate::config::config();
+
+    create_dir(&settings.storage, "uploads")?;
+    create_dir(&settings.storage, "manifests")?;
+    create_dir(&settings.storage, "blobs")?;
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
+    // Create a configuration for the raft instance.
     let mut config = Config::default().validate().unwrap();
     config.snapshot_policy = SnapshotPolicy::LogsSinceLast(500);
     config.max_applied_log_to_keep = 20000;
@@ -72,7 +85,7 @@ pub async fn start_registry_services(
         raft,
         store,
         config,
-        settings: crate::config::config(),
+        settings: settings,
     });
 
     crate::network::raft::launch(app.clone(), &mut registry);
