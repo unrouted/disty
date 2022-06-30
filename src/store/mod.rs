@@ -30,8 +30,6 @@ use serde::Serialize;
 use sled::{Db, IVec};
 use tokio::sync::RwLock;
 
-use crate::matchengine::Order;
-use crate::matchengine::OrderBook;
 use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
 pub mod config;
@@ -57,8 +55,6 @@ pub struct ExampleSnapshot {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ExampleRequest {
     Set { key: String, value: String },
-    Place { order: Order },
-    Cancel { order: Order },
     RepositoryTransaction { actions: Vec<RegistryAction> },
 }
 
@@ -85,9 +81,6 @@ pub struct StateMachineContent {
     /// Application data.
     pub data: BTreeMap<String, String>,
 
-    // ** Orderbook
-    pub orders: Vec<Order>,
-
     pub sequance: u64,
 }
 
@@ -108,7 +101,6 @@ pub struct ExampleStateMachine {
 
     // Leftovers
     pub data: BTreeMap<String, String>,
-    pub orderbook: OrderBook,
 }
 
 impl ExampleStateMachine {
@@ -237,7 +229,7 @@ impl ExampleStateMachine {
                     digest,
                     location,
                 } => {
-                    let blob = self.get_or_insert_blob(digest.clone(), timestamp.clone());
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
                     blob.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
@@ -250,11 +242,11 @@ impl ExampleStateMachine {
                     digest,
                     location,
                 } => {
-                    if let Some(blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                    if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
                         blob.locations.remove(location);
 
                         if blob.locations.is_empty() {
-                            self.blobs.remove(&digest);
+                            self.blobs.remove(digest);
                         }
                     }
                 }
@@ -264,7 +256,7 @@ impl ExampleStateMachine {
                     digest,
                     repository,
                 } => {
-                    let blob = self.get_or_insert_blob(digest.clone(), timestamp.clone());
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
                     blob.repositories.insert(repository.clone());
                 }
                 RegistryAction::BlobUnmounted {
@@ -273,8 +265,8 @@ impl ExampleStateMachine {
                     digest,
                     repository,
                 } => {
-                    if let Some(blob) = self.get_mut_blob(&digest, timestamp.clone()) {
-                        blob.repositories.remove(&repository);
+                    if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.repositories.remove(repository);
                     }
                 }
                 RegistryAction::BlobInfo {
@@ -283,7 +275,7 @@ impl ExampleStateMachine {
                     dependencies,
                     content_type,
                 } => {
-                    if let Some(mut blob) = self.get_mut_blob(&digest, timestamp.clone()) {
+                    if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
                         blob.dependencies = Some(dependencies.clone());
                         blob.content_type = Some(content_type.clone());
                     }
@@ -293,8 +285,8 @@ impl ExampleStateMachine {
                     digest,
                     size,
                 } => {
-                    if let Some(mut blob) = self.get_mut_blob(&digest, timestamp.clone()) {
-                        blob.size = Some(size.clone());
+                    if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.size = Some(*size);
                     }
                 }
                 RegistryAction::ManifestStored {
@@ -303,7 +295,7 @@ impl ExampleStateMachine {
                     digest,
                     location,
                 } => {
-                    let manifest = self.get_or_insert_manifest(digest.clone(), timestamp.clone());
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
                     manifest.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
@@ -316,11 +308,11 @@ impl ExampleStateMachine {
                     digest,
                     location,
                 } => {
-                    if let Some(manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                    if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
                         manifest.locations.remove(location);
 
                         if manifest.locations.is_empty() {
-                            self.manifests.remove(&digest);
+                            self.manifests.remove(digest);
                         }
                     }
                 }
@@ -330,7 +322,7 @@ impl ExampleStateMachine {
                     digest,
                     repository,
                 } => {
-                    let manifest = self.get_or_insert_manifest(digest.clone(), timestamp.clone());
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
                     manifest.repositories.insert(repository.clone());
                 }
                 RegistryAction::ManifestUnmounted {
@@ -339,10 +331,10 @@ impl ExampleStateMachine {
                     digest,
                     repository,
                 } => {
-                    if let Some(manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
-                        manifest.repositories.remove(&repository);
+                    if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.repositories.remove(repository);
 
-                        if let Some(tags) = self.tags.get_mut(&repository) {
+                        if let Some(tags) = self.tags.get_mut(repository) {
                             tags.retain(|_, value| value != digest);
                         }
                     }
@@ -353,7 +345,7 @@ impl ExampleStateMachine {
                     dependencies,
                     content_type,
                 } => {
-                    if let Some(mut manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
+                    if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
                         manifest.dependencies = Some(dependencies.clone());
                         manifest.content_type = Some(content_type.clone());
                     }
@@ -363,8 +355,8 @@ impl ExampleStateMachine {
                     digest,
                     size,
                 } => {
-                    if let Some(mut manifest) = self.get_mut_manifest(&digest, timestamp.clone()) {
-                        manifest.size = Some(size.clone());
+                    if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.size = Some(*size);
                     }
                 }
                 RegistryAction::HashTagged {
@@ -385,20 +377,14 @@ impl ExampleStateMachine {
     }
 
     pub fn to_content(&self) -> StateMachineContent {
-        let mut content = StateMachineContent {
+        let content = StateMachineContent {
             last_applied_log: self.last_applied_log,
             last_membership: self.last_membership.clone(),
             data: self.data.clone(),
-            orders: vec![],
-            sequance: self.orderbook.sequance,
+            sequance: 0,
         };
 
-        let mut bids: Vec<Order> = self.orderbook.bids.values().cloned().collect();
-        let mut asks: Vec<Order> = self.orderbook.asks.values().cloned().collect();
-
-        content.orders.append(&mut bids);
-        content.orders.append(&mut asks);
-        return content;
+        content
     }
 
     pub fn from_content(&mut self, content: &StateMachineContent) {
@@ -406,13 +392,6 @@ impl ExampleStateMachine {
         self.last_applied_log = content.last_applied_log;
         self.last_membership = content.last_membership.clone();
         self.data = content.data.clone();
-        self.orderbook.asks.clear();
-        self.orderbook.bids.clear();
-        self.orderbook.sequance = content.sequance;
-
-        for order in content.orders.clone() {
-            self.orderbook.insert_order(&order);
-        }
     }
 }
 
@@ -474,11 +453,11 @@ impl ExampleStore {
 
         ExampleStore {
             last_purged_log_id: Default::default(),
-            config: config,
-            node_id: node_id,
+            config,
+            node_id,
             log,
             state_machine: Default::default(),
-            vote: vote,
+            vote,
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
         }
@@ -792,10 +771,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                     ExampleRequest::RepositoryTransaction { actions } => {
                         sm.dispatch(actions);
                     }
-                    ExampleRequest::Set { key, value } => {}
-                    ExampleRequest::Place { order } => {}
-
-                    ExampleRequest::Cancel { order } => {}
+                    ExampleRequest::Set { key: _, value: _ } => {}
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = EffectiveMembership::new(Some(entry.log_id), mem.clone());
@@ -901,13 +877,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
                 let meta = SnapshotMeta {
                     last_log_id: last_applied_log,
-                    snapshot_id: snapshot_id,
+                    snapshot_id,
                 };
 
                 tracing::debug!("get_current_snapshot: meta {:?}", meta);
 
                 Ok(Some(Snapshot {
-                    meta: meta,
+                    meta,
                     snapshot: Box::new(Cursor::new(data)),
                 }))
             }

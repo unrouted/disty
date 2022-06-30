@@ -1,13 +1,11 @@
 use crate::app::ExampleApp;
 use crate::headers::Token;
-use crate::store::ExampleRequest;
+
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use chrono::prelude::*;
-use log::error;
-use openraft::raft::ClientWriteRequest;
-use openraft::EntryPayload;
+
 use rocket::delete;
 use rocket::http::Header;
 use rocket::http::Status;

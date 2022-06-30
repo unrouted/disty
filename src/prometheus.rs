@@ -53,7 +53,7 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
         .manage(Arc::new(Mutex::new(registry)))
 }
 
-pub(crate) fn launch(app: Arc<ExampleApp>, mut registry: Registry) {
+pub(crate) fn launch(app: Arc<ExampleApp>, registry: Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.prometheus.port))
         .merge(("address", app.settings.prometheus.address.clone()));

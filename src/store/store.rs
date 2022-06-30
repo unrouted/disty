@@ -84,13 +84,13 @@ impl ExampleStore {
             .filter(|e| !e.file_type().is_dir())
         {
             let f_name = String::from(entry.file_name().to_string_lossy());
-            let mut s1 = f_name.split(".");
+            let mut s1 = f_name.split('.');
             let file = s1.next();
             let ext = s1.next();
             match ext.unwrap() {
                 "bin" => {
                     tracing::debug!("file: {:?}", file);
-                    let mut s3 = file.unwrap().split("+");
+                    let mut s3 = file.unwrap().split('+');
                     let prefix = s3.next();
 
                     match prefix {
@@ -107,12 +107,12 @@ impl ExampleStore {
                     };
                     let snapshot_id = s3.next().unwrap();
 
-                    let mut s2 = snapshot_id.split("-");
+                    let mut s2 = snapshot_id.split('-');
                     //TODO:
-                    let term_id = s2.next();
-                    let node_id = s2.next();
+                    let _term_id = s2.next();
+                    let _node_id = s2.next();
                     let index = s2.next();
-                    let snapshot_id = s2.next();
+                    let _snapshot_id = s2.next();
 
                     let index = u64::from_str_radix(index.unwrap(), 10).unwrap();
                     if index > max_index {
@@ -123,7 +123,7 @@ impl ExampleStore {
                 _ => (),
             }
         }
-        if latest_snapshot_file.len() > 0 {
+        if !latest_snapshot_file.is_empty() {
             Ok(format!(
                 "{}/{}",
                 self.config.snapshot_path, latest_snapshot_file
@@ -178,7 +178,7 @@ impl ExampleStore {
 
                 let meta = SnapshotMeta {
                     last_log_id: last_applied_log,
-                    snapshot_id: snapshot_id,
+                    snapshot_id,
                 };
 
                 //self.install_snapshot(&meta, Box::new(Cursor::new(data.clone()))).await?;
@@ -186,7 +186,7 @@ impl ExampleStore {
                 tracing::debug!("load_latest_snapshot: meta {:?}", meta);
 
                 Ok(Some(Snapshot {
-                    meta: meta,
+                    meta,
                     snapshot: Box::new(Cursor::new(data)),
                 }))
             }

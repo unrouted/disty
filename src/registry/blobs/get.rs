@@ -1,5 +1,5 @@
 use crate::app::ExampleApp;
-use crate::config::Configuration;
+
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RepositoryName;

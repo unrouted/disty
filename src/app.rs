@@ -29,7 +29,7 @@ pub struct ExampleApp {
 
 impl ExampleApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
-        let transaction = ExampleRequest::RepositoryTransaction { actions: actions };
+        let transaction = ExampleRequest::RepositoryTransaction { actions };
         let request = ClientWriteRequest::new(EntryPayload::Normal(transaction));
         if let Err(err) = self.raft.client_write(request).await {
             error!("Error whilst writing to raft: {err}");
