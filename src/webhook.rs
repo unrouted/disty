@@ -1,13 +1,11 @@
 use crate::config::WebhookConfig;
-use crate::types::{Broadcast, Digest, RepositoryName};
-use log::debug;
+use crate::types::{Digest, RepositoryName};
 use prometheus_client::encoding::text::Encode;
 use prometheus_client::registry::Registry;
 
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use serde_json::json;
-use tokio::select;
 use tokio::sync::mpsc;
 
 pub struct Event {
@@ -25,7 +23,6 @@ struct WebhookMetricLabels {
 pub fn start_webhook_worker(
     webhooks: Vec<WebhookConfig>,
     registry: &mut Registry,
-    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) -> tokio::sync::mpsc::Sender<Event> {
     let webhooks_total = Family::<WebhookMetricLabels, Counter>::default();
     registry.register(
@@ -38,74 +35,73 @@ pub fn start_webhook_worker(
 
     tokio::spawn(async move {
         loop {
-            select! {
-                _ = broadcasts.recv() => {
-                    debug!("Webhooks: Stopping in response to SIGINT");
+            match rx.recv().await {
+                None => {
                     return;
-                },
+                }
                 Some(Event {
                     repository,
                     digest,
                     tag,
                     content_type,
-                }) = rx.recv() => {
-                // FIXME: This is just enough webhook for what I personally need. Sorry if
-                // you need it to be valid!
-                let payload = json!({
-                    "id": "",
-                    "timestamp": "2016-03-09T14:44:26.402973972-08:00",
-                    "action": "push",
-                    "target": {
-                        "mediaType": content_type,
-                        "size": 708,
-                        "digest": digest,
-                        "length": 708,
-                        "repository": repository,
-                        "url": format!("/v2/{repository}/manifests/{digest}"),
-                        "tag": tag,
-                    },
-                    "request": {
+                }) => {
+                    // FIXME: This is just enough webhook for what I personally need. Sorry if
+                    // you need it to be valid!
+                    let payload = json!({
                         "id": "",
-                        "addr": "192.168.64.11:42961",
-                        "host": "192.168.100.227:5000",
-                        "method": "PUT",
-                        "useragent": "curl/7.38.0",
-                    },
-                    "actor": {},
-                    "source": {
-                        "addr": "xtal.local:5000",
-                        "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
-                    },
-                });
+                        "timestamp": "2016-03-09T14:44:26.402973972-08:00",
+                        "action": "push",
+                        "target": {
+                            "mediaType": content_type,
+                            "size": 708,
+                            "digest": digest,
+                            "length": 708,
+                            "repository": repository,
+                            "url": format!("/v2/{repository}/manifests/{digest}"),
+                            "tag": tag,
+                        },
+                        "request": {
+                            "id": "",
+                            "addr": "192.168.64.11:42961",
+                            "host": "192.168.100.227:5000",
+                            "method": "PUT",
+                            "useragent": "curl/7.38.0",
+                        },
+                        "actor": {},
+                        "source": {
+                            "addr": "xtal.local:5000",
+                            "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
+                        },
+                    });
 
-                let match_target = format!("{repository}:{tag}");
+                    let match_target = format!("{repository}:{tag}");
 
-                for hook in &webhooks {
-                    if !hook.matcher.is_match(&match_target) {
-                        continue;
-                    }
-                    let resp = reqwest::Client::new()
-                        .post(&hook.url)
-                        .json(&payload)
-                        .send()
-                        .await;
-
-                    if let Ok(resp) = resp {
-                        let labels = WebhookMetricLabels {
-                            status: resp.status().to_string(),
-                        };
-                        webhooks_total.get_or_create(&labels).inc();
-
-                        if resp.status() != 200 {
-                            // FIXME: Log failures here
+                    for hook in &webhooks {
+                        if !hook.matcher.is_match(&match_target) {
+                            continue;
                         }
-                    } else {
-                        let labels = WebhookMetricLabels {
-                            status: String::from("000"),
-                        };
-                        webhooks_total.get_or_create(&labels).inc();
+                        let resp = reqwest::Client::new()
+                            .post(&hook.url)
+                            .json(&payload)
+                            .send()
+                            .await;
+
+                        if let Ok(resp) = resp {
+                            let labels = WebhookMetricLabels {
+                                status: resp.status().to_string(),
+                            };
+                            webhooks_total.get_or_create(&labels).inc();
+
+                            if resp.status() != 200 {
+                                // FIXME: Log failures here
+                            }
+                        } else {
+                            let labels = WebhookMetricLabels {
+                                status: String::from("000"),
+                            };
+                            webhooks_total.get_or_create(&labels).inc();
+                        }
                     }
-                }
                 }
             }
         }
