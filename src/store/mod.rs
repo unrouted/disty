@@ -170,18 +170,18 @@ impl ExampleStateMachine {
         manifest
     }
 
-    pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+    pub fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         match self.blobs.get(hash) {
             None => false,
             Some(blob) => blob.repositories.contains(repository),
         }
     }
 
-    pub async fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
+    pub fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
         self.blobs.get(hash).cloned()
     }
 
-    pub async fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
+    pub fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
         match self.blobs.get(hash) {
             None => None,
             Some(blob) => {
@@ -193,14 +193,10 @@ impl ExampleStateMachine {
         }
     }
 
-    pub async fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
+    pub fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
         self.manifests.get(hash).cloned()
     }
-    pub async fn get_manifest(
-        &self,
-        repository: &RepositoryName,
-        hash: &Digest,
-    ) -> Option<Manifest> {
+    pub fn get_manifest(&self, repository: &RepositoryName, hash: &Digest) -> Option<Manifest> {
         match self.manifests.get(hash) {
             None => None,
             Some(manifest) => {
@@ -211,20 +207,20 @@ impl ExampleStateMachine {
             }
         }
     }
-    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
+    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         match self.tags.get(repository) {
             Some(repository) => repository.get(tag).cloned(),
             None => None,
         }
     }
 
-    pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+    pub fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
         self.tags
             .get(repository)
             .map(|repository| repository.keys().cloned().collect())
     }
 
-    pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
+    pub fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         match self.manifests.get(hash) {
             None => false,
             Some(manifest) => manifest.repositories.contains(repository),

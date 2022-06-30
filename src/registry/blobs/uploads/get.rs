@@ -2,12 +2,14 @@ use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::RepositoryName;
 use crate::utils::get_upload_path;
+use rocket::get;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,

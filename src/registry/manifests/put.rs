@@ -1,19 +1,18 @@
-use crate::config::Configuration;
+use crate::app::ExampleApp;
 use crate::extractor::Extractor;
 use crate::headers::ContentType;
 use crate::headers::Token;
-use crate::rpc::RpcClient;
+use crate::registry::utils::get_hash;
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
-use crate::registry::utils::get_hash;
-use crate::webhook::Event;
+// use crate::webhook::Event;
 use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
+use rocket::put;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
@@ -59,8 +58,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::UploadInvalid {} => {
-                let body =
-                    crate::registry::utils::simple_oci_error("MANIFEST_INVALID", "upload was invalid");
+                let body = crate::registry::utils::simple_oci_error(
+                    "MANIFEST_INVALID",
+                    "upload was invalid",
+                );
                 Response::build()
                     .header(Header::new("Content-Length", body.len().to_string()))
                     .sized_body(body.len(), Cursor::new(body))
@@ -96,18 +97,14 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     extractor: &State<Extractor>,
     content_type: ContentType,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
+    let app: &ExampleApp = app.inner();
     let extractor: &Extractor = extractor.inner();
-    let submission: &RpcClient = submission.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -119,7 +116,7 @@ pub(crate) async fn put(
         return Responses::AccessDenied {};
     }
 
-    let upload_path = crate::utils::get_temp_path(&config.storage);
+    let upload_path = crate::utils::get_temp_path(&app.settings.storage);
 
     if !crate::registry::utils::upload_part(&upload_path, body).await {
         return Responses::UploadInvalid {};
@@ -141,7 +138,7 @@ pub(crate) async fn put(
 
     let extracted = extractor
         .extract(
-            state,
+            app,
             &repository,
             &digest,
             &content_type.content_type,
@@ -159,7 +156,7 @@ pub(crate) async fn put(
         RegistryAction::ManifestStored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: state.machine_identifier.clone(),
+            location: app.settings.identifier.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::ManifestStat {
@@ -184,7 +181,7 @@ pub(crate) async fn put(
         user: token.sub.clone(),
     }]);
 
-    let dest = get_manifest_path(&config.storage, &digest);
+    let dest = get_manifest_path(&app.settings.storage, &digest);
 
     match std::fs::rename(upload_path, dest) {
         Ok(_) => {}
@@ -193,18 +190,20 @@ pub(crate) async fn put(
         }
     }
 
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::UploadInvalid {};
     }
 
-    state
-        .send_webhook(Event {
-            repository: repository.clone(),
-            digest: digest.clone(),
-            tag,
-            content_type: content_type.content_type,
-        })
-        .await;
+    /*
+    app
+    .send_webhook(Event {
+        repository: repository.clone(),
+        digest: digest.clone(),
+        tag,
+        content_type: content_type.content_type,
+    })
+    .await;
+    */
 
     Responses::Ok { repository, digest }
 }

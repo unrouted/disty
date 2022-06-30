@@ -1,12 +1,10 @@
 use crate::headers::Token;
-use crate::types::RegistryState;
+use rocket::get;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
-use rocket::State;
 use std::io::Cursor;
-use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
@@ -41,9 +39,7 @@ impl<'r> Responder<'r, 'static> for Responses {
 }
 
 #[get("/")]
-pub(crate) async fn get(state: &State<Arc<RegistryState>>, token: Token) -> Responses {
-    let _state: &RegistryState = state.inner();
-
+pub(crate) async fn get(token: Token) -> Responses {
     if !token.validated_token {
         return Responses::MustAuthenticate {
             challenge: token.get_general_challenge(),

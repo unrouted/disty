@@ -1,10 +1,14 @@
+use crate::app::ExampleApp;
 use crate::headers::Token;
-use crate::rpc::RpcClient;
+use crate::store::ExampleRequest;
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use chrono::prelude::*;
+use log::error;
+use openraft::raft::ClientWriteRequest;
+use openraft::EntryPayload;
+use rocket::delete;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
@@ -61,12 +65,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     token: Token,
 ) -> Responses {
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &Arc<ExampleApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -78,7 +80,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_blob_available(&repository, &digest).await {
+    if app.is_blob_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
@@ -89,7 +91,7 @@ pub(crate) async fn delete(
         user: token.sub.clone(),
     }];
 
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::Failed {};
     }
 

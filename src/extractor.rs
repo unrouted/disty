@@ -1,6 +1,7 @@
 use crate::{
+    app::ExampleApp,
     config::Configuration,
-    types::{Digest, RegistryAction, RegistryState, RepositoryName},
+    types::{Digest, RegistryAction, RepositoryName},
 };
 use chrono::prelude::*;
 use jsonschema::JSONSchema;
@@ -185,7 +186,7 @@ impl Extractor {
 
     pub async fn extract(
         &self,
-        state: &RegistryState,
+        app: &ExampleApp,
         repository: &RepositoryName,
         digest: &Digest,
         content_type: &str,
@@ -234,7 +235,7 @@ impl Extractor {
                     continue;
                 }
 
-                match state.get_blob(repository, &extraction.digest).await {
+                match app.get_blob(repository, &extraction.digest).await {
                     Some(blob) => {
                         if blob.content_type.is_some() || blob.dependencies.is_some() {
                             // Was already analyzed, don't do it again!

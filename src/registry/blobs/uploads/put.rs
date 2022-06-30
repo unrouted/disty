@@ -1,16 +1,15 @@
-use crate::config::Configuration;
 use crate::headers::Token;
-use crate::rpc::RpcClient;
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
 use crate::utils::get_upload_path;
+use crate::ExampleApp;
 use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
+use rocket::put;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
@@ -107,15 +106,11 @@ pub(crate) async fn put(
     repository: RepositoryName,
     upload_id: String,
     digest: Digest,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &Arc<ExampleApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -131,7 +126,7 @@ pub(crate) async fn put(
         return Responses::UploadInvalid {};
     }
 
-    let filename = get_upload_path(&config.storage, &upload_id);
+    let filename = get_upload_path(&app.settings.storage, &upload_id);
 
     if !filename.is_file() {
         return Responses::UploadInvalid {};
@@ -146,7 +141,7 @@ pub(crate) async fn put(
         return Responses::DigestInvalid {};
     }
 
-    let dest = get_blob_path(&config.storage, &digest);
+    let dest = get_blob_path(&app.settings.storage, &digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,
@@ -177,12 +172,12 @@ pub(crate) async fn put(
         RegistryAction::BlobStored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: state.machine_identifier.clone(),
+            location: app.settings.identifier.clone(),
             user: token.sub.clone(),
         },
     ];
 
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::UploadInvalid {};
     }
 

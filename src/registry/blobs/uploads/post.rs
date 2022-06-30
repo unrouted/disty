@@ -1,10 +1,8 @@
-use crate::config::Configuration;
+use crate::app::ExampleApp;
 use crate::headers::Access;
 use crate::headers::Token;
-use crate::rpc::RpcClient;
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
 use crate::utils::get_upload_path;
@@ -12,6 +10,7 @@ use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
+use rocket::post;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
@@ -137,15 +136,11 @@ pub(crate) async fn post(
     mount: Option<Digest>,
     from: Option<RepositoryName>,
     digest: Option<Digest>,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &Arc<ExampleApp> = app.inner();
 
     if !token.validated_token {
         let mut access = vec![Access {
@@ -178,7 +173,7 @@ pub(crate) async fn post(
             return Responses::UploadInvalid {};
         }
 
-        if state.is_blob_available(&from, &mount).await {
+        if app.is_blob_available(&from, &mount).await {
             let actions = vec![RegistryAction::BlobMounted {
                 timestamp: Utc::now(),
                 digest: mount.clone(),
@@ -186,7 +181,7 @@ pub(crate) async fn post(
                 user: token.sub.clone(),
             }];
 
-            if !submission.send(actions).await {
+            if !app.submit(actions).await {
                 return Responses::UploadInvalid {};
             }
 
@@ -201,7 +196,7 @@ pub(crate) async fn post(
 
     match digest {
         Some(digest) => {
-            let filename = get_upload_path(&config.storage, &upload_id);
+            let filename = get_upload_path(&app.settings.storage, &upload_id);
 
             if !crate::registry::utils::upload_part(&filename, body).await {
                 return Responses::UploadInvalid {};
@@ -212,7 +207,7 @@ pub(crate) async fn post(
                 return Responses::DigestInvalid {};
             }
 
-            let dest = get_blob_path(&config.storage, &digest);
+            let dest = get_blob_path(&app.settings.storage, &digest);
 
             let stat = match tokio::fs::metadata(&filename).await {
                 Ok(result) => result,
@@ -243,12 +238,12 @@ pub(crate) async fn post(
                 RegistryAction::BlobStored {
                     timestamp: Utc::now(),
                     digest: digest.clone(),
-                    location: state.machine_identifier.clone(),
+                    location: app.settings.identifier.clone(),
                     user: token.sub.clone(),
                 },
             ];
 
-            if !submission.send(actions).await {
+            if !app.submit(actions).await {
                 return Responses::UploadInvalid {};
             }
 
@@ -256,7 +251,7 @@ pub(crate) async fn post(
         }
         _ => {
             // Nothing was uploaded, but a session was started...
-            let filename = get_upload_path(&config.storage, &upload_id);
+            let filename = get_upload_path(&app.settings.storage, &upload_id);
 
             match tokio::fs::OpenOptions::new()
                 .create(true)

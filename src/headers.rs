@@ -1,6 +1,7 @@
 use crate::config::Configuration;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
+use log::info;
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome, Request};
 use std::collections::HashSet;

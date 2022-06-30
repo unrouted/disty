@@ -7,6 +7,7 @@ use crate::utils::get_upload_path;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
+use rocket::patch;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;

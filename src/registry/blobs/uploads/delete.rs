@@ -2,6 +2,8 @@ use crate::config::Configuration;
 use crate::headers::Token;
 use crate::types::RepositoryName;
 use crate::utils::get_upload_path;
+use log::warn;
+use rocket::delete;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;

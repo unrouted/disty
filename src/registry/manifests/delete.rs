@@ -1,9 +1,10 @@
+use crate::app::ExampleApp;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use chrono::prelude::*;
+use rocket::delete;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
@@ -59,12 +60,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     token: Token,
 ) -> Responses {
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &ExampleApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -76,7 +75,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest).await {
+    if !app.is_manifest_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
@@ -87,7 +86,7 @@ pub(crate) async fn delete(
         user: token.sub.clone(),
     }];
 
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::Failed {};
     }
 
@@ -98,12 +97,10 @@ pub(crate) async fn delete(
 pub(crate) async fn delete_by_tag(
     repository: RepositoryName,
     tag: String,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<ExampleApp>>,
     token: Token,
 ) -> Responses {
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &ExampleApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -115,12 +112,12 @@ pub(crate) async fn delete_by_tag(
         return Responses::AccessDenied {};
     }
 
-    let digest = match state.get_tag(&repository, &tag).await {
+    let digest = match app.get_tag(&repository, &tag).await {
         Some(tag) => tag,
         None => return Responses::NotFound {},
     };
 
-    if !state.is_manifest_available(&repository, &digest).await {
+    if !app.is_manifest_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
@@ -131,7 +128,7 @@ pub(crate) async fn delete_by_tag(
         user: token.sub.clone(),
     }];
 
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::Failed {};
     }
 
