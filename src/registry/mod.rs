@@ -2,7 +2,7 @@ mod blobs;
 mod get;
 mod manifests;
 mod tags;
-mod utils;
+pub(crate) mod utils;
 
 use std::sync::Arc;
 

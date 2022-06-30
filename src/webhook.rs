@@ -1,5 +1,6 @@
 use crate::config::WebhookConfig;
 use crate::types::{Broadcast, Digest, RepositoryName};
+use log::debug;
 use prometheus_client::encoding::text::Encode;
 use prometheus_client::registry::Registry;
 

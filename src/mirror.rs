@@ -1,10 +1,8 @@
-use crate::config::Configuration;
+use crate::app::ExampleApp;
 use crate::mint::Mint;
-use crate::raft::RaftEvent;
-use crate::rpc::RpcClient;
-use crate::types::{Broadcast, Digest, RegistryAction, RegistryState};
+use crate::types::{Digest, RegistryAction};
 use chrono::Utc;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
@@ -62,14 +60,13 @@ impl MirrorRequest {
 }
 
 async fn do_transfer(
-    config: Configuration,
-    state: Arc<RegistryState>,
+    app: Arc<ExampleApp>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest).await {
+        MirrorRequest::Blob { ref digest } => match app.get_blob_directly(digest).await {
             Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -78,7 +75,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if blob.locations.contains(&config.identifier) {
+                if blob.locations.contains(&app.settings.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -90,7 +87,7 @@ async fn do_transfer(
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest).await {
+        MirrorRequest::Manifest { ref digest } => match app.get_manifest_directly(digest).await {
             Some(manifest) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -99,7 +96,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if manifest.locations.contains(&config.identifier) {
+                if manifest.locations.contains(&app.settings.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -114,7 +111,7 @@ async fn do_transfer(
     };
 
     let mut urls = vec![];
-    for peer in &config.peers {
+    for peer in &app.settings.peers {
         if !locations.contains(&peer.name) {
             continue;
         }
@@ -159,7 +156,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    let file_name = crate::utils::get_temp_mirror_path(&config.storage);
+    let file_name = crate::utils::get_temp_mirror_path(&app.settings.storage);
 
     let mut file = match tokio::fs::File::create(&file_name).await {
         Ok(file) => {
@@ -228,7 +225,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     };
 
-    let storage_path = request.storage_path(&config.storage);
+    let storage_path = request.storage_path(&app.settings.storage);
     if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
         debug!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
@@ -236,7 +233,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(config.identifier.clone())
+    request.success(app.settings.identifier.clone())
 }
 
 fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
@@ -277,14 +274,12 @@ fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
 }
 
 pub(crate) fn start_mirroring(
-    config: Configuration,
-    state: Arc<RegistryState>,
-    submission: Arc<RpcClient>,
+    app: Arc<ExampleApp>,
     mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
 ) {
     let mut rx = state.events.subscribe();
 
-    let mint = Mint::new(config.mirroring.clone());
+    let mint = Mint::new(app.settings.mirroring.clone());
 
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
@@ -314,15 +309,14 @@ pub(crate) fn start_mirroring(
             let tasks: Vec<MirrorRequest> = requests.drain().collect();
             for task in tasks {
                 let client = client.clone();
-                let result =
-                    do_transfer(config.clone(), state.clone(), mint.clone(), client, task).await;
+                let result = do_transfer(app.clone(), mint.clone(), client, task).await;
 
                 match result {
                     MirrorResult::Retry { request } => {
                         requests.insert(request);
                     }
                     MirrorResult::Success { action, request } => {
-                        if !submission.send(vec![action]).await {
+                        if !app.submit(vec![action]).await {
                             requests.insert(request);
                             debug!("Mirroring: Raft transaction failed");
                         } else {
