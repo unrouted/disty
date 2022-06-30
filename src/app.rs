@@ -2,7 +2,6 @@ use log::error;
 use std::sync::Arc;
 
 use openraft::raft::ClientWriteRequest;
-use openraft::Config;
 use openraft::EntryPayload;
 
 use crate::config::Configuration;
@@ -23,7 +22,6 @@ pub struct ExampleApp {
     pub addr: String,
     pub raft: ExampleRaft,
     pub store: Arc<ExampleStore>,
-    pub config: Arc<Config>,
     pub settings: Configuration,
 }
 

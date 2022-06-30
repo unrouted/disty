@@ -75,7 +75,7 @@ pub async fn start_registry_services(
     let network = ExampleNetwork::new();
 
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone());
+    let raft = Raft::new(node_id, config, network, store.clone());
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
@@ -84,7 +84,6 @@ pub async fn start_registry_services(
         addr: http_addr.clone(),
         raft,
         store,
-        config,
         settings: settings,
     });
 
