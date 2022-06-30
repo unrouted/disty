@@ -13,6 +13,7 @@ use rocket::{fairing::AdHoc, http::uri::Origin, routes, Build, Rocket, Route};
 use crate::{
     app::ExampleApp,
     middleware::prometheus::{HttpMetrics, Port},
+    webhook::start_webhook_worker,
 };
 
 pub fn rewrite_urls(url: &str) -> String {
@@ -58,6 +59,7 @@ pub fn routes() -> Vec<Route> {
 
 fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
     let extractor = crate::extractor::Extractor::new(app.settings.clone());
+    let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), &mut registry);
 
     let registry_conf = rocket::Config::figment()
         .merge(("port", &app.settings.registry.port))
@@ -72,6 +74,7 @@ fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
         }))
         .manage(app)
         .manage(extractor)
+        .manage(webhook_queue)
         .attach(HttpMetrics::new(registry, Port::Registry))
         .mount("/v2/", routes())
 }

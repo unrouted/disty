@@ -3,6 +3,7 @@ use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
 use std::sync::Arc;
+use webhook::start_webhook_worker;
 
 use crate::app::ExampleApp;
 use crate::network::raft_network_impl::ExampleNetwork;

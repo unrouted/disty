@@ -7,6 +7,7 @@ use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
+use crate::webhook::Event;
 // use crate::webhook::Event;
 use chrono::prelude::*;
 use rocket::data::Data;
@@ -18,6 +19,7 @@ use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -99,6 +101,7 @@ pub(crate) async fn put(
     tag: String,
     app: &State<Arc<ExampleApp>>,
     extractor: &State<Extractor>,
+    webhook_queue: &State<Sender<Event>>,
     content_type: ContentType,
     token: Token,
     body: Data<'_>,
@@ -194,16 +197,15 @@ pub(crate) async fn put(
         return Responses::UploadInvalid {};
     }
 
-    /*
-    app
-    .send_webhook(Event {
-        repository: repository.clone(),
-        digest: digest.clone(),
-        tag,
-        content_type: content_type.content_type,
-    })
-    .await;
-    */
+    let webhook_queue: &Sender<Event> = webhook_queue.inner();
+    webhook_queue
+        .send(Event {
+            repository: repository.clone(),
+            digest: digest.clone(),
+            tag,
+            content_type: content_type.content_type,
+        })
+        .await;
 
     Responses::Ok { repository, digest }
 }
