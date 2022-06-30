@@ -94,7 +94,8 @@ pub async fn start_registry_services(
     crate::registry::launch(app.clone(), &mut registry);
     crate::prometheus::launch(app.clone(), registry);
 
-    crate::garbage::do_garbage_collect(app.clone());
+    tokio::spawn(crate::garbage::do_garbage_collect(app.clone()));
+    tokio::spawn(crate::mirror::do_miroring(app.clone()));
 
     Ok(app)
 }

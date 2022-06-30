@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::select;
+use tokio::sync::mpsc;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -236,45 +237,38 @@ async fn do_transfer(
     request.success(app.settings.identifier.clone())
 }
 
-fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
+fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest> {
     let mut tasks = vec![];
 
-    match event {
-        RaftEvent::Committed {
-            start_index: _,
-            entries,
-        } => {
-            for entry in &entries {
-                match &entry.entry {
-                    RegistryAction::BlobStored {
-                        timestamp: _,
-                        digest,
-                        location: _,
-                        user: _,
-                    } => tasks.push(MirrorRequest::Blob {
-                        digest: digest.clone(),
-                    }),
-                    RegistryAction::ManifestStored {
-                        timestamp: _,
-                        digest,
-                        location: _,
-                        user: _,
-                    } => {
-                        tasks.push(MirrorRequest::Manifest {
-                            digest: digest.clone(),
-                        });
-                    }
-                    _ => {}
-                }
+    for action in &actions {
+        match action {
+            RegistryAction::BlobStored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => tasks.push(MirrorRequest::Blob {
+                digest: digest.clone(),
+            }),
+            RegistryAction::ManifestStored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => {
+                tasks.push(MirrorRequest::Manifest {
+                    digest: digest.clone(),
+                });
             }
+            _ => {}
         }
     }
 
     tasks
 }
 
-pub(crate) fn start_mirroring(app: Arc<ExampleApp>) {
-    let mut rx = state.events.subscribe();
+pub(crate) async fn do_miroring(app: Arc<ExampleApp>) {
+    let (_tx, mut rx) = mpsc::channel::<Vec<RegistryAction>>(1000);
 
     let mint = Mint::new(app.settings.mirroring.clone());
 
@@ -285,44 +279,38 @@ pub(crate) fn start_mirroring(app: Arc<ExampleApp>) {
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
-    tokio::spawn(async move {
-        loop {
-            select! {
-                _ = broadcasts.recv() => {
-                    debug!("Mirroring: Stopping in response to SIGINT");
-                    return;
-                },
-                _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-                Ok(event) = rx.recv() => {
-                    requests.extend(get_tasks_from_raft_event(event));
+    loop {
+        select! {
+            _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
+            Some(actions) = rx.recv() => {
+                requests.extend(get_tasks_from_raft_event(actions));
+            }
+        };
+
+        info!("Mirroring: There are {} mirroring tasks", requests.len());
+
+        // FIXME: Ideally we'd have some worker pool here are download a bunch
+        // of objects in parallel.
+
+        let tasks: Vec<MirrorRequest> = requests.drain().collect();
+        for task in tasks {
+            let client = client.clone();
+            let result = do_transfer(app.clone(), mint.clone(), client, task).await;
+
+            match result {
+                MirrorResult::Retry { request } => {
+                    requests.insert(request);
                 }
-            };
-
-            info!("Mirroring: There are {} mirroring tasks", requests.len());
-
-            // FIXME: Ideally we'd have some worker pool here are download a bunch
-            // of objects in parallel.
-
-            let tasks: Vec<MirrorRequest> = requests.drain().collect();
-            for task in tasks {
-                let client = client.clone();
-                let result = do_transfer(app.clone(), mint.clone(), client, task).await;
-
-                match result {
-                    MirrorResult::Retry { request } => {
+                MirrorResult::Success { action, request } => {
+                    if !app.submit(vec![action]).await {
                         requests.insert(request);
-                    }
-                    MirrorResult::Success { action, request } => {
-                        if !app.submit(vec![action]).await {
-                            requests.insert(request);
-                            debug!("Mirroring: Raft transaction failed");
-                        } else {
-                            debug!("Mirroring: Download logged to raft");
-                        };
-                    }
-                    MirrorResult::None => {}
+                        debug!("Mirroring: Raft transaction failed");
+                    } else {
+                        debug!("Mirroring: Download logged to raft");
+                    };
                 }
+                MirrorResult::None => {}
             }
         }
-    });
+    }
 }

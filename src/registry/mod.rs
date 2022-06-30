@@ -59,7 +59,7 @@ pub fn routes() -> Vec<Route> {
 
 fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
     let extractor = crate::extractor::Extractor::new(app.settings.clone());
-    let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), &mut registry);
+    let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), registry);
 
     let registry_conf = rocket::Config::figment()
         .merge(("port", &app.settings.registry.port))

@@ -10,6 +10,7 @@ use crate::utils::get_manifest_path;
 use crate::webhook::Event;
 // use crate::webhook::Event;
 use chrono::prelude::*;
+use log::error;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
@@ -198,7 +199,7 @@ pub(crate) async fn put(
     }
 
     let webhook_queue: &Sender<Event> = webhook_queue.inner();
-    webhook_queue
+    let resp = webhook_queue
         .send(Event {
             repository: repository.clone(),
             digest: digest.clone(),
@@ -206,6 +207,10 @@ pub(crate) async fn put(
             content_type: content_type.content_type,
         })
         .await;
+
+    if let Err(err) = resp {
+        error!("Error queueing webhook: {err}");
+    }
 
     Responses::Ok { repository, digest }
 }

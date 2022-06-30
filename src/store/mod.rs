@@ -102,6 +102,10 @@ pub struct ExampleStateMachine {
     manifests: HashMap<Digest, Manifest>,
     tags: HashMap<RepositoryName, HashMap<String, Digest>>,
 
+    // Resources which are known to the graph but not stored on the local machine
+    missing_manifests: HashSet<Digest>,
+    missing_blobs: HashSet<Digest>,
+
     // Leftovers
     pub data: BTreeMap<String, String>,
 }
