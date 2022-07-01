@@ -47,10 +47,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_registry_services(
-    node_id: NodeId,
-    http_addr: String,
-) -> Result<Arc<RegistryApp>> {
+pub async fn start_registry_services(node_id: NodeId) -> Result<Arc<RegistryApp>> {
     let settings = crate::config::config();
 
     create_dir(&settings.storage, "uploads")?;
@@ -97,11 +94,14 @@ pub async fn start_registry_services(
     }
     .context("Failed to initialize raft state")?;
 
+    let address = &settings.raft.address;
+    let port = &settings.raft.port;
+
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp {
         id: node_id,
-        addr: http_addr.clone(),
+        addr: format!("http://{address}:{port}"),
         raft,
         store,
         settings,
@@ -122,9 +122,6 @@ pub async fn start_registry_services(
 pub struct Opt {
     #[clap(long)]
     pub id: u64,
-
-    #[clap(long)]
-    pub http_addr: String,
 }
 
 #[rocket::main]
@@ -132,7 +129,7 @@ async fn main() -> Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_registry_services(options.id, options.http_addr).await?;
+    start_registry_services(options.id).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
