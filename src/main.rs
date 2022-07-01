@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use openraft::error::InitializeError;
 use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
@@ -89,9 +90,12 @@ pub async fn start_registry_services(
         .map(|(idx, _peer)| idx as u64)
         .collect();
 
-    raft.initialize(members)
-        .await
-        .context("Failed to initialize raft state")?;
+    match raft.initialize(members).await {
+        Ok(_) => Ok(()),
+        Err(InitializeError::NotAllowed(..)) => Ok(()),
+        Err(err) => Err(err),
+    }
+    .context("Failed to initialize raft state")?;
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
