@@ -34,7 +34,7 @@ use tokio::sync::RwLock;
 use crate::NodeId;
 use crate::RegistryTypeConfig;
 pub mod config;
-pub mod store;
+pub mod registry_store;
 
 use crate::store::config::Config;
 use crate::types::{
@@ -446,14 +446,12 @@ impl RegistryStateMachine {
     }
 
     pub fn to_content(&self) -> StateMachineContent {
-        let content = StateMachineContent {
+        StateMachineContent {
             last_applied_log: self.last_applied_log,
             last_membership: self.last_membership.clone(),
             data: self.data.clone(),
             sequance: 0,
-        };
-
-        content
+        }
     }
 
     pub fn from_content(&mut self, content: &StateMachineContent) {

@@ -87,7 +87,7 @@ pub async fn start_registry_services(
         addr: http_addr.clone(),
         raft,
         store,
-        settings: settings,
+        settings,
     });
 
     crate::network::raft::launch(app.clone(), &mut registry);
