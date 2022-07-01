@@ -1,4 +1,4 @@
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::mint::Mint;
 use crate::types::{Digest, RegistryAction};
 use chrono::Utc;
@@ -61,7 +61,7 @@ impl MirrorRequest {
 }
 
 async fn do_transfer(
-    app: Arc<ExampleApp>,
+    app: Arc<RegistryApp>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
@@ -267,7 +267,7 @@ fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest>
     tasks
 }
 
-pub(crate) async fn do_miroring(app: Arc<ExampleApp>) {
+pub(crate) async fn do_miroring(app: Arc<RegistryApp>) {
     let (_tx, mut rx) = mpsc::channel::<Vec<RegistryAction>>(1000);
 
     let mint = Mint::new(app.settings.mirroring.clone());

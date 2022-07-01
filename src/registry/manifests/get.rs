@@ -1,4 +1,4 @@
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::headers::Token;
 use crate::types::Digest;
 use crate::types::RepositoryName;
@@ -105,10 +105,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -165,10 +165,10 @@ pub(crate) async fn get(
 pub(crate) async fn get_by_tag(
     repository: RepositoryName,
     tag: String,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {

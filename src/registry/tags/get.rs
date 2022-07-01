@@ -1,4 +1,4 @@
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::headers::Token;
 use crate::types::RepositoryName;
 use rocket::get;
@@ -108,10 +108,10 @@ pub(crate) async fn get(
     repository: RepositoryName,
     last: Option<String>,
     n: Option<usize>,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {

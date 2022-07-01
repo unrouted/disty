@@ -5,7 +5,7 @@ use openraft::raft::ClientWriteRequest;
 use openraft::EntryPayload;
 
 use crate::config::Configuration;
-use crate::store::ExampleRequest;
+use crate::store::RegistryRequest;
 use crate::types::Blob;
 use crate::types::BlobEntry;
 use crate::types::Digest;
@@ -14,22 +14,22 @@ use crate::types::ManifestEntry;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::NodeId;
-use crate::ExampleRaft;
+use crate::RegistryRaft;
 use crate::RegsistryStore;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
-pub struct ExampleApp {
+pub struct RegistryApp {
     pub id: NodeId,
     pub addr: String,
-    pub raft: ExampleRaft,
+    pub raft: RegistryRaft,
     pub store: Arc<RegsistryStore>,
     pub settings: Configuration,
 }
 
-impl ExampleApp {
+impl RegistryApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
-        let transaction = ExampleRequest::RepositoryTransaction { actions };
+        let transaction = RegistryRequest::RepositoryTransaction { actions };
         let request = ClientWriteRequest::new(EntryPayload::Normal(transaction));
         if let Err(err) = self.raft.client_write(request).await {
             error!("Error whilst writing to raft: {err}");

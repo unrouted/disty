@@ -20,13 +20,13 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::NodeId;
-use crate::ExampleRequest;
-use crate::ExampleTypeConfig;
+use crate::RegistryRequest;
+use crate::RegistryTypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
 
-pub struct ExampleClient {
+pub struct RegistryClient {
     /// The leader node to send request to.
     ///
     /// All traffic should be sent to the leader in a cluster.
@@ -35,7 +35,7 @@ pub struct ExampleClient {
     pub inner: Client,
 }
 
-impl ExampleClient {
+impl RegistryClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
     pub fn new(leader_id: NodeId, leader_addr: String) -> Self {
         Self {
@@ -54,10 +54,10 @@ impl ExampleClient {
     /// The result of applying the request will be returned.
     pub async fn write(
         &self,
-        req: &ExampleRequest,
+        req: &RegistryRequest,
     ) -> Result<
-        ClientWriteResponse<ExampleTypeConfig>,
-        RPCError<ExampleTypeConfig, ClientWriteError<NodeId>>,
+        ClientWriteResponse<RegistryTypeConfig>,
+        RPCError<RegistryTypeConfig, ClientWriteError<NodeId>>,
     > {
         self.send_rpc_to_leader("write", Some(req)).await
     }
@@ -68,7 +68,7 @@ impl ExampleClient {
     pub async fn read(
         &self,
         req: &String,
-    ) -> Result<String, RPCError<ExampleTypeConfig, Infallible>> {
+    ) -> Result<String, RPCError<RegistryTypeConfig, Infallible>> {
         self.do_send_rpc_to_leader("read", Some(req)).await
     }
 
@@ -78,7 +78,7 @@ impl ExampleClient {
     pub async fn consistent_read(
         &self,
         req: &String,
-    ) -> Result<String, RPCError<ExampleTypeConfig, CheckIsLeaderError<NodeId>>> {
+    ) -> Result<String, RPCError<RegistryTypeConfig, CheckIsLeaderError<NodeId>>> {
         self.do_send_rpc_to_leader("consistent_read", Some(req))
             .await
     }
@@ -93,19 +93,19 @@ impl ExampleClient {
     /// Then make the new node a member with [`change_membership`].
     pub async fn init(
         &self,
-    ) -> Result<(), RPCError<ExampleTypeConfig, InitializeError<NodeId>>> {
+    ) -> Result<(), RPCError<RegistryTypeConfig, InitializeError<NodeId>>> {
         self.do_send_rpc_to_leader("init", Some(&Empty {})).await
     }
 
     /// Add a node as learner.
     ///
-    /// The node to add has to exist, i.e., being added with `write(ExampleRequest::AddNode{})`
+    /// The node to add has to exist, i.e., being added with `write(RegistryRequest::AddNode{})`
     pub async fn add_learner(
         &self,
         req: (NodeId, String),
     ) -> Result<
         AddLearnerResponse<NodeId>,
-        RPCError<ExampleTypeConfig, AddLearnerError<NodeId>>,
+        RPCError<RegistryTypeConfig, AddLearnerError<NodeId>>,
     > {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
@@ -118,8 +118,8 @@ impl ExampleClient {
         &self,
         req: &BTreeSet<NodeId>,
     ) -> Result<
-        ClientWriteResponse<ExampleTypeConfig>,
-        RPCError<ExampleTypeConfig, ClientWriteError<NodeId>>,
+        ClientWriteResponse<RegistryTypeConfig>,
+        RPCError<RegistryTypeConfig, ClientWriteError<NodeId>>,
     > {
         self.send_rpc_to_leader("change-membership", Some(req))
             .await
@@ -132,7 +132,7 @@ impl ExampleClient {
     /// See [`RaftMetrics`].
     pub async fn metrics(
         &self,
-    ) -> Result<RaftMetrics<ExampleTypeConfig>, RPCError<ExampleTypeConfig, Infallible>> {
+    ) -> Result<RaftMetrics<RegistryTypeConfig>, RPCError<RegistryTypeConfig, Infallible>> {
         self.do_send_rpc_to_leader("metrics", None::<&()>).await
     }
 
@@ -147,7 +147,7 @@ impl ExampleClient {
         &self,
         uri: &str,
         req: Option<&Req>,
-    ) -> Result<Resp, RPCError<ExampleTypeConfig, Err>>
+    ) -> Result<Resp, RPCError<RegistryTypeConfig, Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -195,7 +195,7 @@ impl ExampleClient {
         &self,
         uri: &str,
         req: Option<&Req>,
-    ) -> Result<Resp, RPCError<ExampleTypeConfig, Err>>
+    ) -> Result<Resp, RPCError<RegistryTypeConfig, Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -209,7 +209,7 @@ impl ExampleClient {
         let mut n_retry = 3;
 
         loop {
-            let res: Result<Resp, RPCError<ExampleTypeConfig, Err>> =
+            let res: Result<Resp, RPCError<RegistryTypeConfig, Err>> =
                 self.do_send_rpc_to_leader(uri, req).await;
 
             let rpc_err = match res {

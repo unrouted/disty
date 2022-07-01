@@ -11,37 +11,37 @@ use rocket::serde::json::Json;
 use rocket::Route;
 use rocket::{post, Build, Rocket, State};
 
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::middleware::prometheus::{HttpMetrics, Port};
 use crate::NodeId;
-use crate::ExampleTypeConfig;
+use crate::RegistryTypeConfig;
 
 #[post("/raft-vote", data = "<body>")]
 async fn vote(
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     body: Json<VoteRequest<NodeId>>,
 ) -> Json<Result<VoteResponse<u64>, VoteError<u64>>> {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
     let res = app.raft.vote(body.0).await;
     Json(res)
 }
 
 #[post("/raft-append", data = "<body>")]
 async fn append(
-    app: &State<Arc<ExampleApp>>,
-    body: Json<AppendEntriesRequest<ExampleTypeConfig>>,
+    app: &State<Arc<RegistryApp>>,
+    body: Json<AppendEntriesRequest<RegistryTypeConfig>>,
 ) -> Json<Result<AppendEntriesResponse<u64>, AppendEntriesError<u64>>> {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
     let res = app.raft.append_entries(body.0).await;
     Json(res)
 }
 
 #[post("/raft-snapshot", data = "<body>")]
 async fn snapshot(
-    app: &State<Arc<ExampleApp>>,
-    body: Json<InstallSnapshotRequest<ExampleTypeConfig>>,
+    app: &State<Arc<RegistryApp>>,
+    body: Json<InstallSnapshotRequest<RegistryTypeConfig>>,
 ) -> Json<Result<InstallSnapshotResponse<u64>, InstallSnapshotError<u64>>> {
-    let app: &ExampleApp = app.inner();
+    let app: &RegistryApp = app.inner();
     let res = app.raft.install_snapshot(body.0).await;
     Json(res)
 }
@@ -52,7 +52,7 @@ fn routes() -> Vec<Route> {
 
 pub(crate) fn configure(
     rocket: Rocket<Build>,
-    app: Arc<ExampleApp>,
+    app: Arc<RegistryApp>,
     registry: &mut Registry,
 ) -> Rocket<Build> {
     rocket
@@ -61,7 +61,7 @@ pub(crate) fn configure(
         .attach(HttpMetrics::new(registry, Port::Raft))
 }
 
-pub(crate) fn launch(app: Arc<ExampleApp>, registry: &mut Registry) {
+pub(crate) fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
         .merge(("address", app.settings.raft.address.clone()));

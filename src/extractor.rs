@@ -1,5 +1,5 @@
 use crate::{
-    app::ExampleApp,
+    app::RegistryApp,
     config::Configuration,
     types::{Digest, RegistryAction, RepositoryName},
 };
@@ -186,7 +186,7 @@ impl Extractor {
 
     pub async fn extract(
         &self,
-        app: &ExampleApp,
+        app: &RegistryApp,
         repository: &RepositoryName,
         digest: &Digest,
         content_type: &str,

@@ -1,4 +1,4 @@
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::headers::Access;
 use crate::headers::Token;
 use crate::types::Digest;
@@ -136,11 +136,11 @@ pub(crate) async fn post(
     mount: Option<Digest>,
     from: Option<RepositoryName>,
     digest: Option<Digest>,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let app: &Arc<ExampleApp> = app.inner();
+    let app: &Arc<RegistryApp> = app.inner();
 
     if !token.validated_token {
         let mut access = vec![Access {

@@ -1,4 +1,4 @@
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 
 use crate::headers::Token;
 use crate::types::Digest;
@@ -97,10 +97,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let app: &Arc<ExampleApp> = app.inner();
+    let app: &Arc<RegistryApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {

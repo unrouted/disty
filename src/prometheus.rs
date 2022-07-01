@@ -8,7 +8,7 @@ use rocket::response::{Responder, Response};
 use rocket::{get, routes, State};
 use rocket::{Build, Rocket, Route};
 
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::middleware::prometheus::{HttpMetrics, Port};
 
 pub(crate) enum Responses {
@@ -53,7 +53,7 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
         .manage(Arc::new(Mutex::new(registry)))
 }
 
-pub(crate) fn launch(app: Arc<ExampleApp>, registry: Registry) {
+pub(crate) fn launch(app: Arc<RegistryApp>, registry: Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.prometheus.port))
         .merge(("address", app.settings.prometheus.address.clone()));

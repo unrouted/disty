@@ -4,10 +4,10 @@ use openraft::Raft;
 use openraft::SnapshotPolicy;
 use std::sync::Arc;
 
-use crate::app::ExampleApp;
-use crate::network::raft_network_impl::ExampleNetwork;
-use crate::store::ExampleRequest;
-use crate::store::ExampleResponse;
+use crate::app::RegistryApp;
+use crate::network::raft_network_impl::RegistryNetwork;
+use crate::store::RegistryRequest;
+use crate::store::RegistryResponse;
 use crate::store::RegsistryStore;
 use crate::store::Restore;
 
@@ -31,10 +31,10 @@ mod webhook;
 pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = NodeId
+    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = NodeId
 );
 
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegsistryStore>>;
+pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, Arc<RegsistryStore>>;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -47,7 +47,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
 pub async fn start_registry_services(
     node_id: NodeId,
     http_addr: String,
-) -> std::io::Result<Arc<ExampleApp>> {
+) -> std::io::Result<Arc<RegistryApp>> {
     let settings = crate::config::config();
 
     create_dir(&settings.storage, "uploads")?;
@@ -75,14 +75,14 @@ pub async fn start_registry_services(
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = ExampleNetwork::new();
+    let network = RegistryNetwork::new();
 
     // Create a local raft instance.
     let raft = Raft::new(node_id, config, network, store.clone());
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
-    let app = Arc::new(ExampleApp {
+    let app = Arc::new(RegistryApp {
         id: node_id,
         addr: http_addr.clone(),
         raft,

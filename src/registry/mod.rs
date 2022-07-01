@@ -11,7 +11,7 @@ use regex::Captures;
 use rocket::{fairing::AdHoc, http::uri::Origin, routes, Build, Rocket, Route};
 
 use crate::{
-    app::ExampleApp,
+    app::RegistryApp,
     middleware::prometheus::{HttpMetrics, Port},
     webhook::start_webhook_worker,
 };
@@ -57,7 +57,7 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
+fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
     let extractor = crate::extractor::Extractor::new(app.settings.clone());
     let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), registry);
 
@@ -79,7 +79,7 @@ fn configure(app: Arc<ExampleApp>, registry: &mut Registry) -> Rocket<Build> {
         .mount("/v2/", routes())
 }
 
-pub fn launch(app: Arc<ExampleApp>, registry: &mut Registry) {
+pub fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
     tokio::spawn(configure(app, registry).launch());
 }
 

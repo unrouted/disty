@@ -11,13 +11,13 @@ use openraft::storage::Snapshot;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 
-use crate::store::ExampleStateMachine;
+use crate::store::RegistryStateMachine;
 use crate::store::RegsistryStore;
 use crate::NodeId;
-use crate::ExampleTypeConfig;
+use crate::RegistryTypeConfig;
 
 #[derive(Debug)]
-pub struct ExampleSnapshot {
+pub struct RegistrySnapshot {
     pub meta: SnapshotMeta<NodeId>,
 
     /// The data of the state machine at the time of this snapshot.
@@ -136,7 +136,7 @@ impl RegsistryStore {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn load_latest_snapshot(
         &self,
-    ) -> Result<Option<Snapshot<ExampleTypeConfig, Cursor<Vec<u8>>>>, StorageError<NodeId>>
+    ) -> Result<Option<Snapshot<RegistryTypeConfig, Cursor<Vec<u8>>>>, StorageError<NodeId>>
     {
         tracing::debug!("load_latest_snapshot: start");
 
@@ -157,7 +157,7 @@ impl RegsistryStore {
                     Err(_e) => return Ok(None),
                 };
 
-                let content: ExampleStateMachine = serde_json::from_slice(&data).unwrap();
+                let content: RegistryStateMachine = serde_json::from_slice(&data).unwrap();
 
                 let last_applied_log = content.last_applied_log.unwrap();
                 tracing::debug!(

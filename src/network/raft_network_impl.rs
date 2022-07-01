@@ -20,13 +20,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::NodeId;
-use crate::ExampleTypeConfig;
+use crate::RegistryTypeConfig;
 
-pub struct ExampleNetwork {
+pub struct RegistryNetwork {
     pub clients: Arc<HashMap<String, reqwest::Client>>,
 }
 
-impl ExampleNetwork {
+impl RegistryNetwork {
     pub fn new() -> Self {
         Self {
             clients: Arc::new(HashMap::new()),
@@ -39,7 +39,7 @@ impl ExampleNetwork {
         target_node: Option<&Node>,
         uri: &str,
         req: Req,
-    ) -> Result<Resp, RPCError<ExampleTypeConfig, Err>>
+    ) -> Result<Resp, RPCError<RegistryTypeConfig, Err>>
     where
         Req: Serialize,
         Err: std::error::Error + DeserializeOwned,
@@ -69,34 +69,34 @@ impl ExampleNetwork {
     }
 }
 
-// NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented directly.
+// NOTE: This could be implemented also on `Arc<RegistryNetwork>`, but since it's empty, implemented directly.
 #[async_trait]
-impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
-    type Network = ExampleNetworkConnection;
+impl RaftNetworkFactory<RegistryTypeConfig> for RegistryNetwork {
+    type Network = RegistryNetworkConnection;
 
     async fn connect(&mut self, target: NodeId, node: Option<&Node>) -> Self::Network {
-        ExampleNetworkConnection {
-            owner: ExampleNetwork::new(),
+        RegistryNetworkConnection {
+            owner: RegistryNetwork::new(),
             target,
             target_node: node.cloned(),
         }
     }
 }
 
-pub struct ExampleNetworkConnection {
-    owner: ExampleNetwork,
+pub struct RegistryNetworkConnection {
+    owner: RegistryNetwork,
     target: NodeId,
     target_node: Option<Node>,
 }
 
 #[async_trait]
-impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
+impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn send_append_entries(
         &mut self,
-        req: AppendEntriesRequest<ExampleTypeConfig>,
+        req: AppendEntriesRequest<RegistryTypeConfig>,
     ) -> Result<
         AppendEntriesResponse<NodeId>,
-        RPCError<ExampleTypeConfig, AppendEntriesError<NodeId>>,
+        RPCError<RegistryTypeConfig, AppendEntriesError<NodeId>>,
     > {
         self.owner
             .send_rpc(self.target, self.target_node.as_ref(), "raft-append", req)
@@ -105,10 +105,10 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
 
     async fn send_install_snapshot(
         &mut self,
-        req: InstallSnapshotRequest<ExampleTypeConfig>,
+        req: InstallSnapshotRequest<RegistryTypeConfig>,
     ) -> Result<
         InstallSnapshotResponse<NodeId>,
-        RPCError<ExampleTypeConfig, InstallSnapshotError<NodeId>>,
+        RPCError<RegistryTypeConfig, InstallSnapshotError<NodeId>>,
     > {
         self.owner
             .send_rpc(self.target, self.target_node.as_ref(), "raft-snapshot", req)
@@ -118,7 +118,7 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
     async fn send_vote(
         &mut self,
         req: VoteRequest<NodeId>,
-    ) -> Result<VoteResponse<NodeId>, RPCError<ExampleTypeConfig, VoteError<NodeId>>>
+    ) -> Result<VoteResponse<NodeId>, RPCError<RegistryTypeConfig, VoteError<NodeId>>>
     {
         self.owner
             .send_rpc(self.target, self.target_node.as_ref(), "raft-vote", req)

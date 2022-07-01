@@ -4,7 +4,7 @@ use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
 use crate::utils::get_upload_path;
-use crate::ExampleApp;
+use crate::RegistryApp;
 use chrono::prelude::*;
 use rocket::data::Data;
 use rocket::http::Header;
@@ -106,11 +106,11 @@ pub(crate) async fn put(
     repository: RepositoryName,
     upload_id: String,
     digest: Digest,
-    app: &State<Arc<ExampleApp>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let app: &Arc<ExampleApp> = app.inner();
+    let app: &Arc<RegistryApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {

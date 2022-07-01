@@ -10,7 +10,7 @@ use log::{info, warn};
 use tokio::fs::remove_file;
 use tokio::time::{sleep, Duration};
 
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::{
     types::RegistryAction,
     utils::{get_blob_path, get_manifest_path},
@@ -18,7 +18,7 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(app: &Arc<ExampleApp>) {
+async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     if let Err(_) = app.raft.is_leader().await {
         info!("Garbage collection: Phase 1: Not leader");
         return;
@@ -112,7 +112,7 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
     true
 }
 
-async fn do_garbage_collect_phase2(app: &Arc<ExampleApp>) {
+async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
     info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
     let images_directory = &app.settings.storage;
@@ -172,7 +172,7 @@ async fn do_garbage_collect_phase2(app: &Arc<ExampleApp>) {
     }
 }
 
-pub async fn do_garbage_collect(app: Arc<ExampleApp>) {
+pub async fn do_garbage_collect(app: Arc<RegistryApp>) {
     loop {
         do_garbage_collect_phase1(&app).await;
         do_garbage_collect_phase2(&app).await;
