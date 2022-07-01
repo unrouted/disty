@@ -12,7 +12,7 @@ use openraft::SnapshotMeta;
 use openraft::StorageError;
 
 use crate::store::ExampleStateMachine;
-use crate::store::ExampleStore;
+use crate::store::RegsistryStore;
 use crate::NodeId;
 use crate::ExampleTypeConfig;
 
@@ -24,7 +24,7 @@ pub struct ExampleSnapshot {
     pub data: Vec<u8>,
 }
 
-impl ExampleStore {
+impl RegsistryStore {
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn write_snapshot(&self) -> io::Result<()> {
         tracing::debug!("write_snapshot: start");

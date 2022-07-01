@@ -465,7 +465,7 @@ impl ExampleStateMachine {
 }
 
 #[derive(Debug)]
-pub struct ExampleStore {
+pub struct RegsistryStore {
     last_purged_log_id: RwLock<Option<LogId<NodeId>>>,
 
     /// The Raft log.
@@ -496,16 +496,16 @@ fn get_sled_db(config: Config, node_id: NodeId) -> Db {
     db
 }
 
-impl ExampleStore {
-    pub async fn open_test() -> Arc<ExampleStore> {
+impl RegsistryStore {
+    pub async fn open_test() -> Arc<RegsistryStore> {
         let path = Path::new("/tmp/journal/match-1.binlog");
         if path.exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        Arc::new(ExampleStore::open_create(1))
+        Arc::new(RegsistryStore::open_create(1))
     }
 
-    pub fn open_create(node_id: NodeId) -> ExampleStore {
+    pub fn open_create(node_id: NodeId) -> RegsistryStore {
         tracing::info!("open_create, node_id: {}", node_id);
 
         let config = Config::default();
@@ -520,7 +520,7 @@ impl ExampleStore {
 
         let current_snapshot = RwLock::new(None);
 
-        ExampleStore {
+        RegsistryStore {
             last_purged_log_id: Default::default(),
             config,
             node_id,
@@ -540,7 +540,7 @@ pub trait Restore {
 }
 
 #[async_trait]
-impl Restore for Arc<ExampleStore> {
+impl Restore for Arc<RegsistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn restore(&mut self) {
         tracing::debug!("restore");
@@ -578,7 +578,7 @@ impl Restore for Arc<ExampleStore> {
 }
 
 #[async_trait]
-impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
+impl RaftLogReader<ExampleTypeConfig> for Arc<RegsistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_log_state(
         &mut self,
@@ -645,7 +645,7 @@ fn serialize_bound(v: &Bound<&u64>) -> Bound<IVec> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStore> {
+impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<RegsistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
@@ -709,7 +709,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
 }
 
 #[async_trait]
-impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
+impl RaftStorage<ExampleTypeConfig> for Arc<RegsistryStore> {
     type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
@@ -964,10 +964,10 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 mod test {
     use openraft::testing::Suite;
 
-    use super::ExampleStore;
+    use super::RegsistryStore;
 
     #[test]
     pub fn test_store() {
-        Suite::test_all(ExampleStore::open_test).unwrap();
+        Suite::test_all(RegsistryStore::open_test).unwrap();
     }
 }

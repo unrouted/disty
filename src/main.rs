@@ -8,7 +8,7 @@ use crate::app::ExampleApp;
 use crate::network::raft_network_impl::ExampleNetwork;
 use crate::store::ExampleRequest;
 use crate::store::ExampleResponse;
-use crate::store::ExampleStore;
+use crate::store::RegsistryStore;
 use crate::store::Restore;
 
 pub mod app;
@@ -34,7 +34,7 @@ openraft::declare_raft_types!(
     pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = NodeId
 );
 
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
+pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegsistryStore>>;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -65,7 +65,7 @@ pub async fn start_registry_services(
     let config = Arc::new(config);
 
     // Create a instance of where the Raft data will be stored.
-    let es = ExampleStore::open_create(node_id);
+    let es = RegsistryStore::open_create(node_id);
 
     //es.load_latest_snapshot().await.unwrap();
 
