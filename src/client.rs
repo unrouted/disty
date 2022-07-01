@@ -91,9 +91,7 @@ impl RegistryClient {
     /// With a initialized cluster, new node can be added with [`write`].
     /// Then setup replication with [`add_learner`].
     /// Then make the new node a member with [`change_membership`].
-    pub async fn init(
-        &self,
-    ) -> Result<(), RPCError<RegistryTypeConfig, InitializeError<NodeId>>> {
+    pub async fn init(&self) -> Result<(), RPCError<RegistryTypeConfig, InitializeError<NodeId>>> {
         self.do_send_rpc_to_leader("init", Some(&Empty {})).await
     }
 
@@ -103,10 +101,8 @@ impl RegistryClient {
     pub async fn add_learner(
         &self,
         req: (NodeId, String),
-    ) -> Result<
-        AddLearnerResponse<NodeId>,
-        RPCError<RegistryTypeConfig, AddLearnerError<NodeId>>,
-    > {
+    ) -> Result<AddLearnerResponse<NodeId>, RPCError<RegistryTypeConfig, AddLearnerError<NodeId>>>
+    {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
 
@@ -218,9 +214,8 @@ impl RegistryClient {
             };
 
             if let RPCError::RemoteError(remote_err) = &rpc_err {
-                let forward_err_res = <Err as TryInto<ForwardToLeader<NodeId>>>::try_into(
-                    remote_err.source.clone(),
-                );
+                let forward_err_res =
+                    <Err as TryInto<ForwardToLeader<NodeId>>>::try_into(remote_err.source.clone());
 
                 if let Ok(ForwardToLeader {
                     leader_id: Some(leader_id),

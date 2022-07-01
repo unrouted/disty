@@ -136,8 +136,7 @@ impl RegsistryStore {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn load_latest_snapshot(
         &self,
-    ) -> Result<Option<Snapshot<RegistryTypeConfig, Cursor<Vec<u8>>>>, StorageError<NodeId>>
-    {
+    ) -> Result<Option<Snapshot<RegistryTypeConfig, Cursor<Vec<u8>>>>, StorageError<NodeId>> {
         tracing::debug!("load_latest_snapshot: start");
 
         match &*self.current_snapshot.read().await {

@@ -118,8 +118,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn send_vote(
         &mut self,
         req: VoteRequest<NodeId>,
-    ) -> Result<VoteResponse<NodeId>, RPCError<RegistryTypeConfig, VoteError<NodeId>>>
-    {
+    ) -> Result<VoteResponse<NodeId>, RPCError<RegistryTypeConfig, VoteError<NodeId>>> {
         self.owner
             .send_rpc(self.target, self.target_node.as_ref(), "raft-vote", req)
             .await

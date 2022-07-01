@@ -715,25 +715,18 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegsistryStore> {
     type SnapshotBuilder = Self;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(
-        &mut self,
-        vote: &Vote<NodeId>,
-    ) -> Result<(), StorageError<NodeId>> {
+    async fn save_vote(&mut self, vote: &Vote<NodeId>) -> Result<(), StorageError<NodeId>> {
         self.vote
             .insert(b"vote", IVec::from(serde_json::to_vec(vote).unwrap()))
             .unwrap();
         Ok(())
     }
 
-    async fn read_vote(
-        &mut self,
-    ) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<NodeId>>, StorageError<NodeId>> {
         let value = self.vote.get(b"vote").unwrap();
         match value {
             None => Ok(None),
-            Some(val) => Ok(Some(
-                serde_json::from_slice::<Vote<NodeId>>(&*val).unwrap(),
-            )),
+            Some(val) => Ok(Some(serde_json::from_slice::<Vote<NodeId>>(&*val).unwrap())),
         }
     }
 
@@ -777,10 +770,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegsistryStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(
-        &mut self,
-        log_id: LogId<NodeId>,
-    ) -> Result<(), StorageError<NodeId>> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {
@@ -806,13 +796,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegsistryStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<
-        (
-            Option<LogId<NodeId>>,
-            EffectiveMembership<NodeId>,
-        ),
-        StorageError<NodeId>,
-    > {
+    ) -> Result<(Option<LogId<NodeId>>, EffectiveMembership<NodeId>), StorageError<NodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.last_applied_log,
