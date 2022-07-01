@@ -1,7 +1,9 @@
+use anyhow::{Context, Result};
 use clap::Parser;
 use openraft::Config;
 use openraft::Raft;
 use openraft::SnapshotPolicy;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::app::RegistryApp;
@@ -47,7 +49,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
 pub async fn start_registry_services(
     node_id: NodeId,
     http_addr: String,
-) -> std::io::Result<Arc<RegistryApp>> {
+) -> Result<Arc<RegistryApp>> {
     let settings = crate::config::config();
 
     create_dir(&settings.storage, "uploads")?;
@@ -80,6 +82,17 @@ pub async fn start_registry_services(
     // Create a local raft instance.
     let raft = Raft::new(node_id, config, network, store.clone());
 
+    let members: BTreeSet<NodeId> = settings
+        .peers
+        .iter()
+        .enumerate()
+        .map(|(idx, _peer)| idx as u64)
+        .collect();
+
+    raft.initialize(members)
+        .await
+        .context("Failed to initialize raft state")?;
+
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp {
@@ -111,7 +124,7 @@ pub struct Opt {
 }
 
 #[rocket::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
