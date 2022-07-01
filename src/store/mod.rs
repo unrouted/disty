@@ -28,7 +28,7 @@ use openraft::StorageIOError;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
-use sled::{Db, IVec};
+use sled::IVec;
 use tokio::sync::RwLock;
 
 use crate::NodeId;
@@ -36,6 +36,7 @@ use crate::RegistryTypeConfig;
 pub mod config;
 pub mod registry_store;
 
+use crate::config::Configuration;
 use crate::store::config::Config;
 use crate::types::{
     Blob, BlobEntry, Digest, Manifest, ManifestEntry, RegistryAction, RepositoryName,
@@ -484,44 +485,30 @@ pub struct RegsistryStore {
     pub node_id: NodeId,
 }
 
-fn get_sled_db(config: Config, node_id: NodeId) -> Db {
-    let db_path = format!(
-        "{}/{}-{}.binlog",
-        config.journal_path, config.instance_prefix, node_id
-    );
-    let db = sled::open(db_path.clone()).unwrap();
-    tracing::debug!("get_sled_db: created log at: {:?}", db_path);
-    db
-}
-
 impl RegsistryStore {
     pub async fn open_test() -> Arc<RegsistryStore> {
-        let path = Path::new("/tmp/journal/match-1.binlog");
+        let config = Configuration::default();
+        let path = Path::new(&config.storage).join("journal.bin");
         if path.exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        Arc::new(RegsistryStore::open_create(1))
+        Arc::new(RegsistryStore::open_create(&config))
     }
 
-    pub fn open_create(node_id: NodeId) -> RegsistryStore {
-        tracing::info!("open_create, node_id: {}", node_id);
+    pub fn open_create(config: &Configuration) -> RegsistryStore {
+        let db_path = std::path::Path::new(&config.storage).join("journal.bin");
+        let db = sled::open(db_path).unwrap();
 
-        let config = Config::default();
+        let log = db.open_tree("entries").unwrap();
 
-        let db = get_sled_db(config.clone(), node_id);
-
-        let log = db
-            .open_tree(format!("journal_entities_{}", node_id))
-            .unwrap();
-
-        let vote = db.open_tree(format!("votes_{}", node_id)).unwrap();
+        let vote = db.open_tree(format!("votes")).unwrap();
 
         let current_snapshot = RwLock::new(None);
 
         RegsistryStore {
             last_purged_log_id: Default::default(),
-            config,
-            node_id,
+            config: Config::default(),
+            node_id: 0,
             log,
             state_machine: Default::default(),
             vote,

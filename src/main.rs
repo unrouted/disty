@@ -48,7 +48,10 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_registry_services(settings: Configuration, node_id: NodeId) -> Result<Arc<RegistryApp>> {
+pub async fn start_registry_services(
+    settings: Configuration,
+    node_id: NodeId,
+) -> Result<Arc<RegistryApp>> {
     create_dir(&settings.storage, "uploads")?;
     create_dir(&settings.storage, "manifests")?;
     create_dir(&settings.storage, "blobs")?;
@@ -64,7 +67,7 @@ pub async fn start_registry_services(settings: Configuration, node_id: NodeId) -
     let config = Arc::new(config);
 
     // Create a instance of where the Raft data will be stored.
-    let es = RegsistryStore::open_create(node_id);
+    let es = RegsistryStore::open_create(&settings);
 
     //es.load_latest_snapshot().await.unwrap();
 

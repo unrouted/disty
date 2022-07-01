@@ -1,4 +1,4 @@
-use crate::config::Configuration;
+use crate::app::RegistryApp;
 use crate::headers::Token;
 use crate::types::RepositoryName;
 use crate::utils::get_upload_path;
@@ -10,6 +10,7 @@ use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
@@ -63,10 +64,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn delete(
     repository: RepositoryName,
     upload_id: String,
-    config: &State<Configuration>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let config: &Configuration = config.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -78,7 +79,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    let filename = get_upload_path(&config.storage, &upload_id);
+    let filename = get_upload_path(&app.settings.storage, &upload_id);
 
     if !filename.is_file() {
         return Responses::UploadInvalid {};

@@ -85,8 +85,10 @@ pub fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
 
 #[cfg(test)]
 mod test {
-    /*
-    use crate::config::{PrometheusConfig, RaftConfig, RegistryConfig};
+    use crate::{
+        config::{Configuration, PeerConfig, PrometheusConfig, RaftConfig, RegistryConfig},
+        start_registry_services,
+    };
 
     use super::*;
     use lazy_static::lazy_static;
@@ -132,6 +134,7 @@ mod test {
         _tempdir: TempDir,
         _address: ResourcePoolGuard<String>,
     }
+
     async fn configure() -> TestInstance {
         let tempdir = tempfile::tempdir().unwrap();
         let address = IP_ADDRESSES.get().await;
@@ -150,11 +153,22 @@ mod test {
                 port: 7080,
             },
             storage: tempdir.path().to_str().unwrap().to_owned(),
+            peers: vec![PeerConfig {
+                name: "registry-1".into(),
+                raft: RaftConfig {
+                    address: address.clone(),
+                    port: 8080,
+                },
+                registry: RegistryConfig {
+                    address: address.clone(),
+                    port: 8000,
+                },
+            }],
             ..Default::default()
         };
         debug!("Launching registry with config: {:?}", config);
 
-        tokio::spawn(launch(config));
+        start_registry_services(config, 0).await.unwrap();
 
         let url = format!("http://{}:8000/v2/", address.clone());
         debug!("Registry url: {url}");
@@ -598,5 +612,4 @@ mod test {
             assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         }
     }
-    */
 }
