@@ -1,3 +1,4 @@
+use crate::app::RegistryApp;
 use crate::config::Configuration;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
@@ -5,6 +6,7 @@ use log::info;
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome, Request};
 use std::collections::HashSet;
+use std::sync::Arc;
 
 pub(crate) struct ContentRange {
     pub start: u64,
@@ -191,8 +193,8 @@ impl<'r> FromRequest<'r> for Token {
     type Error = TokenError;
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let config = match req.rocket().state::<Configuration>() {
-            Some(value) => value,
+        let config = match req.rocket().state::<Arc<RegistryApp>>() {
+            Some(value) => &value.settings,
             _ => return Outcome::Failure((Status::BadGateway, TokenError::Missing)),
         };
 
