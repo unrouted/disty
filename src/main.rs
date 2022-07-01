@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use config::Configuration;
 use openraft::error::InitializeError;
 use openraft::Config;
 use openraft::Raft;
@@ -47,9 +48,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_registry_services(node_id: NodeId) -> Result<Arc<RegistryApp>> {
-    let settings = crate::config::config();
-
+pub async fn start_registry_services(settings: Configuration, node_id: NodeId) -> Result<Arc<RegistryApp>> {
     create_dir(&settings.storage, "uploads")?;
     create_dir(&settings.storage, "manifests")?;
     create_dir(&settings.storage, "blobs")?;
@@ -129,7 +128,9 @@ async fn main() -> Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_registry_services(options.id).await?;
+    let settings = crate::config::config();
+
+    start_registry_services(settings, options.id).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
