@@ -13,12 +13,12 @@ use openraft::StorageError;
 
 use crate::store::ExampleStateMachine;
 use crate::store::ExampleStore;
-use crate::ExampleNodeId;
+use crate::NodeId;
 use crate::ExampleTypeConfig;
 
 #[derive(Debug)]
 pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId>,
+    pub meta: SnapshotMeta<NodeId>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -136,7 +136,7 @@ impl ExampleStore {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn load_latest_snapshot(
         &self,
-    ) -> Result<Option<Snapshot<ExampleTypeConfig, Cursor<Vec<u8>>>>, StorageError<ExampleNodeId>>
+    ) -> Result<Option<Snapshot<ExampleTypeConfig, Cursor<Vec<u8>>>>, StorageError<NodeId>>
     {
         tracing::debug!("load_latest_snapshot: start");
 

@@ -7,13 +7,13 @@ use openraft::Node;
 use openraft::RaftMetrics;
 
 use crate::app::ExampleApp;
-use crate::ExampleNodeId;
+use crate::NodeId;
 use crate::ExampleTypeConfig;
 
 #[post("/add-learner")]
 pub async fn add_learner(
     app: Data<ExampleApp>,
-    req: Json<(ExampleNodeId, String)>,
+    req: Json<(NodeId, String)>,
 ) -> actix_web::Result<impl Responder> {
     let node_id = req.0 .0;
     let node = Node {
@@ -28,7 +28,7 @@ pub async fn add_learner(
 #[post("/change-membership")]
 pub async fn change_membership(
     app: Data<ExampleApp>,
-    req: Json<BTreeSet<ExampleNodeId>>,
+    req: Json<BTreeSet<NodeId>>,
 ) -> actix_web::Result<impl Responder> {
     let res = app.raft.change_membership(req.0, true, false).await;
     Ok(Json(res))

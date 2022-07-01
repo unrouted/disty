@@ -28,10 +28,10 @@ mod types;
 pub(crate) mod utils;
 mod webhook;
 
-pub type ExampleNodeId = u64;
+pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = NodeId
 );
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
@@ -45,7 +45,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
 }
 
 pub async fn start_registry_services(
-    node_id: ExampleNodeId,
+    node_id: NodeId,
     http_addr: String,
 ) -> std::io::Result<Arc<ExampleApp>> {
     let settings = crate::config::config();

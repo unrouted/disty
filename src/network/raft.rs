@@ -13,13 +13,13 @@ use rocket::{post, Build, Rocket, State};
 
 use crate::app::ExampleApp;
 use crate::middleware::prometheus::{HttpMetrics, Port};
-use crate::ExampleNodeId;
+use crate::NodeId;
 use crate::ExampleTypeConfig;
 
 #[post("/raft-vote", data = "<body>")]
 async fn vote(
     app: &State<Arc<ExampleApp>>,
-    body: Json<VoteRequest<ExampleNodeId>>,
+    body: Json<VoteRequest<NodeId>>,
 ) -> Json<Result<VoteResponse<u64>, VoteError<u64>>> {
     let app: &ExampleApp = app.inner();
     let res = app.raft.vote(body.0).await;
