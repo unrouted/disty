@@ -31,13 +31,6 @@ raft = { version = "0.6.0" }
 # Maybe remove this if we bump raft?  https://github.com/tikv/raft-rs/issues/463
 protobuf = { version = "2", features = ["bytes"] }
 
-async-trait = "0.1.36"
-clap = { version = "3.0.13", features = ["derive", "env"] }
-env_logger = "0.9.0"
-tracing = "0.1.29"
-tracing-futures = "0.2.4"
-walkdir = "2.3.2"
-
 [dev-dependencies]
 reqwest-retry = "*" 
 reqwest-middleware = "*"

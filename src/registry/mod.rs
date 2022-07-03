@@ -168,7 +168,7 @@ mod test {
         };
         debug!("Launching registry with config: {:?}", config);
 
-        start_registry_services(config, 0).await.unwrap();
+        start_registry_services(config).await.unwrap();
 
         let url = format!("http://{}:8000/v2/", address.clone());
         debug!("Registry url: {url}");

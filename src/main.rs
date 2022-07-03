@@ -1,8 +1,7 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
 use anyhow::{Context, Result};
-use clap::Parser;
-use raft::{eraftpb::Message, raw_node::RawNode, storage::MemStorage, Config};
+use raft::{raw_node::RawNode, storage::MemStorage, Config};
 use state::RegistryState;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
@@ -33,10 +32,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_registry_services(
-    settings: Configuration,
-    node_id: NodeId,
-) -> Result<Arc<RegistryApp>> {
+pub async fn start_registry_services(settings: Configuration) -> Result<Arc<RegistryApp>> {
     create_dir(&settings.storage, "uploads")?;
     create_dir(&settings.storage, "manifests")?;
     create_dir(&settings.storage, "blobs")?;
@@ -120,21 +116,11 @@ pub async fn start_registry_services(
     Ok(app)
 }
 
-#[derive(Parser, Clone, Debug)]
-#[clap(author, version, about, long_about = None)]
-pub struct Opt {
-    #[clap(long)]
-    pub id: u64,
-}
-
 #[rocket::main]
 async fn main() -> Result<()> {
-    // Parse the parameters passed by arguments.
-    let options = Opt::parse();
-
     let settings = crate::config::config();
 
-    let app = start_registry_services(settings, options.id).await?;
+    let app = start_registry_services(settings).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
