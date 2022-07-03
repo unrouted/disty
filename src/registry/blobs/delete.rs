@@ -50,7 +50,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::NotFound {} => Response::build().status(Status::NotFound).ok(),
-            Responses::Failed {} => Response::build().status(Status::NotFound).ok(),
+            Responses::Failed {} => Response::build().status(Status::InternalServerError).ok(),
             Responses::Ok {} => Response::build()
                 .header(Header::new("Content-Length", "0"))
                 .status(Status::Accepted)
@@ -78,7 +78,7 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if app.is_blob_available(&repository, &digest).await {
+    if !app.is_blob_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 

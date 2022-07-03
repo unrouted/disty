@@ -268,15 +268,6 @@ pub async fn do_raft_ticks(app: Arc<RegistryApp>, mut mailbox: tokio::sync::mpsc
             timeout -= d;
         }
 
-        // Let the leader pick pending proposals from the global queue.
-        /*if app.group.raft.state == StateRole::Leader {
-            // Handle new proposals.
-            let mut proposals = proposals.lock().unwrap();
-            for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
-                propose(raft_group, p);
-            }
-        }*/
-
         on_ready(&app, &mut cbs).await;
     }
 }
