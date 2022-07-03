@@ -1,9 +1,9 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use raft::{raw_node::RawNode, storage::MemStorage, Config};
 use state::RegistryState;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 
 pub mod app;
@@ -39,16 +39,6 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let config = Config {
-        id: 1,
-        check_quorum: true,
-        pre_vote: true,
-        ..Default::default()
-    };
-    config
-        .validate()
-        .context("Unable to configure raft module")?;
-
     let mut outboxes = HashMap::new();
     for (idx, peer) in settings.peers.iter().cloned().enumerate() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
@@ -83,6 +73,27 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         .map(|(idx, _peer)| (idx + 1) as u64)
         .collect();
 
+    let id = match settings
+        .peers
+        .iter()
+        .position(|peer| peer.name == settings.identifier)
+    {
+        Some(id) => (id + 1) as u64,
+        None => {
+            bail!("No peer config for this node");
+        }
+    };
+
+    let config = Config {
+        id: id,
+        check_quorum: true,
+        pre_vote: true,
+        ..Default::default()
+    };
+    config
+        .validate()
+        .context("Unable to configure raft module")?;
+
     let state = RwLock::new(RegistryState::default());
 
     let storage = MemStorage::new_with_conf_state((members, vec![]));
@@ -116,9 +127,22 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
     Ok(app)
 }
 
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Opts {
+    /// Name of the person to greet
+    #[clap(short, long, value_parser)]
+    config: Option<PathBuf>,
+}
+
 #[rocket::main]
 async fn main() -> Result<()> {
-    let settings = crate::config::config();
+    let opts = Opts::parse();
+
+    let settings = crate::config::config(opts.config);
 
     let app = start_registry_services(settings).await?;
 

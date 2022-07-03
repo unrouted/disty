@@ -23,7 +23,7 @@ async fn propose(
     Json(res)
 }*/
 
-#[post("/post", data = "<body>")]
+#[post("/raft", data = "<body>")]
 async fn post(app: &State<Arc<RegistryApp>>, body: Vec<u8>) -> Json<bool> {
     let app: &RegistryApp = app.inner();
 

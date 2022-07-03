@@ -98,8 +98,6 @@ impl RegistryApp {
 
 async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
     for msg in messages {
-        println!("Outbox: {msg:?}");
-
         let serialized = protobuf::Message::write_to_bytes(&msg).unwrap();
         let dest = msg.to;
         if let Some(outbox) = app.outboxes.get(&dest) {
