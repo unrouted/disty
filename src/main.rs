@@ -2,9 +2,9 @@ use crate::app::RegistryApp;
 use crate::config::Configuration;
 use anyhow::{Context, Result};
 use clap::Parser;
-use raft::{raw_node::RawNode, storage::MemStorage, Config};
+use raft::{eraftpb::Message, raw_node::RawNode, storage::MemStorage, Config};
 use state::RegistryState;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 pub mod app;
@@ -53,6 +53,33 @@ pub async fn start_registry_services(
         .validate()
         .context("Unable to configure raft module")?;
 
+    let mut outboxes = HashMap::new();
+    for (idx, peer) in settings.peers.iter().cloned().enumerate() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
+
+        tokio::spawn(async move {
+            let client = reqwest::Client::builder()
+                .user_agent("distribd/raft")
+                .build()
+                .unwrap();
+
+            let address = peer.raft.address;
+            let port = peer.raft.port;
+            let url = format!("http://{address}:{port}/raft");
+
+            loop {
+                match rx.recv().await {
+                    Some(payload) => {
+                        client.post(&url).body(payload).send().await;
+                    }
+                    None => return,
+                }
+            }
+        });
+
+        outboxes.insert(idx as u64, tx);
+    }
+
     let members: Vec<u64> = settings
         .peers
         .iter()
@@ -73,6 +100,7 @@ pub async fn start_registry_services(
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp {
         group,
+        outboxes,
         state,
         settings,
     });

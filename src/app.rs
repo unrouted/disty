@@ -2,9 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::storage::MemStorage;
 use raft::RawNode;
+use raft::StateRole;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -23,6 +26,7 @@ use crate::types::RepositoryName;
 pub struct RegistryApp {
     group: RwLock<RawNode<MemStorage>>,
     state: RwLock<RegistryState>,
+    outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
 }
 
@@ -91,6 +95,18 @@ impl RegistryApp {
     }
 }
 
+async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
+    for msg in messages {
+        println!("Outbox: {msg:?}");
+
+        let serialized = protobuf::Message::write_to_bytes(&msg).unwrap();
+        let dest = msg.to;
+        if let Some(outbox) = app.outboxes.get(&dest) {
+            outbox.send(serialized).await;
+        }
+    }
+}
+
 async fn handle_commits(app: Arc<RegistryApp>, entries: Vec<Entry>) {
     let mut state = app.state.write().await;
 
@@ -117,11 +133,9 @@ async fn handle_commits(app: Arc<RegistryApp>, entries: Vec<Entry>) {
     }
 }
 
-async fn on_ready(
-    app: Arc<RegistryApp>,
-    group: &mut RawNode<MemStorage>,
-    cbs: &mut HashMap<u8, ProposeCallback>,
-) {
+async fn on_ready(app: &Arc<RegistryApp>, cbs: &mut HashMap<u8, ProposeCallback>) {
+    let mut group = app.group.write().await;
+
     if !group.has_ready() {
         return;
     }
@@ -130,15 +144,9 @@ async fn on_ready(
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = group.ready();
 
-    let handle_messages = |msgs: Vec<Message>| {
-        for _msg in msgs {
-            // Send messages to other peers.
-        }
-    };
-
     if !ready.messages().is_empty() {
         // Send out the messages come from the node.
-        handle_messages(ready.take_messages());
+        handle_messages(&app, ready.take_messages()).await;
     }
 
     if !ready.snapshot().is_empty() {
@@ -157,14 +165,14 @@ async fn on_ready(
     }
 
     if !ready.persisted_messages().is_empty() {
-        handle_messages(ready.take_persisted_messages());
+        handle_messages(&app, ready.take_persisted_messages()).await;
     }
 
     let mut light_rd = group.advance(ready);
     if let Some(commit) = light_rd.commit_index() {
         store.wl().mut_hard_state().set_commit(commit);
     }
-    handle_messages(light_rd.take_messages());
+    handle_messages(&app, light_rd.take_messages()).await;
     handle_commits(app.clone(), light_rd.take_committed_entries()).await;
     group.advance_apply();
 }
@@ -200,5 +208,16 @@ pub async fn do_raft_ticks(app: Arc<RegistryApp>, mut mailbox: tokio::sync::mpsc
         } else {
             timeout -= d;
         }
+
+        // Let the leader pick pending proposals from the global queue.
+        /*if app.group.raft.state == StateRole::Leader {
+            // Handle new proposals.
+            let mut proposals = proposals.lock().unwrap();
+            for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
+                propose(raft_group, p);
+            }
+        }*/
+
+        on_ready(&app, &mut cbs).await;
     }
 }
