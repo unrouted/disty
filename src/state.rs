@@ -195,157 +195,159 @@ impl RegistryState {
             .collect::<Vec<ManifestEntry>>()
     }
 
-    pub(crate) fn dispatch_action(&mut self, action: &RegistryAction) {
-        match action {
-            RegistryAction::Empty {} => {}
-            RegistryAction::BlobStored {
-                timestamp,
-                user: _,
-                digest,
-                location,
-            } => {
-                let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
-                blob.locations.insert(location.clone());
+    pub(crate) fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
+        for action in actions {
+            match action {
+                RegistryAction::Empty {} => {}
+                RegistryAction::BlobStored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
+                    blob.locations.insert(location.clone());
 
-                //if location == self.machine_identifier {
-                //    self.blob_available(&digest).await;
-                //}
-            }
-            RegistryAction::BlobUnstored {
-                timestamp,
-                user: _,
-                digest,
-                location,
-            } => {
-                if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
-                    blob.locations.remove(location);
+                    //if location == self.machine_identifier {
+                    //    self.blob_available(&digest).await;
+                    //}
+                }
+                RegistryAction::BlobUnstored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.locations.remove(location);
 
-                    if blob.locations.is_empty() {
-                        self.blobs.remove(digest);
+                        if blob.locations.is_empty() {
+                            self.blobs.remove(digest);
+                        }
                     }
                 }
-            }
-            RegistryAction::BlobMounted {
-                timestamp,
-                user: _,
-                digest,
-                repository,
-            } => {
-                let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
-                blob.repositories.insert(repository.clone());
-            }
-            RegistryAction::BlobUnmounted {
-                timestamp,
-                user: _,
-                digest,
-                repository,
-            } => {
-                if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
-                    blob.repositories.remove(repository);
+                RegistryAction::BlobMounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
+                    blob.repositories.insert(repository.clone());
                 }
-            }
-            RegistryAction::BlobInfo {
-                timestamp,
-                digest,
-                dependencies,
-                content_type,
-            } => {
-                if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
-                    blob.dependencies = Some(dependencies.clone());
-                    blob.content_type = Some(content_type.clone());
-                }
-            }
-            RegistryAction::BlobStat {
-                timestamp,
-                digest,
-                size,
-            } => {
-                if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
-                    blob.size = Some(*size);
-                }
-            }
-            RegistryAction::ManifestStored {
-                timestamp,
-                user: _,
-                digest,
-                location,
-            } => {
-                let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
-                manifest.locations.insert(location.clone());
-
-                //if location == self.machine_identifier {
-                //    self.manifest_available(&digest).await;
-                // }
-            }
-            RegistryAction::ManifestUnstored {
-                timestamp,
-                user: _,
-                digest,
-                location,
-            } => {
-                if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
-                    manifest.locations.remove(location);
-
-                    if manifest.locations.is_empty() {
-                        self.manifests.remove(digest);
+                RegistryAction::BlobUnmounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    if let Some(blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.repositories.remove(repository);
                     }
                 }
-            }
-            RegistryAction::ManifestMounted {
-                timestamp,
-                user: _,
-                digest,
-                repository,
-            } => {
-                let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
-                manifest.repositories.insert(repository.clone());
-            }
-            RegistryAction::ManifestUnmounted {
-                timestamp,
-                user: _,
-                digest,
-                repository,
-            } => {
-                if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
-                    manifest.repositories.remove(repository);
-
-                    if let Some(tags) = self.tags.get_mut(repository) {
-                        tags.retain(|_, value| value != digest);
+                RegistryAction::BlobInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                } => {
+                    if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.dependencies = Some(dependencies.clone());
+                        blob.content_type = Some(content_type.clone());
                     }
                 }
-            }
-            RegistryAction::ManifestInfo {
-                timestamp,
-                digest,
-                dependencies,
-                content_type,
-            } => {
-                if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
-                    manifest.dependencies = Some(dependencies.clone());
-                    manifest.content_type = Some(content_type.clone());
+                RegistryAction::BlobStat {
+                    timestamp,
+                    digest,
+                    size,
+                } => {
+                    if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
+                        blob.size = Some(*size);
+                    }
                 }
-            }
-            RegistryAction::ManifestStat {
-                timestamp,
-                digest,
-                size,
-            } => {
-                if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
-                    manifest.size = Some(*size);
+                RegistryAction::ManifestStored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
+                    manifest.locations.insert(location.clone());
+
+                    //if location == self.machine_identifier {
+                    //    self.manifest_available(&digest).await;
+                    // }
                 }
-            }
-            RegistryAction::HashTagged {
-                timestamp: _,
-                user: _,
-                digest,
-                repository,
-                tag,
-            } => {
-                let repository = self
-                    .tags
-                    .entry(repository.clone())
-                    .or_insert_with(HashMap::new);
-                repository.insert(tag.clone(), digest.clone());
+                RegistryAction::ManifestUnstored {
+                    timestamp,
+                    user: _,
+                    digest,
+                    location,
+                } => {
+                    if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.locations.remove(location);
+
+                        if manifest.locations.is_empty() {
+                            self.manifests.remove(digest);
+                        }
+                    }
+                }
+                RegistryAction::ManifestMounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
+                    manifest.repositories.insert(repository.clone());
+                }
+                RegistryAction::ManifestUnmounted {
+                    timestamp,
+                    user: _,
+                    digest,
+                    repository,
+                } => {
+                    if let Some(manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.repositories.remove(repository);
+
+                        if let Some(tags) = self.tags.get_mut(repository) {
+                            tags.retain(|_, value| value != digest);
+                        }
+                    }
+                }
+                RegistryAction::ManifestInfo {
+                    timestamp,
+                    digest,
+                    dependencies,
+                    content_type,
+                } => {
+                    if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.dependencies = Some(dependencies.clone());
+                        manifest.content_type = Some(content_type.clone());
+                    }
+                }
+                RegistryAction::ManifestStat {
+                    timestamp,
+                    digest,
+                    size,
+                } => {
+                    if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
+                        manifest.size = Some(*size);
+                    }
+                }
+                RegistryAction::HashTagged {
+                    timestamp: _,
+                    user: _,
+                    digest,
+                    repository,
+                    tag,
+                } => {
+                    let repository = self
+                        .tags
+                        .entry(repository.clone())
+                        .or_insert_with(HashMap::new);
+                    repository.insert(tag.clone(), digest.clone());
+                }
             }
         }
     }

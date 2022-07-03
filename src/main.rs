@@ -3,7 +3,11 @@ use crate::config::Configuration;
 use anyhow::{bail, Context, Result};
 use raft::{raw_node::RawNode, storage::MemStorage, Config};
 use state::RegistryState;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{atomic::AtomicU64, Arc},
+};
 use tokio::sync::RwLock;
 
 pub mod app;
@@ -113,6 +117,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         outboxes,
         state,
         settings,
+        seq: AtomicU64::new(1),
     });
 
     crate::network::server::launch(app.clone(), &mut registry);

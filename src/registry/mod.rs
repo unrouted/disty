@@ -140,6 +140,7 @@ mod test {
         let address = IP_ADDRESSES.get().await;
 
         let config = Configuration {
+            identifier: "registry-1".into(),
             registry: RegistryConfig {
                 address: address.clone(),
                 port: 8000,

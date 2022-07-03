@@ -7,21 +7,19 @@ use std::sync::Arc;
 
 use crate::app::{Msg, RegistryApp};
 use crate::middleware::prometheus::{HttpMetrics, Port};
+use crate::types::RegistryAction;
 
-/*#[post("/propose", data = "<body>")]
-async fn propose(
+#[post("/submit", data = "<body>")]
+async fn submit(
     app: &State<Arc<RegistryApp>>,
-    body: Json<Msg::Proposal>,
-) -> Json<Result<bool, Error>> {
+    body: Json<Vec<RegistryAction>>,
+) -> Json<Option<u64>> {
     let app: &RegistryApp = app.inner();
 
-    match app.proposals.send(body).await {}
-
-    // let res = app.raft.vote(body.0).await;
-    let res = Ok(1);
+    let res = app.submit_local(body.to_vec()).await;
 
     Json(res)
-}*/
+}
 
 #[post("/raft", data = "<body>")]
 async fn post(app: &State<Arc<RegistryApp>>, body: Vec<u8>) -> Json<bool> {
@@ -34,7 +32,7 @@ async fn post(app: &State<Arc<RegistryApp>>, body: Vec<u8>) -> Json<bool> {
 }
 
 fn routes() -> Vec<Route> {
-    rocket::routes![post]
+    rocket::routes![post, submit]
 }
 
 pub(crate) fn configure(

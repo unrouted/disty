@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,19 +28,67 @@ pub struct RegistryApp {
     pub group: RwLock<RawNode<MemStorage>>,
     pub state: RwLock<RegistryState>,
     pub inbox: Sender<Msg>,
+    pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
 }
 
-type ProposeCallback = Box<dyn Fn() + Send>;
-
 pub enum Msg {
-    Propose { id: u8, cb: ProposeCallback },
+    Propose {
+        actions: Vec<RegistryAction>,
+        id: u64,
+        cb: tokio::sync::oneshot::Sender<u64>,
+    },
     Raft(Message),
 }
 
 impl RegistryApp {
+    pub async fn submit_local(&self, actions: Vec<RegistryAction>) -> Option<u64> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        let proposal = Msg::Propose {
+            actions,
+            id: self.seq.fetch_add(1, Ordering::Relaxed),
+            cb: tx,
+        };
+
+        self.inbox.send(proposal).await;
+
+        match rx.await {
+            Err(err) => {
+                println!("RECV FAILURE: {err:?}");
+                None
+            }
+            Ok(value) => {
+                println!("SUBMIT SUCCESS");
+                Some(value)
+            }
+        }
+    }
+
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
+        loop {
+            let group = self.group.read().await;
+            let leader_id = group.raft.leader_id;
+            drop(group);
+
+            if leader_id > 0 {
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+        let state = self.group.read().await.raft.state;
+
+        match state {
+            StateRole::Leader => {
+                self.submit_local(actions).await;
+
+                true
+            }
+            _ => false,
+        };
+
         true
     }
 
@@ -106,7 +155,11 @@ async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
     }
 }
 
-async fn handle_commits(app: Arc<RegistryApp>, entries: Vec<Entry>) {
+async fn handle_commits(
+    app: Arc<RegistryApp>,
+    cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
+    entries: Vec<Entry>,
+) {
     let mut state = app.state.write().await;
 
     for entry in entries {
@@ -120,19 +173,22 @@ async fn handle_commits(app: Arc<RegistryApp>, entries: Vec<Entry>) {
         }
 
         if entry.get_entry_type() == EntryType::EntryNormal {
-            let action: RegistryAction = serde_json::from_slice(entry.get_data()).unwrap();
-            state.dispatch_action(&action);
+            let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
+            state.dispatch_actions(&actions);
 
-            //if let Some(cb) = cbs.remove(entry.data.get(0).unwrap()) {
-            //    cb();
-            //}
+            if let Some(cb) = cbs.remove(&bincode::deserialize(&entry.context).unwrap()) {
+                cb.send(entry.index);
+            }
         }
 
         // TODO: handle EntryConfChange
     }
 }
 
-async fn on_ready(app: &Arc<RegistryApp>, cbs: &mut HashMap<u8, ProposeCallback>) {
+async fn on_ready(
+    app: &Arc<RegistryApp>,
+    cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
+) {
     let mut group = app.group.write().await;
 
     if !group.has_ready() {
@@ -153,7 +209,7 @@ async fn on_ready(app: &Arc<RegistryApp>, cbs: &mut HashMap<u8, ProposeCallback>
         store.wl().apply_snapshot(ready.snapshot().clone()).unwrap();
     }
 
-    handle_commits(app.clone(), ready.take_committed_entries()).await;
+    handle_commits(app.clone(), cbs, ready.take_committed_entries()).await;
 
     if !ready.entries().is_empty() {
         store.wl().append(ready.entries()).unwrap();
@@ -172,7 +228,7 @@ async fn on_ready(app: &Arc<RegistryApp>, cbs: &mut HashMap<u8, ProposeCallback>
         store.wl().mut_hard_state().set_commit(commit);
     }
     handle_messages(&app, light_rd.take_messages()).await;
-    handle_commits(app.clone(), light_rd.take_committed_entries()).await;
+    handle_commits(app.clone(), cbs, light_rd.take_committed_entries()).await;
     group.advance_apply();
 }
 
@@ -183,10 +239,14 @@ pub async fn do_raft_ticks(app: Arc<RegistryApp>, mut mailbox: tokio::sync::mpsc
 
     loop {
         match tokio::time::timeout(timeout, mailbox.recv()).await {
-            Ok(Some(crate::app::Msg::Propose { id, cb })) => {
+            Ok(Some(crate::app::Msg::Propose { actions, id, cb })) => {
                 cbs.insert(id, cb);
                 let mut r = app.group.write().await;
-                r.propose(vec![], vec![id]).unwrap();
+                r.propose(
+                    bincode::serialize(&id).unwrap(),
+                    serde_json::to_vec(&actions).unwrap(),
+                )
+                .unwrap();
             }
             Ok(Some(crate::app::Msg::Raft(m))) => {
                 let mut r = app.group.write().await;

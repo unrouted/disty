@@ -31,6 +31,7 @@ raft = { version = "0.6.0" }
 # Maybe remove this if we bump raft?  https://github.com/tikv/raft-rs/issues/463
 protobuf = { version = "2", features = ["bytes"] }
 clap = { version = "3.2.8", features=["derive"] }
+bincode = "1.3.3"
 
 [dev-dependencies]
 reqwest-retry = "*" 
