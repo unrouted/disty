@@ -77,7 +77,7 @@ pub async fn start_registry_services(
             }
         });
 
-        outboxes.insert(idx as u64, tx);
+        outboxes.insert((idx + 1) as u64, tx);
     }
 
     let members: Vec<u64> = settings
@@ -96,16 +96,17 @@ pub async fn start_registry_services(
     let address = &settings.raft.address;
     let port = &settings.raft.port;
 
+    let (inbox, rx) = tokio::sync::mpsc::channel(1000);
+
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp {
         group,
+        inbox,
         outboxes,
         state,
         settings,
     });
-
-    let (tx, rx) = tokio::sync::mpsc::channel(1000);
 
     crate::network::server::launch(app.clone(), &mut registry);
     crate::registry::launch(app.clone(), &mut registry);

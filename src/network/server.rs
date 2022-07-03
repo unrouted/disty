@@ -1,13 +1,14 @@
 use prometheus_client::registry::Registry;
+use raft::eraftpb::Message;
 use rocket::serde::json::Json;
 use rocket::Route;
 use rocket::{post, Build, Rocket, State};
 use std::sync::Arc;
 
-use crate::app::RegistryApp;
+use crate::app::{Msg, RegistryApp};
 use crate::middleware::prometheus::{HttpMetrics, Port};
 
-#[post("/propose", data = "<body>")]
+/*#[post("/propose", data = "<body>")]
 async fn propose(
     app: &State<Arc<RegistryApp>>,
     body: Json<Msg::Proposal>,
@@ -20,21 +21,20 @@ async fn propose(
     let res = Ok(1);
 
     Json(res)
-}
+}*/
 
 #[post("/post", data = "<body>")]
-async fn post(
-    app: &State<Arc<RegistryApp>>,
-    body: Json<VoteRequest<NodeId>>,
-) -> Json<Result<VoteResponse<u64>, VoteError<u64>>> {
+async fn post(app: &State<Arc<RegistryApp>>, body: Vec<u8>) -> Json<bool> {
     let app: &RegistryApp = app.inner();
-    // let res = app.raft.vote(body.0).await;
-    let res = Ok(1);
-    Json(res)
+
+    let payload = <Message as protobuf::Message>::parse_from_bytes(&body).unwrap();
+    app.inbox.send(Msg::Raft(payload)).await;
+
+    Json(true)
 }
 
 fn routes() -> Vec<Route> {
-    rocket::routes![propose, post]
+    rocket::routes![post]
 }
 
 pub(crate) fn configure(

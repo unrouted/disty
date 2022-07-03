@@ -24,9 +24,10 @@ use crate::types::RepositoryName;
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
 pub struct RegistryApp {
-    group: RwLock<RawNode<MemStorage>>,
-    state: RwLock<RegistryState>,
-    outboxes: HashMap<u64, Sender<Vec<u8>>>,
+    pub group: RwLock<RawNode<MemStorage>>,
+    pub state: RwLock<RegistryState>,
+    pub inbox: Sender<Msg>,
+    pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
 }
 
