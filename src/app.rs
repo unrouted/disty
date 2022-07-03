@@ -43,6 +43,20 @@ pub enum Msg {
 }
 
 impl RegistryApp {
+    async fn wait_for_leader(&self) -> u64 {
+        loop {
+            let group = self.group.read().await;
+            let leader_id = group.raft.leader_id;
+            drop(group);
+
+            if leader_id > 0 {
+                return leader_id;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    }
+
     pub async fn submit_local(&self, actions: Vec<RegistryAction>) -> Option<u64> {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -66,28 +80,32 @@ impl RegistryApp {
         }
     }
 
+    pub async fn submit_remote(&self, actions: Vec<RegistryAction>, idx: u64) -> Option<u64> {
+        let peer = self.settings.peers.get((idx as usize) - 1).unwrap();
+        let address = &peer.raft.address;
+        let port = peer.raft.port;
+        let url = format!("http://{address}:{port}/submit");
+
+        let client = reqwest::Client::builder()
+            .user_agent("distribd/raft")
+            .build()
+            .unwrap();
+
+        let resp = client.post(&url).json(&actions).send().await;
+
+        Some(resp.unwrap().json().await.unwrap())
+    }
+
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
-        loop {
-            let group = self.group.read().await;
-            let leader_id = group.raft.leader_id;
-            drop(group);
+        let leader_id = self.wait_for_leader().await;
 
-            if leader_id > 0 {
-                break;
-            }
+        if leader_id == self.group.read().await.raft.id {
+            self.submit_local(actions).await;
+        } else {
+            self.submit_remote(actions, leader_id).await;
 
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            // FIXME: Wait until this commit is available locally
         }
-        let state = self.group.read().await.raft.state;
-
-        match state {
-            StateRole::Leader => {
-                self.submit_local(actions).await;
-
-                true
-            }
-            _ => false,
-        };
 
         true
     }
