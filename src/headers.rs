@@ -1,5 +1,4 @@
 use crate::app::RegistryApp;
-use crate::config::Configuration;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
 use log::info;

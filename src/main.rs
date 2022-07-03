@@ -1,22 +1,13 @@
+use crate::app::RegistryApp;
+use crate::config::Configuration;
 use anyhow::{Context, Result};
 use clap::Parser;
-use config::Configuration;
-use openraft::error::InitializeError;
-use openraft::Config;
-use openraft::Raft;
-use openraft::SnapshotPolicy;
-use std::collections::BTreeSet;
+use raft::{raw_node::RawNode, storage::MemStorage, Config};
+use state::RegistryState;
 use std::sync::Arc;
-
-use crate::app::RegistryApp;
-use crate::network::raft_network_impl::RegistryNetwork;
-use crate::store::RegistryRequest;
-use crate::store::RegistryResponse;
-use crate::store::RegsistryStore;
-use crate::store::Restore;
+use tokio::sync::RwLock;
 
 pub mod app;
-pub mod client;
 mod config;
 mod extractor;
 mod garbage;
@@ -27,18 +18,12 @@ mod mirror;
 pub mod network;
 mod prometheus;
 mod registry;
-pub mod store;
+mod state;
 mod types;
 pub(crate) mod utils;
 mod webhook;
 
 pub type NodeId = u64;
-
-openraft::declare_raft_types!(
-    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = NodeId
-);
-
-pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, Arc<RegsistryStore>>;
 
 fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
@@ -58,43 +43,28 @@ pub async fn start_registry_services(
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    // Create a configuration for the raft instance.
-    let mut config = Config::default().validate().unwrap();
-    config.snapshot_policy = SnapshotPolicy::LogsSinceLast(500);
-    config.max_applied_log_to_keep = 20000;
-    config.install_snapshot_timeout = 400;
+    let config = Config {
+        id: 1,
+        check_quorum: true,
+        pre_vote: true,
+        ..Default::default()
+    };
+    config
+        .validate()
+        .context("Unable to configure raft module")?;
 
-    let config = Arc::new(config);
-
-    // Create a instance of where the Raft data will be stored.
-    let es = RegsistryStore::open_create(&settings);
-
-    //es.load_latest_snapshot().await.unwrap();
-
-    let mut store = Arc::new(es);
-
-    store.restore().await;
-
-    // Create the network layer that will connect and communicate the raft instances and
-    // will be used in conjunction with the store created above.
-    let network = RegistryNetwork::new();
-
-    // Create a local raft instance.
-    let raft = Raft::new(node_id, config, network, store.clone());
-
-    let members: BTreeSet<NodeId> = settings
+    let members: Vec<u64> = settings
         .peers
         .iter()
         .enumerate()
-        .map(|(idx, _peer)| idx as u64)
+        .map(|(idx, _peer)| (idx + 1) as u64)
         .collect();
 
-    match raft.initialize(members).await {
-        Ok(_) => Ok(()),
-        Err(InitializeError::NotAllowed(..)) => Ok(()),
-        Err(err) => Err(err),
-    }
-    .context("Failed to initialize raft state")?;
+    let state = RwLock::new(RegistryState::default());
+
+    let storage = MemStorage::new_with_conf_state((members, vec![]));
+
+    let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
     let address = &settings.raft.address;
     let port = &settings.raft.port;
@@ -102,16 +72,18 @@ pub async fn start_registry_services(
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp {
-        id: node_id,
-        addr: format!("http://{address}:{port}"),
-        raft,
-        store,
+        group,
+        state,
         settings,
     });
 
-    crate::network::raft::launch(app.clone(), &mut registry);
+    let (tx, rx) = tokio::sync::mpsc::channel(1000);
+
+    crate::network::server::launch(app.clone(), &mut registry);
     crate::registry::launch(app.clone(), &mut registry);
     crate::prometheus::launch(app.clone(), registry);
+
+    tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx));
 
     tokio::spawn(crate::garbage::do_garbage_collect(app.clone()));
     tokio::spawn(crate::mirror::do_miroring(app.clone()));
@@ -133,7 +105,7 @@ async fn main() -> Result<()> {
 
     let settings = crate::config::config();
 
-    start_registry_services(settings, options.id).await?;
+    let app = start_registry_services(settings, options.id).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
