@@ -72,13 +72,6 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         outboxes.insert((idx + 1) as u64, tx);
     }
 
-    let members: Vec<u64> = settings
-        .peers
-        .iter()
-        .enumerate()
-        .map(|(idx, _peer)| (idx + 1) as u64)
-        .collect();
-
     let id = match settings
         .peers
         .iter()
@@ -102,7 +95,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     let state = RwLock::new(RegistryState::default());
 
-    let storage = RegistryStorage::new_with_conf_state((members, vec![]));
+    let storage = RegistryStorage::new(&settings)?;
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 

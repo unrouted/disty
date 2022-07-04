@@ -217,23 +217,23 @@ async fn on_ready(
     let mut ready = group.ready();
 
     if !ready.messages().is_empty() {
-        // Send out the messages come from the node.
+        // Send out the messages come from the node.comm
         handle_messages(&app, ready.take_messages()).await;
     }
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
-        store.wl().apply_snapshot(ready.snapshot().clone()).unwrap();
+        store.apply_snapshot(ready.snapshot().clone()).unwrap();
     }
 
     handle_commits(app.clone(), cbs, ready.take_committed_entries()).await;
 
     if !ready.entries().is_empty() {
-        store.wl().append(ready.entries()).unwrap();
+        store.append(ready.entries()).unwrap();
     }
 
     if let Some(hs) = ready.hs() {
-        store.wl().set_hardstate(hs.clone());
+        store.set_hardstate(hs.clone());
     }
 
     if !ready.persisted_messages().is_empty() {
@@ -242,7 +242,7 @@ async fn on_ready(
 
     let mut light_rd = group.advance(ready);
     if let Some(commit) = light_rd.commit_index() {
-        store.wl().mut_hard_state().set_commit(commit);
+        store.set_commit(commit);
     }
     handle_messages(&app, light_rd.take_messages()).await;
     handle_commits(app.clone(), cbs, light_rd.take_committed_entries()).await;

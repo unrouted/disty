@@ -1,77 +1,88 @@
 use std::cmp;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use raft::{eraftpb::*, RaftState, Storage};
 
 use raft::util::limit_size;
 use raft::{Error, Result, StorageError};
 
-pub struct RegistryStorageCore {
-    raft_state: RaftState,
-    entries: Vec<Entry>,
-    snapshot_metadata: SnapshotMetadata,
+use crate::config::Configuration;
+
+const KEY_HARD_INDEX: &[u8; 8] = b"hs-index";
+const KEY_HARD_TERM: &[u8; 7] = b"hs-term";
+const KEY_HARD_VOTE: &[u8; 7] = b"hs-vote";
+
+#[derive(Clone)]
+pub struct RegistryStorage {
+    db: sled::Db,
+    entries: sled::Tree,
+    state: sled::Tree,
+    conf_state: ConfState,
 }
 
-impl Default for RegistryStorageCore {
-    fn default() -> RegistryStorageCore {
-        RegistryStorageCore {
-            raft_state: Default::default(),
-            entries: vec![],
-            snapshot_metadata: Default::default(),
+impl RegistryStorage {
+    pub fn new(config: &Configuration) -> anyhow::Result<RegistryStorage> {
+        let path = std::path::Path::new(&config.storage).join("raft");
+        let db = sled::open(path)?;
+        let entries = db.open_tree("entries")?;
+        let state = db.open_tree("state")?;
+
+        let voters = config
+            .peers
+            .iter()
+            .enumerate()
+            .map(|(idx, _peer)| (idx + 1) as u64)
+            .collect();
+
+        let conf_state = ConfState {
+            voters,
+            ..Default::default()
+        };
+
+        Ok(RegistryStorage {
+            db,
+            entries,
+            state,
+            conf_state,
+        })
+    }
+
+    pub fn set_hardstate(&self, hs: HardState) {
+        self.state
+            .transaction::<_, _, sled::transaction::TransactionError>(|t| {
+                t.insert(KEY_HARD_INDEX, bincode::serialize(&hs.commit).unwrap())?;
+                t.insert(KEY_HARD_TERM, bincode::serialize(&hs.term).unwrap())?;
+                t.insert(KEY_HARD_VOTE, bincode::serialize(&hs.vote).unwrap())?;
+                Ok(())
+            });
+    }
+
+    pub fn set_commit(&self, commit: u64) {
+        self.state
+            .insert(KEY_HARD_INDEX, bincode::serialize(&commit).unwrap());
+    }
+
+    pub fn last_index(&self) -> u64 {
+        if let Some((key, _value)) = self.entries.last().unwrap() {
+            return bincode::deserialize(&key).unwrap();
         }
-    }
-}
 
-impl RegistryStorageCore {
-    pub fn set_hardstate(&mut self, hs: HardState) {
-        self.raft_state.hard_state = hs;
+        //  self.snapshot_metadata.index,
+
+        0
     }
 
-    pub fn hard_state(&self) -> &HardState {
-        &self.raft_state.hard_state
-    }
-
-    pub fn mut_hard_state(&mut self) -> &mut HardState {
-        &mut self.raft_state.hard_state
-    }
-
-    pub fn commit_to(&mut self, index: u64) -> Result<()> {
-        assert!(
-            self.has_entry_at(index),
-            "commit_to {} but the entry does not exist",
-            index
-        );
-
-        let diff = (index - self.entries[0].index) as usize;
-        self.raft_state.hard_state.commit = index;
-        self.raft_state.hard_state.term = self.entries[diff].term;
-        Ok(())
-    }
-
-    pub fn set_conf_state(&mut self, cs: ConfState) {
-        self.raft_state.conf_state = cs;
-    }
-
-    #[inline]
-    fn has_entry_at(&self, index: u64) -> bool {
-        !self.entries.is_empty() && index >= self.first_index() && index <= self.last_index()
-    }
-
-    fn first_index(&self) -> u64 {
-        match self.entries.first() {
-            Some(e) => e.index,
-            None => self.snapshot_metadata.index + 1,
+    pub fn first_index(&self) -> u64 {
+        if let Some((key, _value)) = self.entries.first().unwrap() {
+            return bincode::deserialize(&key).unwrap();
         }
+
+        // self.snapshot_metadata.index + 1,
+
+        0
     }
 
-    fn last_index(&self) -> u64 {
-        match self.entries.last() {
-            Some(e) => e.index,
-            None => self.snapshot_metadata.index,
-        }
-    }
-
-    pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
+    pub fn apply_snapshot(&self, mut snapshot: Snapshot) -> Result<()> {
+        /*
         let mut meta = snapshot.take_metadata();
         let index = meta.index;
 
@@ -88,32 +99,12 @@ impl RegistryStorageCore {
         // Update conf states.
         self.raft_state.conf_state = meta.take_conf_state();
         Ok(())
+        */
+
+        Ok(())
     }
 
-    fn snapshot(&self) -> Snapshot {
-        let mut snapshot = Snapshot::default();
-
-        let meta = snapshot.mut_metadata();
-        meta.index = self.raft_state.hard_state.commit;
-        meta.term = match meta.index.cmp(&self.snapshot_metadata.index) {
-            cmp::Ordering::Equal => self.snapshot_metadata.term,
-            cmp::Ordering::Greater => {
-                let offset = self.entries[0].index;
-                self.entries[(meta.index - offset) as usize].term
-            }
-            cmp::Ordering::Less => {
-                panic!(
-                    "commit {} < snapshot_metadata.index {}",
-                    meta.index, self.snapshot_metadata.index
-                );
-            }
-        };
-
-        meta.set_conf_state(self.raft_state.conf_state.clone());
-        snapshot
-    }
-
-    pub fn compact(&mut self, compact_index: u64) -> Result<()> {
+    pub fn compact(&self, compact_index: u64) -> Result<()> {
         if compact_index <= self.first_index() {
             // Don't need to treat this case as an error.
             return Ok(());
@@ -127,14 +118,14 @@ impl RegistryStorageCore {
             );
         }
 
-        if let Some(entry) = self.entries.first() {
-            let offset = compact_index - entry.index;
-            self.entries.drain(..offset as usize);
+        while self.first_index() > compact_index {
+            self.entries.pop_min();
         }
+
         Ok(())
     }
 
-    pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
+    pub fn append(&self, ents: &[Entry]) -> Result<()> {
         if ents.is_empty() {
             return Ok(());
         }
@@ -153,120 +144,182 @@ impl RegistryStorageCore {
             );
         }
 
-        let diff = ents[0].index - self.first_index();
-        self.entries.drain(diff as usize..);
-        self.entries.extend_from_slice(&ents);
-        Ok(())
-    }
-
-    pub fn commit_to_and_set_conf_states(&mut self, idx: u64, cs: Option<ConfState>) -> Result<()> {
-        self.commit_to(idx)?;
-        if let Some(cs) = cs {
-            self.raft_state.conf_state = cs;
+        while self.last_index() > ents[0].index {
+            self.entries.pop_max();
         }
-        Ok(())
-    }
-}
 
-
-#[derive(Clone, Default)]
-pub struct RegistryStorage {
-    core: Arc<RwLock<RegistryStorageCore>>,
-}
-
-impl RegistryStorage {
-    pub fn new() -> RegistryStorage {
-        RegistryStorage {
-            ..Default::default()
+        for ent in ents {
+            let key = bincode::serialize(&ent.index).unwrap();
+            let value = protobuf::Message::write_to_bytes(ent).unwrap();
+            self.entries.insert(key, value);
         }
-    }
 
-    pub fn new_with_conf_state<T>(conf_state: T) -> RegistryStorage
-    where
-        ConfState: From<T>,
-    {
-        let store = RegistryStorage::new();
-        store.initialize_with_conf_state(conf_state);
-        store
-    }
-
-    pub fn initialize_with_conf_state<T>(&self, conf_state: T)
-    where
-        ConfState: From<T>,
-    {
-        assert!(!self.initial_state().unwrap().initialized());
-        let mut core = self.wl();
-        core.raft_state.conf_state = ConfState::from(conf_state);
-    }
-
-    pub fn rl(&self) -> RwLockReadGuard<'_, RegistryStorageCore> {
-        self.core.read().unwrap()
-    }
-
-    pub fn wl(&self) -> RwLockWriteGuard<'_, RegistryStorageCore> {
-        self.core.write().unwrap()
+        Ok(())
     }
 }
 
 impl Storage for RegistryStorage {
     fn initial_state(&self) -> Result<RaftState> {
-        Ok(self.rl().raft_state.clone())
+        let mut raft_state = RaftState::default();
+
+        raft_state.conf_state = self.conf_state.clone();
+
+        if let Some(index) = self.state.get(KEY_HARD_INDEX).unwrap() {
+            raft_state.hard_state.commit = bincode::deserialize(&index).unwrap();
+        }
+
+        if let Some(term) = self.state.get(KEY_HARD_TERM).unwrap() {
+            raft_state.hard_state.term = bincode::deserialize(&term).unwrap();
+        }
+
+        Ok(raft_state)
     }
 
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
-        let core = self.rl();
-        if low < core.first_index() {
+
+        if low < self.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        if high > core.last_index() + 1 {
+        if high > self.last_index() + 1 {
             panic!(
                 "index out of bound (last: {}, high: {})",
-                core.last_index() + 1,
+                self.last_index() + 1,
                 high
             );
         }
 
-        let offset = core.entries[0].index;
-        let lo = (low - offset) as usize;
-        let hi = (high - offset) as usize;
-        let mut ents = core.entries[lo..hi].to_vec();
+        let low = bincode::serialize(&low).unwrap();
+        let high = bincode::serialize(&high).unwrap();
+        let mut ents = self
+            .entries
+            .range(low..high)
+            .map(|x| <Entry as protobuf::Message>::parse_from_bytes(&x.unwrap().1).unwrap())
+            .collect();
+
         limit_size(&mut ents, max_size);
+
         Ok(ents)
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
-        let core = self.rl();
-        if idx == core.snapshot_metadata.index {
-            return Ok(core.snapshot_metadata.term);
+        let encoded_idx = bincode::serialize(&idx).unwrap();
+        if let Some(bytes) = self.entries.get(encoded_idx).unwrap() {
+            let entry = <Entry as protobuf::Message>::parse_from_bytes(&bytes).unwrap();
+            return Ok(entry.term);
         }
 
-        let offset = core.first_index();
+        /*
+        if idx == self.snapshot_metadata.index {
+            return Ok(self.snapshot_metadata.term);
+        }
+        */
+
+        let offset = self.first_index();
         if idx < offset {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        if idx > core.last_index() {
-            return Err(Error::Store(StorageError::Unavailable));
-        }
-        Ok(core.entries[(idx - offset) as usize].term)
+        return Err(Error::Store(StorageError::Unavailable));
     }
 
     fn first_index(&self) -> Result<u64> {
-        Ok(self.rl().first_index())
+        Ok(self.first_index())
     }
 
     fn last_index(&self) -> Result<u64> {
-        Ok(self.rl().last_index())
+        Ok(self.last_index())
     }
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        let mut core = self.wl();
-        let mut snap = core.snapshot();
-        if snap.get_metadata().index < request_index {
-            snap.mut_metadata().index = request_index;
+        // FIXME: This check should be for *applied index* not last index
+        let applied_index = self.last_index();
+
+        if request_index > applied_index {
+            return Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable));
         }
-        Ok(snap)
+
+        let mut snapshot = Snapshot::default();
+
+        let meta = snapshot.mut_metadata();
+        meta.index = applied_index;
+        meta.term = self.term(applied_index)?;
+
+        // meta.set_conf_state(self.raft_state.conf_state.clone());
+
+        // FIXME: Need access to app.state for this
+        // snapshot.set_data();
+
+        Ok(snapshot)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_initial_state() {
+        let config = Configuration {
+            peers: vec![],
+            ..Default::default()
+        };
+        let store = RegistryStorage::new(&config).unwrap();
+    }
+
+    #[test]
+    fn test_append() {
+        let config = Configuration {
+            peers: vec![],
+            ..Default::default()
+        };
+        let store = RegistryStorage::new(&config).unwrap();
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries);
+        assert_eq!(store.last_index(), 2);
+    }
+
+    #[test]
+    fn test_compact() {
+        let config = Configuration {
+            peers: vec![],
+            ..Default::default()
+        };
+        let store = RegistryStorage::new(&config).unwrap();
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries);
+        assert_eq!(store.last_index(), 2);
+
+        store.compact(1);
+        assert_eq!(store.last_index(), 1);
     }
 }
