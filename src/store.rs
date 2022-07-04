@@ -118,7 +118,7 @@ impl RegistryStorage {
             );
         }
 
-        while self.first_index() > compact_index {
+        while self.first_index() < compact_index {
             self.entries.pop_min();
         }
 
@@ -332,9 +332,12 @@ mod test {
             },
         ];
         store.append(&entries);
-        assert_eq!(store.last_index(), 2);
+        assert_eq!(store.first_index(), 1);
 
-        store.compact(1);
-        assert_eq!(store.last_index(), 1);
+        store.compact(2);
+        assert_eq!(store.first_index(), 2);
+
+        store.compact(2);
+        assert_eq!(store.first_index(), 2);
     }
 }
