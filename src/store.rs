@@ -257,24 +257,43 @@ impl Storage for RegistryStorage {
 
 #[cfg(test)]
 mod test {
+    use crate::config::{PeerConfig, RaftConfig, RegistryConfig};
+
     use super::*;
+
+    fn get_test_storage() -> RegistryStorage {
+        let tempdir = tempfile::tempdir().unwrap();
+
+        let config = Configuration {
+            peers: vec![PeerConfig {
+                name: "registry-1".into(),
+                raft: RaftConfig {
+                    address: "127.0.0.1".into(),
+                    port: 8080,
+                },
+                registry: RegistryConfig {
+                    address: "127.0.0.1".into(),
+                    port: 8080,
+                },
+            }],
+            storage: tempdir.path().to_str().unwrap().to_owned(),
+            ..Default::default()
+        };
+
+        RegistryStorage::new(&config).unwrap()
+    }
 
     #[test]
     fn test_initial_state() {
-        let config = Configuration {
-            peers: vec![],
-            ..Default::default()
-        };
-        let store = RegistryStorage::new(&config).unwrap();
+        let store = get_test_storage();
+        let initial_state = store.initial_state().unwrap();
+
+        assert_eq!(initial_state.conf_state.voters, vec![1]);
     }
 
     #[test]
     fn test_append() {
-        let config = Configuration {
-            peers: vec![],
-            ..Default::default()
-        };
-        let store = RegistryStorage::new(&config).unwrap();
+        let store = get_test_storage();
 
         let entries = vec![
             Entry {
@@ -296,11 +315,7 @@ mod test {
 
     #[test]
     fn test_compact() {
-        let config = Configuration {
-            peers: vec![],
-            ..Default::default()
-        };
-        let store = RegistryStorage::new(&config).unwrap();
+        let store = get_test_storage();
 
         let entries = vec![
             Entry {
