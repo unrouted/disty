@@ -209,7 +209,7 @@ impl RegistryState {
                     blob.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
-                    //    self.blob_available(&digest).await;
+                    //    self.blob_available(&digest);
                     //}
                 }
                 RegistryAction::BlobUnstored {
@@ -275,7 +275,7 @@ impl RegistryState {
                     manifest.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
-                    //    self.manifest_available(&digest).await;
+                    //    self.manifest_available(&digest);
                     // }
                 }
                 RegistryAction::ManifestUnstored {
@@ -350,5 +350,567 @@ impl RegistryState {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_state() -> RegistryState {
+        RegistryState::default()
+    }
+
+    // BLOB TESTS
+
+    #[test]
+    fn blob_not_available_initially() {
+        let state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(!state.is_blob_available(&repository, &digest))
+    }
+
+    #[test]
+    fn blob_becomes_available() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(state.is_blob_available(&repository, &digest));
+    }
+
+    #[test]
+    fn blob_metadata() {
+        let mut state = setup_state();
+
+        let repository: RepositoryName = "myrepo".parse().unwrap();
+        let digest: Digest = "sha256:abcdefg".parse().unwrap();
+        let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
+
+        state.dispatch_actions(&vec![
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository,
+                digest: digest.clone(),
+            },
+            RegistryAction::BlobInfo {
+                timestamp: Utc::now(),
+                digest,
+                content_type: "application/json".to_string(),
+                dependencies: vec![dependency],
+            },
+        ]);
+
+        let digest: Digest = "sha256:abcdefg".parse().unwrap();
+
+        let item = state.get_blob_directly(&digest).unwrap();
+        assert_eq!(item.content_type, Some("application/json".to_string()));
+        assert_eq!(item.dependencies.as_ref().unwrap().len(), 1);
+
+        let dependencies = vec!["sha256:zxyjkl".parse().unwrap()];
+        assert_eq!(item.dependencies, Some(dependencies));
+    }
+
+    #[test]
+    fn blob_size() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobStat {
+            timestamp: Utc::now(),
+            digest,
+            size: 1234,
+        }]);
+
+        let digest: Digest = "sha256:abcdefg".parse().unwrap();
+        let item = state.get_blob_directly(&digest).unwrap();
+
+        assert_eq!(item.size, Some(1234));
+    }
+
+    #[test]
+    fn blob_becomes_unavailable() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobUnmounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(!state.is_blob_available(&repository, &digest));
+    }
+
+    #[test]
+    fn blob_becomes_available_again() {
+        let mut state = setup_state();
+
+        // Create node
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Make node unavailable
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobUnmounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Make node available again
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::BlobMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Should be visible...
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(state.is_blob_available(&repository, &digest));
+    }
+
+    // MANIFEST TESTS
+
+    #[test]
+    fn manifest_not_available_initially() {
+        let state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(!state.is_manifest_available(&repository, &digest))
+    }
+
+    #[test]
+    fn manifest_becomes_available() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(state.is_manifest_available(&repository, &digest));
+    }
+
+    #[test]
+    fn manifest_metadata() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let digest = "sha256:abcdefg".parse().unwrap();
+        let dependency: Digest = "sha256:zxyjkl".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestInfo {
+            timestamp: Utc::now(),
+            digest,
+            content_type: "application/json".to_string(),
+            dependencies: vec![dependency],
+        }]);
+
+        let digest: Digest = "sha256:abcdefg".parse().unwrap();
+        let item = state.get_manifest_directly(&digest).unwrap();
+
+        assert_eq!(item.content_type, Some("application/json".to_string()));
+        assert_eq!(item.dependencies.as_ref().unwrap().len(), 1);
+
+        let dependencies = vec!["sha256:zxyjkl".parse().unwrap()];
+        assert_eq!(item.dependencies, Some(dependencies));
+    }
+
+    #[test]
+    fn manifest_size() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestStat {
+            timestamp: Utc::now(),
+            digest,
+            size: 1234,
+        }]);
+
+        let digest: Digest = "sha256:abcdefg".parse().unwrap();
+        let item = state.get_manifest_directly(&digest).unwrap();
+
+        assert_eq!(item.size, Some(1234));
+    }
+
+    #[test]
+    fn manifest_becomes_unavailable() {
+        let mut state = setup_state();
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestUnmounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(!state.is_manifest_available(&repository, &digest));
+    }
+
+    #[test]
+    fn manifest_becomes_available_again() {
+        let mut state = setup_state();
+
+        // Create node
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Make node unavailable
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestUnmounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Make node available again
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::ManifestMounted {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+        }]);
+
+        // Should be visible...
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        assert!(state.is_manifest_available(&repository, &digest));
+    }
+
+    #[test]
+    fn can_tag_manifest() {
+        let mut state = setup_state();
+
+        // Create node
+        let repository = "myrepo".parse().unwrap();
+        let digest = "sha256:abcdefg".parse().unwrap();
+
+        state.dispatch_actions(&vec![RegistryAction::HashTagged {
+            timestamp: Utc::now(),
+            user: "test".to_string(),
+            repository,
+            digest,
+            tag: "latest".to_string(),
+        }]);
+
+        let repository = "myrepo2".parse().unwrap();
+        assert!(matches!(state.get_tags(&repository), None));
+
+        let repository = "myrepo".parse().unwrap();
+        assert_eq!(
+            state.get_tags(&repository).unwrap(),
+            vec!["latest".to_string()]
+        );
+    }
+
+    #[test]
+    fn can_collect_orphaned_manifests() {
+        let mut state = setup_state();
+
+        // Create node
+        let repository: RepositoryName = "myrepo".parse().unwrap();
+        let digest1: Digest = "sha256:abcdefg".parse().unwrap();
+        let digest2: Digest = "sha256:gfedcba".parse().unwrap();
+
+        state.dispatch_actions(&vec![
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::ManifestMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::HashTagged {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest1.clone(),
+                tag: "latest".to_string(),
+            },
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest2.clone(),
+            },
+            RegistryAction::ManifestMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest2.clone(),
+            },
+            RegistryAction::HashTagged {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository,
+                digest: digest2.clone(),
+                tag: "latest".to_string(),
+            },
+        ]);
+
+        let collected = state.get_orphaned_manifests();
+        assert_eq!(collected.len(), 1);
+
+        let entry = collected.first().unwrap();
+        assert_eq!(entry.digest, digest1);
+        assert!(entry.manifest.locations.contains("test"));
+    }
+
+    #[test]
+    fn can_collect_orphaned_blobs() {
+        let mut state = setup_state();
+
+        // Create node
+        let repository: RepositoryName = "myrepo".parse().unwrap();
+        let digest1: Digest = "sha256:abcdefg".parse().unwrap();
+        let digest2: Digest = "sha256:gfedcba".parse().unwrap();
+        let digest3: Digest = "sha256:aaaaaaa".parse().unwrap();
+        let digest4: Digest = "sha256:bbbbbbb".parse().unwrap();
+        let manifest_digest: Digest = "sha256:ababababababa".parse().unwrap();
+
+        state.dispatch_actions(&vec![
+            // BLOB 1 DAG
+            RegistryAction::BlobStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::BlobStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest2.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest2.clone(),
+            },
+            RegistryAction::BlobInfo {
+                timestamp: Utc::now(),
+                digest: digest2.clone(),
+                content_type: "foo".to_string(),
+                dependencies: vec![digest1.clone()],
+            },
+            // BLOB 2 DAG
+            RegistryAction::BlobStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest3.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest3.clone(),
+            },
+            RegistryAction::BlobStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: digest4.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: digest4.clone(),
+            },
+            RegistryAction::BlobInfo {
+                timestamp: Utc::now(),
+                digest: digest4.clone(),
+                content_type: "foo".to_string(),
+                dependencies: vec![digest3.clone()],
+            },
+            // MANIFEST DAG
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: manifest_digest.clone(),
+            },
+            RegistryAction::ManifestMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: manifest_digest.clone(),
+            },
+            RegistryAction::ManifestInfo {
+                timestamp: Utc::now(),
+                digest: manifest_digest.clone(),
+                content_type: "foo".to_string(),
+                dependencies: vec![digest4.clone()],
+            },
+        ]);
+
+        let collected = state.get_orphaned_blobs();
+        assert_eq!(collected.len(), 2);
+
+        for blob in collected {
+            match &blob {
+                BlobEntry { blob, digest } if digest == &digest1 => {
+                    assert_eq!(blob.dependencies.as_ref().unwrap().len(), 0);
+                }
+                BlobEntry { blob, digest } if digest == &digest2 => {
+                    assert_eq!(blob.dependencies.as_ref().unwrap().len(), 1);
+                }
+                _ => {
+                    panic!("Unexpected digest was collected")
+                }
+            }
+        }
+
+        // If we delete the manifest all blobs should now be garbage collected
+
+        state.dispatch_actions(&vec![
+            RegistryAction::ManifestUnmounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
+                digest: manifest_digest.clone(),
+            },
+            RegistryAction::ManifestUnstored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
+                digest: manifest_digest.clone(),
+            },
+        ]);
+
+        let collected = state.get_orphaned_blobs();
+        assert_eq!(collected.len(), 4);
     }
 }
