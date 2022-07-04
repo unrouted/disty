@@ -5,15 +5,14 @@ use std::time::Duration;
 
 use raft::eraftpb::Message;
 use raft::prelude::*;
-use raft::storage::MemStorage;
 use raft::RawNode;
-use raft::StateRole;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
 use crate::state::RegistryState;
+use crate::store::RegistryStorage;
 use crate::types::Blob;
 use crate::types::BlobEntry;
 use crate::types::Digest;
@@ -25,7 +24,7 @@ use crate::types::RepositoryName;
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
 pub struct RegistryApp {
-    pub group: RwLock<RawNode<MemStorage>>,
+    pub group: RwLock<RawNode<RegistryStorage>>,
     pub state: RwLock<RegistryState>,
     pub inbox: Sender<Msg>,
     pub seq: AtomicU64,

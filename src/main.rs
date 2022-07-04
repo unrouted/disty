@@ -1,13 +1,14 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
 use anyhow::{bail, Context, Result};
-use raft::{raw_node::RawNode, storage::MemStorage, Config};
+use raft::{raw_node::RawNode, Config};
 use state::RegistryState;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{atomic::AtomicU64, Arc},
 };
+use store::RegistryStorage;
 use tokio::sync::RwLock;
 
 pub mod app;
@@ -22,6 +23,7 @@ pub mod network;
 mod prometheus;
 mod registry;
 mod state;
+mod store;
 mod types;
 pub(crate) mod utils;
 mod webhook;
@@ -100,7 +102,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     let state = RwLock::new(RegistryState::default());
 
-    let storage = MemStorage::new_with_conf_state((members, vec![]));
+    let storage = RegistryStorage::new_with_conf_state((members, vec![]));
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
