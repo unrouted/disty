@@ -38,12 +38,33 @@ impl RegistryStorage {
             ..Default::default()
         };
 
-        Ok(RegistryStorage {
+        let store = RegistryStorage {
             db,
             entries,
             state,
             conf_state,
-        })
+        };
+
+        store.ensure_initialized()?;
+
+        Ok(store)
+    }
+
+    pub fn ensure_initialized(&self) -> Result<()> {
+        if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
+            self.append(&[Entry {
+                index: 1,
+                term: 1,
+                ..Default::default()
+            }])?;
+            self.set_hardstate(HardState {
+                commit: 1,
+                term: 1,
+                ..Default::default()
+            });
+        }
+
+        Ok(())
     }
 
     pub fn set_hardstate(&self, hs: HardState) {
@@ -53,12 +74,14 @@ impl RegistryStorage {
                 t.insert(KEY_HARD_TERM, bincode::serialize(&hs.term).unwrap())?;
                 t.insert(KEY_HARD_VOTE, bincode::serialize(&hs.vote).unwrap())?;
                 Ok(())
-            });
+            })
+            .unwrap();
     }
 
     pub fn set_commit(&self, commit: u64) {
         self.state
-            .insert(KEY_HARD_INDEX, bincode::serialize(&commit).unwrap());
+            .insert(KEY_HARD_INDEX, bincode::serialize(&commit).unwrap())
+            .unwrap();
     }
 
     pub fn last_index(&self) -> u64 {
@@ -73,6 +96,7 @@ impl RegistryStorage {
 
     pub fn first_index(&self) -> u64 {
         if let Some((key, _value)) = self.entries.first().unwrap() {
+            println!("first_index: {key:?}");
             return bincode::deserialize(&key).unwrap();
         }
 
@@ -172,6 +196,8 @@ impl Storage for RegistryStorage {
             raft_state.hard_state.term = bincode::deserialize(&term).unwrap();
         }
 
+        println!("intial_state: {raft_state:?}");
+
         Ok(raft_state)
     }
 
@@ -257,6 +283,8 @@ impl Storage for RegistryStorage {
 
 #[cfg(test)]
 mod test {
+    use raft::storage::MemStorage;
+
     use crate::config::{PeerConfig, RaftConfig, RegistryConfig};
 
     use super::*;
@@ -289,6 +317,10 @@ mod test {
         let initial_state = store.initial_state().unwrap();
 
         assert_eq!(initial_state.conf_state.voters, vec![1]);
+
+        assert_eq!(initial_state.hard_state.commit, 1);
+        assert_eq!(initial_state.hard_state.term, 1);
+        assert_eq!(initial_state.hard_state.vote, 0);
     }
 
     #[test]
@@ -339,5 +371,30 @@ mod test {
 
         store.compact(2);
         assert_eq!(store.first_index(), 2);
+    }
+
+    #[test]
+    fn test_term() {
+        let store = get_test_storage();
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries);
+
+        assert_eq!(store.term(1), Ok(1));
+        assert_eq!(store.term(2), Ok(1));
+        assert_eq!(store.term(3), Err(Error::Store(StorageError::Unavailable)));
     }
 }
