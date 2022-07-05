@@ -25,7 +25,6 @@ use crate::types::RepositoryName;
 // instances of raft, store and more.
 pub struct RegistryApp {
     pub group: RwLock<RawNode<RegistryStorage>>,
-    pub state: RwLock<RegistryState>,
     pub inbox: Sender<Msg>,
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
@@ -110,22 +109,26 @@ impl RegistryApp {
     }
 
     pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.is_blob_available(repository, hash)
     }
 
     pub async fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_blob_directly(hash)
     }
 
     pub async fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_blob(repository, hash)
     }
 
     pub async fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_manifest_directly(hash)
     }
     pub async fn get_manifest(
@@ -133,31 +136,37 @@ impl RegistryApp {
         repository: &RepositoryName,
         hash: &Digest,
     ) -> Option<Manifest> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_manifest(repository, hash)
     }
     pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.raft.raft_log.store.store;
         state.get_tag(repository, tag)
     }
 
     pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_tags(repository)
     }
 
     pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.is_manifest_available(repository, hash)
     }
 
     pub async fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_orphaned_blobs()
     }
 
     pub async fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
-        let state = self.state.read().await;
+        let group = self.group.read().await;
+        let state = &group.store().store;
         state.get_orphaned_manifests()
     }
 }
@@ -174,12 +183,11 @@ async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
 
 async fn handle_commits(
     app: Arc<RegistryApp>,
+    store: &mut RegistryStorage,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
-    let mut state = app.state.write().await;
-
     for entry in entries {
         // Mostly, you need to save the last apply index to resume applying
         // after restart. Here we just ignore this because we use a Memory storage.
@@ -192,7 +200,7 @@ async fn handle_commits(
 
         if entry.get_entry_type() == EntryType::EntryNormal {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
-            state.dispatch_actions(&actions);
+            store.dispatch_actions(&actions);
 
             if let Some(cb) = cbs.remove(&bincode::deserialize(&entry.context).unwrap()) {
                 cb.send(entry.index);
@@ -215,7 +223,6 @@ async fn on_ready(
     if !group.has_ready() {
         return;
     }
-    let store = group.raft.raft_log.store.clone();
 
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = group.ready();
@@ -227,16 +234,29 @@ async fn on_ready(
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
+        let store = &mut group.raft.raft_log.store;
         store.apply_snapshot(ready.snapshot().clone()).unwrap();
     }
 
-    handle_commits(app.clone(), cbs, actions_tx, ready.take_committed_entries()).await;
+    {
+        let mut store = &mut group.raft.raft_log.store;
+        handle_commits(
+            app.clone(),
+            &mut store,
+            cbs,
+            actions_tx,
+            ready.take_committed_entries(),
+        )
+        .await;
+    }
 
     if !ready.entries().is_empty() {
+        let store = &mut group.raft.raft_log.store;
         store.append(ready.entries()).unwrap();
     }
 
     if let Some(hs) = ready.hs() {
+        let store = &mut group.raft.raft_log.store;
         store.set_hardstate(hs.clone());
     }
 
@@ -246,16 +266,23 @@ async fn on_ready(
 
     let mut light_rd = group.advance(ready);
     if let Some(commit) = light_rd.commit_index() {
+        let store = &mut group.raft.raft_log.store;
         store.set_commit(commit);
     }
     handle_messages(&app, light_rd.take_messages()).await;
-    handle_commits(
-        app.clone(),
-        cbs,
-        actions_tx,
-        light_rd.take_committed_entries(),
-    )
-    .await;
+
+    {
+        let mut store = &mut group.raft.raft_log.store;
+        handle_commits(
+            app.clone(),
+            &mut store,
+            cbs,
+            actions_tx,
+            light_rd.take_committed_entries(),
+        )
+        .await;
+    }
+
     group.advance_apply();
 }
 

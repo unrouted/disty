@@ -1,11 +1,11 @@
-use std::cmp;
-
 use raft::{eraftpb::*, RaftState, Storage};
 
 use raft::util::limit_size;
 use raft::{Error, Result, StorageError};
 
 use crate::config::Configuration;
+use crate::state::RegistryState;
+use crate::types::RegistryAction;
 
 const KEY_HARD_INDEX: &[u8; 8] = b"hs-index";
 const KEY_HARD_TERM: &[u8; 7] = b"hs-term";
@@ -17,6 +17,8 @@ pub struct RegistryStorage {
     entries: sled::Tree,
     state: sled::Tree,
     conf_state: ConfState,
+    snapshot_metadata: SnapshotMetadata,
+    pub store: RegistryState,
 }
 
 impl RegistryStorage {
@@ -43,6 +45,8 @@ impl RegistryStorage {
             entries,
             state,
             conf_state,
+            snapshot_metadata: SnapshotMetadata::default(),
+            store: RegistryState::default(),
         };
 
         store.ensure_initialized()?;
@@ -89,9 +93,7 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        //  self.snapshot_metadata.index,
-
-        0
+        self.snapshot_metadata.index
     }
 
     pub fn first_index(&self) -> u64 {
@@ -99,13 +101,16 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        // self.snapshot_metadata.index + 1,
-
-        0
+        self.snapshot_metadata.index + 1
     }
 
-    pub fn apply_snapshot(&self, mut snapshot: Snapshot) -> Result<()> {
-        /*
+    pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
+        self.store.dispatch_actions(&actions);
+    }
+
+    pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
+        println!("Apply snapshot");
+
         let mut meta = snapshot.take_metadata();
         let index = meta.index;
 
@@ -114,15 +119,12 @@ impl RegistryStorage {
         }
 
         self.snapshot_metadata = meta.clone();
+        self.store = serde_json::from_slice(&snapshot.data).unwrap();
 
-        self.raft_state.hard_state.term = cmp::max(self.raft_state.hard_state.term, meta.term);
-        self.raft_state.hard_state.commit = index;
-        self.entries.clear();
-
-        // Update conf states.
-        self.raft_state.conf_state = meta.take_conf_state();
-        Ok(())
-        */
+        let mut hs = self.initial_state().unwrap().hard_state;
+        hs.commit = index;
+        hs.term = std::cmp::max(meta.term, hs.term);
+        self.set_hardstate(hs);
 
         Ok(())
     }
@@ -235,11 +237,9 @@ impl Storage for RegistryStorage {
             return Ok(entry.term);
         }
 
-        /*
         if idx == self.snapshot_metadata.index {
             return Ok(self.snapshot_metadata.term);
         }
-        */
 
         let offset = self.first_index();
         if idx < offset {
@@ -273,8 +273,9 @@ impl Storage for RegistryStorage {
 
         // meta.set_conf_state(self.raft_state.conf_state.clone());
 
-        // FIXME: Need access to app.state for this
-        // snapshot.set_data();
+        snapshot.set_data(serde_json::to_vec(&self.store).unwrap().into());
+
+        println!("Snapshot: {snapshot:?}");
 
         Ok(snapshot)
     }
@@ -282,8 +283,6 @@ impl Storage for RegistryStorage {
 
 #[cfg(test)]
 mod test {
-    use raft::storage::MemStorage;
-
     use crate::config::{PeerConfig, RaftConfig, RegistryConfig};
 
     use super::*;

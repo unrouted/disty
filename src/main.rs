@@ -2,7 +2,6 @@ use crate::app::RegistryApp;
 use crate::config::Configuration;
 use anyhow::{bail, Context, Result};
 use raft::{raw_node::RawNode, Config};
-use state::RegistryState;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -94,8 +93,6 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         .validate()
         .context("Unable to configure raft module")?;
 
-    let state = RwLock::new(RegistryState::default());
-
     let storage = RegistryStorage::new(&settings)?;
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
@@ -110,7 +107,6 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         group,
         inbox,
         outboxes,
-        state,
         settings,
         seq: AtomicU64::new(1),
     });
