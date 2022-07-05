@@ -84,7 +84,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
     };
 
     let config = Config {
-        id: id,
+        id,
         check_quorum: true,
         pre_vote: true,
         ..Default::default()
@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
 
     let settings = crate::config::config(opts.config);
 
-    let app = start_registry_services(settings).await?;
+    let _app = start_registry_services(settings).await?;
 
     // Temporary hack
     tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;

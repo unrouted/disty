@@ -105,13 +105,13 @@ impl RegistryStorage {
     }
 
     pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
-        self.store.dispatch_actions(&actions);
+        self.store.dispatch_actions(actions);
     }
 
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
         println!("Apply snapshot");
 
-        let mut meta = snapshot.take_metadata();
+        let meta = snapshot.take_metadata();
         let index = meta.index;
 
         if self.first_index() > index {
@@ -246,7 +246,7 @@ impl Storage for RegistryStorage {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        return Err(Error::Store(StorageError::Unavailable));
+        Err(Error::Store(StorageError::Unavailable))
     }
 
     fn first_index(&self) -> Result<u64> {

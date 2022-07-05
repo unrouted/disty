@@ -767,7 +767,7 @@ mod tests {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 repository,
-                digest: digest2.clone(),
+                digest: digest2,
                 tag: "latest".to_string(),
             },
         ]);
@@ -853,7 +853,7 @@ mod tests {
                 timestamp: Utc::now(),
                 digest: digest4.clone(),
                 content_type: "foo".to_string(),
-                dependencies: vec![digest3.clone()],
+                dependencies: vec![digest3],
             },
             // MANIFEST DAG
             RegistryAction::ManifestStored {
@@ -872,7 +872,7 @@ mod tests {
                 timestamp: Utc::now(),
                 digest: manifest_digest.clone(),
                 content_type: "foo".to_string(),
-                dependencies: vec![digest4.clone()],
+                dependencies: vec![digest4],
             },
         ]);
 
@@ -899,14 +899,14 @@ mod tests {
             RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                repository: repository.clone(),
+                repository: repository,
                 digest: manifest_digest.clone(),
             },
             RegistryAction::ManifestUnstored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 location: "test".to_string(),
-                digest: manifest_digest.clone(),
+                digest: manifest_digest,
             },
         ]);
 

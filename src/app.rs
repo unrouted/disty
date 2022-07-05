@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
-use crate::state::RegistryState;
+
 use crate::store::RegistryStorage;
 use crate::types::Blob;
 use crate::types::BlobEntry;
@@ -182,7 +182,7 @@ async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
 }
 
 async fn handle_commits(
-    app: Arc<RegistryApp>,
+    _app: Arc<RegistryApp>,
     store: &mut RegistryStorage,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
@@ -229,7 +229,7 @@ async fn on_ready(
 
     if !ready.messages().is_empty() {
         // Send out the messages come from the node.comm
-        handle_messages(&app, ready.take_messages()).await;
+        handle_messages(app, ready.take_messages()).await;
     }
 
     if !ready.snapshot().is_empty() {
@@ -239,10 +239,10 @@ async fn on_ready(
     }
 
     {
-        let mut store = &mut group.raft.raft_log.store;
+        let store = &mut group.raft.raft_log.store;
         handle_commits(
             app.clone(),
-            &mut store,
+            store,
             cbs,
             actions_tx,
             ready.take_committed_entries(),
@@ -261,7 +261,7 @@ async fn on_ready(
     }
 
     if !ready.persisted_messages().is_empty() {
-        handle_messages(&app, ready.take_persisted_messages()).await;
+        handle_messages(app, ready.take_persisted_messages()).await;
     }
 
     let mut light_rd = group.advance(ready);
@@ -269,13 +269,13 @@ async fn on_ready(
         let store = &mut group.raft.raft_log.store;
         store.set_commit(commit);
     }
-    handle_messages(&app, light_rd.take_messages()).await;
+    handle_messages(app, light_rd.take_messages()).await;
 
     {
-        let mut store = &mut group.raft.raft_log.store;
+        let store = &mut group.raft.raft_log.store;
         handle_commits(
             app.clone(),
-            &mut store,
+            store,
             cbs,
             actions_tx,
             light_rd.take_committed_entries(),
