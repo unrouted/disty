@@ -49,7 +49,8 @@ pub(crate) fn configure(
 pub(crate) fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
-        .merge(("address", app.settings.raft.address.clone()));
+        .merge(("address", app.settings.raft.address.clone()))
+        .merge(("log_level", "off"));
 
     tokio::spawn(configure(rocket::custom(fig), app, registry).launch());
 }

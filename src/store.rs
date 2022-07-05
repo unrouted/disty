@@ -96,7 +96,6 @@ impl RegistryStorage {
 
     pub fn first_index(&self) -> u64 {
         if let Some((key, _value)) = self.entries.first().unwrap() {
-            println!("first_index: {key:?}");
             return bincode::deserialize(&key).unwrap();
         }
 

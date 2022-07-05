@@ -56,7 +56,8 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
 pub(crate) fn launch(app: Arc<RegistryApp>, registry: Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.prometheus.port))
-        .merge(("address", app.settings.prometheus.address.clone()));
+        .merge(("address", app.settings.prometheus.address.clone()))
+        .merge(("log_level", "off"));
 
     tokio::spawn(configure(rocket::custom(fig), registry).launch());
 }
