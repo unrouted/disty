@@ -10,6 +10,7 @@ use std::{
 };
 use store::RegistryStorage;
 use tokio::sync::RwLock;
+use types::RegistryAction;
 
 pub mod app;
 mod config;
@@ -99,10 +100,9 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
-    let address = &settings.raft.address;
-    let port = &settings.raft.port;
-
     let (inbox, rx) = tokio::sync::mpsc::channel(1000);
+
+    let (actions_tx, actions_rx) = tokio::sync::mpsc::channel::<Vec<RegistryAction>>(1000);
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
@@ -119,10 +119,10 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
     crate::registry::launch(app.clone(), &mut registry);
     crate::prometheus::launch(app.clone(), registry);
 
-    tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx));
+    tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx));
 
     tokio::spawn(crate::garbage::do_garbage_collect(app.clone()));
-    tokio::spawn(crate::mirror::do_miroring(app.clone()));
+    tokio::spawn(crate::mirror::do_miroring(app.clone(), actions_rx));
 
     Ok(app)
 }

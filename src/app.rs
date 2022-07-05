@@ -175,6 +175,7 @@ async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
 async fn handle_commits(
     app: Arc<RegistryApp>,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
+    actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
     let mut state = app.state.write().await;
@@ -196,6 +197,8 @@ async fn handle_commits(
             if let Some(cb) = cbs.remove(&bincode::deserialize(&entry.context).unwrap()) {
                 cb.send(entry.index);
             }
+
+            actions_tx.send(actions).await;
         }
 
         // TODO: handle EntryConfChange
@@ -205,6 +208,7 @@ async fn handle_commits(
 async fn on_ready(
     app: &Arc<RegistryApp>,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
+    actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
 ) {
     let mut group = app.group.write().await;
 
@@ -226,7 +230,7 @@ async fn on_ready(
         store.apply_snapshot(ready.snapshot().clone()).unwrap();
     }
 
-    handle_commits(app.clone(), cbs, ready.take_committed_entries()).await;
+    handle_commits(app.clone(), cbs, actions_tx, ready.take_committed_entries()).await;
 
     if !ready.entries().is_empty() {
         store.append(ready.entries()).unwrap();
@@ -245,11 +249,21 @@ async fn on_ready(
         store.set_commit(commit);
     }
     handle_messages(&app, light_rd.take_messages()).await;
-    handle_commits(app.clone(), cbs, light_rd.take_committed_entries()).await;
+    handle_commits(
+        app.clone(),
+        cbs,
+        actions_tx,
+        light_rd.take_committed_entries(),
+    )
+    .await;
     group.advance_apply();
 }
 
-pub async fn do_raft_ticks(app: Arc<RegistryApp>, mut mailbox: tokio::sync::mpsc::Receiver<Msg>) {
+pub async fn do_raft_ticks(
+    app: Arc<RegistryApp>,
+    mut mailbox: tokio::sync::mpsc::Receiver<Msg>,
+    actions_tx: tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
+) {
     let mut t = Instant::now();
     let mut timeout = Duration::from_millis(100);
     let mut cbs = HashMap::new();
@@ -285,6 +299,6 @@ pub async fn do_raft_ticks(app: Arc<RegistryApp>, mut mailbox: tokio::sync::mpsc
             timeout -= d;
         }
 
-        on_ready(&app, &mut cbs).await;
+        on_ready(&app, &mut cbs, &actions_tx).await;
     }
 }

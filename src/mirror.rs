@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::select;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -267,9 +267,7 @@ fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest>
     tasks
 }
 
-pub(crate) async fn do_miroring(app: Arc<RegistryApp>) {
-    let (_tx, mut rx) = mpsc::channel::<Vec<RegistryAction>>(1000);
-
+pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<RegistryAction>>) {
     let mint = Mint::new(app.settings.mirroring.clone());
 
     let client = reqwest::Client::builder()
