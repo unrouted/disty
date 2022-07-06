@@ -1,168 +1,144 @@
-#[macro_use]
-extern crate rocket;
+use crate::app::RegistryApp;
+use crate::config::Configuration;
+use anyhow::{bail, Context, Result};
+use raft::{raw_node::RawNode, Config};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{atomic::AtomicU64, Arc},
+};
+use store::RegistryStorage;
+use tokio::sync::RwLock;
+use types::RegistryAction;
 
+pub mod app;
 mod config;
 mod extractor;
 mod garbage;
 mod headers;
-mod log;
-mod machine;
+mod middleware;
 mod mint;
 mod mirror;
+pub mod network;
 mod prometheus;
-mod raft;
 mod registry;
-mod rpc;
-mod storage;
+mod state;
+mod store;
 mod types;
-mod utils;
-mod views;
+pub(crate) mod utils;
 mod webhook;
 
-use std::sync::Arc;
+pub type NodeId = u64;
 
-use config::Configuration;
-use machine::Machine;
-use raft::Raft;
-use tokio::sync::{broadcast::error::RecvError, Mutex};
-use types::Broadcast;
-use webhook::start_webhook_worker;
-
-use crate::storage::Storage;
-
-fn create_dir(parent_dir: &str, child_dir: &str) -> bool {
+fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
     if !path.exists() {
-        return matches!(std::fs::create_dir_all(path), Ok(()));
+        return std::fs::create_dir_all(path);
     }
-    true
+    Ok(())
 }
 
-async fn launch(config: Configuration) {
-    let machine_identifier = config.identifier.clone();
-
-    if !create_dir(&config.storage, "uploads")
-        || !create_dir(&config.storage, "manifests")
-        || !create_dir(&config.storage, "blobs")
-    {
-        return;
-    }
+pub async fn start_registry_services(settings: Configuration) -> Result<Arc<RegistryApp>> {
+    create_dir(&settings.storage, "uploads")?;
+    create_dir(&settings.storage, "manifests")?;
+    create_dir(&settings.storage, "blobs")?;
 
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let (broadcaster, broadcasts) = tokio::sync::broadcast::channel::<Broadcast>(100);
+    let mut outboxes = HashMap::new();
+    for (idx, peer) in settings.peers.iter().cloned().enumerate() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
 
-    let webhook_send = start_webhook_worker(
-        config.webhooks.clone(),
-        &mut registry,
-        broadcaster.subscribe(),
-    );
+        tokio::spawn(async move {
+            let client = reqwest::Client::builder()
+                .user_agent("distribd/raft")
+                .build()
+                .unwrap();
 
-    let machine = Arc::new(Mutex::new(Machine::new(config.clone(), &mut registry)));
+            let address = peer.raft.address;
+            let port = peer.raft.port;
+            let url = format!("http://{address}:{port}/raft");
 
-    let (mut storage, term, mut log) = Storage::new(config.clone()).await;
+            loop {
+                match rx.recv().await {
+                    Some(payload) => {
+                        client.post(&url).body(payload).send().await;
+                    }
+                    None => return,
+                }
+            }
+        });
 
-    {
-        let mut machine = machine.lock().await;
-        machine.term = term;
-        machine.pending_index = log.last_index();
-        machine.stored_index = log.last_index();
+        outboxes.insert((idx + 1) as u64, tx);
     }
 
-    let clients = crate::rpc::start_rpc_client(config.clone());
-
-    let raft = Arc::new(Raft::new(
-        config.clone(),
-        machine.clone(),
-        clients,
-        &mut registry,
-    ));
-
-    let state = Arc::new(crate::types::RegistryState::new(
-        webhook_send,
-        machine_identifier,
-        &mut registry,
-    ));
-
-    let rpc_client = Arc::new(rpc::RpcClient::new(
-        config.clone(),
-        machine.clone(),
-        raft.clone(),
-        state.clone(),
-    ));
-
-    let mut events = raft.events.subscribe();
-    let dispatcher = state.clone();
-
-    tokio::spawn(async move {
-        loop {
-            match events.recv().await {
-                Ok(event) => {
-                    dispatcher.dispatch_entries(event).await;
-                }
-                Err(RecvError::Closed) => {
-                    break;
-                }
-                Err(RecvError::Lagged(_)) => {
-                    warn!("Lagged queue handler");
-                }
-            }
+    let id = match settings
+        .peers
+        .iter()
+        .position(|peer| peer.name == settings.identifier)
+    {
+        Some(id) => (id + 1) as u64,
+        None => {
+            bail!("No peer config for this node");
         }
-    });
+    };
 
-    tokio::spawn(crate::garbage::do_garbage_collect(
-        config.clone(),
-        machine,
-        state.clone(),
-        rpc_client.clone(),
-        broadcaster.subscribe(),
-    ));
+    let config = Config {
+        id,
+        check_quorum: true,
+        pre_vote: true,
+        ..Default::default()
+    };
+    config
+        .validate()
+        .context("Unable to configure raft module")?;
 
-    crate::rpc::start_rpc_server(config.clone(), raft.clone());
+    let storage = RegistryStorage::new(&settings)?;
 
-    crate::mirror::start_mirroring(
-        config.clone(),
-        state.clone(),
-        rpc_client.clone(),
-        broadcaster.subscribe(),
-    );
+    let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
-    crate::registry::launch(
-        config.clone(),
-        &mut registry,
-        state.clone(),
-        rpc_client.clone(),
-    );
+    let (inbox, rx) = tokio::sync::mpsc::channel(1000);
 
-    let prometheus_conf = rocket::Config::figment()
-        .merge(("port", config.prometheus.port))
-        .merge(("address", config.prometheus.address.clone()));
+    let (actions_tx, actions_rx) = tokio::sync::mpsc::channel::<Vec<RegistryAction>>(1000);
 
-    tokio::spawn(crate::prometheus::configure(rocket::custom(prometheus_conf), registry).launch());
+    // Create an application that will store all the instances created above, this will
+    // be later used on the actix-web services.
+    let app = Arc::new(RegistryApp::new(group, inbox, outboxes, settings));
 
-    tokio::spawn(async move {
-        loop {
-            if let Err(err) = tokio::signal::ctrl_c().await {
-                warn!("Error whilst waiting for Ctrl+C: {err:?}");
-                continue;
-            }
+    crate::network::server::launch(app.clone(), &mut registry).await;
+    crate::registry::launch(app.clone(), &mut registry).await;
+    crate::prometheus::launch(app.clone(), registry).await;
 
-            match broadcaster.send(Broadcast::Shutdown) {
-                Ok(_) => return,
-                Err(err) => {
-                    warn!("Error whilst broadcasting shutdown: {err:?}");
-                    continue;
-                }
-            };
-        }
-    });
+    tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx));
 
-    raft.run(broadcasts, &mut storage, &mut log).await;
+    app.spawn(crate::garbage::do_garbage_collect(app.clone()))
+        .await;
+    app.spawn(crate::mirror::do_miroring(app.clone(), actions_rx))
+        .await;
+
+    Ok(app)
+}
+
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Opts {
+    /// Name of the person to greet
+    #[clap(short, long, value_parser)]
+    config: Option<PathBuf>,
 }
 
 #[rocket::main]
-async fn main() {
-    let config = crate::config::config();
+async fn main() -> Result<()> {
+    let opts = Opts::parse();
 
-    launch(config).await
+    let settings = crate::config::config(opts.config);
+
+    let app = start_registry_services(settings).await?;
+
+    app.wait_for_shutdown().await;
+
+    Ok(())
 }

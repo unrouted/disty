@@ -1,10 +1,12 @@
-use crate::config::Configuration;
+use crate::app::RegistryApp;
+
 use crate::headers::Token;
 use crate::types::Digest;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_blob_path;
+use log::debug;
 use log::info;
+use rocket::get;
 use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
@@ -39,7 +41,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -51,7 +53,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -95,12 +97,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
+    let app: &Arc<RegistryApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -113,7 +113,7 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    let blob = match state.get_blob(&repository, &digest).await {
+    let blob = match app.get_blob(&repository, &digest).await {
         Some(blob) => blob,
         None => {
             info!("get_blob returned no blob found");
@@ -121,7 +121,7 @@ pub(crate) async fn get(
         }
     };
 
-    state.wait_for_blob(&digest).await;
+    // state.wait_for_blob(&digest).await;
 
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
@@ -136,7 +136,7 @@ pub(crate) async fn get(
         }
     };
 
-    let path = get_blob_path(&config.storage, &digest);
+    let path = get_blob_path(&app.settings.storage, &digest);
     if !path.is_file() {
         info!("Blob was not present on disk");
         return Responses::BlobNotFound {};

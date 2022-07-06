@@ -1,4 +1,4 @@
-use crate::config::Configuration;
+use crate::app::RegistryApp;
 use crate::headers::ContentRange;
 use crate::headers::Token;
 
@@ -7,10 +7,12 @@ use crate::utils::get_upload_path;
 use rocket::data::Data;
 use rocket::http::Header;
 use rocket::http::Status;
+use rocket::patch;
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
 use rocket::State;
 use std::io::Cursor;
+use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -34,7 +36,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -46,7 +48,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -57,7 +59,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::UploadInvalid {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "BLOB_UPLOAD_INVALID",
                     "the upload was invalid",
                 );
@@ -130,11 +132,11 @@ pub(crate) async fn patch(
     repository: RepositoryName,
     upload_id: String,
     range: Option<ContentRange>,
-    config: &State<Configuration>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
-    let config: &Configuration = config.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -146,7 +148,7 @@ pub(crate) async fn patch(
         return Responses::AccessDenied {};
     }
 
-    let filename = get_upload_path(&config.storage, &upload_id);
+    let filename = get_upload_path(&app.settings.storage, &upload_id);
 
     if !filename.is_file() {
         return Responses::UploadInvalid {};
@@ -175,7 +177,7 @@ pub(crate) async fn patch(
         }
     }
 
-    if !crate::views::utils::upload_part(&filename, body).await {
+    if !crate::registry::utils::upload_part(&filename, body).await {
         return Responses::UploadInvalid {};
     }
 

@@ -1,3 +1,4 @@
+use log::warn;
 use reqwest::{self, RequestBuilder};
 use serde::Deserialize;
 

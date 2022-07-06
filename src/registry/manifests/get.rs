@@ -1,10 +1,10 @@
-use crate::config::Configuration;
+use crate::app::RegistryApp;
 use crate::headers::Token;
 use crate::types::Digest;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use crate::utils::get_manifest_path;
 use log::debug;
+use rocket::get;
 use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Response};
@@ -51,7 +51,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -63,7 +63,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -105,12 +105,10 @@ impl<'r> Responder<'r, 'static> for Responses {
 pub(crate) async fn get(
     repository: RepositoryName,
     digest: Digest,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -122,13 +120,13 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest).await {
+    if !app.is_manifest_available(&repository, &digest).await {
         return Responses::ManifestNotFound {};
     }
 
-    state.wait_for_manifest(&digest).await;
+    // state.wait_for_manifest(&digest).await;
 
-    let manifest = match state.get_manifest(&repository, &digest).await {
+    let manifest = match app.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,
         _ => {
             debug!("Failed to return manifest from graph for {digest} (via {repository}");
@@ -147,7 +145,7 @@ pub(crate) async fn get(
         _ => return Responses::ManifestNotFound {},
     };
 
-    let path = get_manifest_path(&config.storage, &digest);
+    let path = get_manifest_path(&app.settings.storage, &digest);
     if !path.is_file() {
         return Responses::ManifestNotFound {};
     }
@@ -167,12 +165,10 @@ pub(crate) async fn get(
 pub(crate) async fn get_by_tag(
     repository: RepositoryName,
     tag: String,
-    config: &State<Configuration>,
-    state: &State<Arc<RegistryState>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let config: &Configuration = config.inner();
-    let state: &RegistryState = state.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -185,7 +181,7 @@ pub(crate) async fn get_by_tag(
         return Responses::AccessDenied {};
     }
 
-    let digest = match state.get_tag(&repository, &tag).await {
+    let digest = match app.get_tag(&repository, &tag).await {
         Some(tag) => tag,
         None => {
             debug!("No such tag");
@@ -193,14 +189,14 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    if !state.is_manifest_available(&repository, &digest).await {
+    if !app.is_manifest_available(&repository, &digest).await {
         debug!("Manifest not known to graph");
         return Responses::ManifestNotFound {};
     }
 
-    state.wait_for_manifest(&digest).await;
+    // state.wait_for_manifest(&digest).await;
 
-    let manifest = match state.get_manifest(&repository, &digest).await {
+    let manifest = match app.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,
         _ => {
             debug!("Could not retrieve manifest info from graph");
@@ -224,7 +220,7 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let path = get_manifest_path(&config.storage, &digest);
+    let path = get_manifest_path(&app.settings.storage, &digest);
     if !path.is_file() {
         debug!("Expected manifest file does not exist");
         return Responses::ManifestNotFound {};

@@ -1,15 +1,14 @@
-use crate::config::Configuration;
+use crate::app::RegistryApp;
 use crate::mint::Mint;
-use crate::raft::RaftEvent;
-use crate::rpc::RpcClient;
-use crate::types::{Broadcast, Digest, RegistryAction, RegistryState};
+use crate::types::{Digest, RegistryAction};
 use chrono::Utc;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::select;
+use tokio::sync::mpsc::Receiver;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -62,14 +61,13 @@ impl MirrorRequest {
 }
 
 async fn do_transfer(
-    config: Configuration,
-    state: Arc<RegistryState>,
+    app: Arc<RegistryApp>,
     mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match state.get_blob_directly(digest).await {
+        MirrorRequest::Blob { ref digest } => match app.get_blob_directly(digest).await {
             Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -78,7 +76,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if blob.locations.contains(&config.identifier) {
+                if blob.locations.contains(&app.settings.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -90,7 +88,7 @@ async fn do_transfer(
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match state.get_manifest_directly(digest).await {
+        MirrorRequest::Manifest { ref digest } => match app.get_manifest_directly(digest).await {
             Some(manifest) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),
@@ -99,7 +97,7 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if manifest.locations.contains(&config.identifier) {
+                if manifest.locations.contains(&app.settings.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -114,7 +112,7 @@ async fn do_transfer(
     };
 
     let mut urls = vec![];
-    for peer in &config.peers {
+    for peer in &app.settings.peers {
         if !locations.contains(&peer.name) {
             continue;
         }
@@ -159,7 +157,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    let file_name = crate::utils::get_temp_mirror_path(&config.storage);
+    let file_name = crate::utils::get_temp_mirror_path(&app.settings.storage);
 
     let mut file = match tokio::fs::File::create(&file_name).await {
         Ok(file) => {
@@ -223,12 +221,12 @@ async fn do_transfer(
 
     debug!("Mirroring: Download has correct hash ({download_digest} vs {digest})");
 
-    if !crate::views::utils::validate_hash(&file_name, digest).await {
+    if !crate::registry::utils::validate_hash(&file_name, digest).await {
         debug!("Mirroring: Downloaded file for {url} is corrupt");
         return MirrorResult::Retry { request };
     };
 
-    let storage_path = request.storage_path(&config.storage);
+    let storage_path = request.storage_path(&app.settings.storage);
     if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
         debug!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
@@ -236,55 +234,41 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(config.identifier.clone())
+    request.success(app.settings.identifier.clone())
 }
 
-fn get_tasks_from_raft_event(event: RaftEvent) -> Vec<MirrorRequest> {
+fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest> {
     let mut tasks = vec![];
 
-    match event {
-        RaftEvent::Committed {
-            start_index: _,
-            entries,
-        } => {
-            for entry in &entries {
-                match &entry.entry {
-                    RegistryAction::BlobStored {
-                        timestamp: _,
-                        digest,
-                        location: _,
-                        user: _,
-                    } => tasks.push(MirrorRequest::Blob {
-                        digest: digest.clone(),
-                    }),
-                    RegistryAction::ManifestStored {
-                        timestamp: _,
-                        digest,
-                        location: _,
-                        user: _,
-                    } => {
-                        tasks.push(MirrorRequest::Manifest {
-                            digest: digest.clone(),
-                        });
-                    }
-                    _ => {}
-                }
+    for action in &actions {
+        match action {
+            RegistryAction::BlobStored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => tasks.push(MirrorRequest::Blob {
+                digest: digest.clone(),
+            }),
+            RegistryAction::ManifestStored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => {
+                tasks.push(MirrorRequest::Manifest {
+                    digest: digest.clone(),
+                });
             }
+            _ => {}
         }
     }
 
     tasks
 }
 
-pub(crate) fn start_mirroring(
-    config: Configuration,
-    state: Arc<RegistryState>,
-    submission: Arc<RpcClient>,
-    mut broadcasts: tokio::sync::broadcast::Receiver<Broadcast>,
-) {
-    let mut rx = state.events.subscribe();
-
-    let mint = Mint::new(config.mirroring.clone());
+pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<RegistryAction>>) {
+    let mint = Mint::new(app.settings.mirroring.clone());
 
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
@@ -293,45 +277,44 @@ pub(crate) fn start_mirroring(
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
-    tokio::spawn(async move {
-        loop {
-            select! {
-                _ = broadcasts.recv() => {
-                    debug!("Mirroring: Stopping in response to SIGINT");
-                    return;
-                },
-                _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-                Ok(event) = rx.recv() => {
-                    requests.extend(get_tasks_from_raft_event(event));
+    let mut lifecycle = app.subscribe_lifecycle();
+
+    loop {
+        select! {
+            _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
+            Some(actions) = rx.recv() => {
+                requests.extend(get_tasks_from_raft_event(actions));
+            }
+            Ok(ev) = lifecycle.recv() => {
+                info!("Mirroring: Graceful shutdown");
+                return;
+            }
+        };
+
+        info!("Mirroring: There are {} mirroring tasks", requests.len());
+
+        // FIXME: Ideally we'd have some worker pool here are download a bunch
+        // of objects in parallel.
+
+        let tasks: Vec<MirrorRequest> = requests.drain().collect();
+        for task in tasks {
+            let client = client.clone();
+            let result = do_transfer(app.clone(), mint.clone(), client, task).await;
+
+            match result {
+                MirrorResult::Retry { request } => {
+                    requests.insert(request);
                 }
-            };
-
-            info!("Mirroring: There are {} mirroring tasks", requests.len());
-
-            // FIXME: Ideally we'd have some worker pool here are download a bunch
-            // of objects in parallel.
-
-            let tasks: Vec<MirrorRequest> = requests.drain().collect();
-            for task in tasks {
-                let client = client.clone();
-                let result =
-                    do_transfer(config.clone(), state.clone(), mint.clone(), client, task).await;
-
-                match result {
-                    MirrorResult::Retry { request } => {
+                MirrorResult::Success { action, request } => {
+                    if !app.submit(vec![action]).await {
                         requests.insert(request);
-                    }
-                    MirrorResult::Success { action, request } => {
-                        if !submission.send(vec![action]).await {
-                            requests.insert(request);
-                            debug!("Mirroring: Raft transaction failed");
-                        } else {
-                            debug!("Mirroring: Download logged to raft");
-                        };
-                    }
-                    MirrorResult::None => {}
+                        debug!("Mirroring: Raft transaction failed");
+                    } else {
+                        debug!("Mirroring: Download logged to raft");
+                    };
                 }
+                MirrorResult::None => {}
             }
         }
-    });
+    }
 }

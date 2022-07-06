@@ -1,10 +1,12 @@
+use crate::app::RegistryApp;
 use crate::headers::Token;
-use crate::rpc::RpcClient;
+
 use crate::types::Digest;
 use crate::types::RegistryAction;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
 use chrono::prelude::*;
+
+use rocket::delete;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
@@ -25,7 +27,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -37,7 +39,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -48,7 +50,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::NotFound {} => Response::build().status(Status::NotFound).ok(),
-            Responses::Failed {} => Response::build().status(Status::NotFound).ok(),
+            Responses::Failed {} => Response::build().status(Status::InternalServerError).ok(),
             Responses::Ok {} => Response::build()
                 .header(Header::new("Content-Length", "0"))
                 .status(Status::Accepted)
@@ -56,16 +58,15 @@ impl<'r> Responder<'r, 'static> for Responses {
         }
     }
 }
-#[delete("/<repository>/manifests/<digest>")]
+
+#[delete("/<repository>/blobs/<digest>")]
 pub(crate) async fn delete(
     repository: RepositoryName,
     digest: Digest,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
+    let app: &Arc<RegistryApp> = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -77,62 +78,18 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !state.is_manifest_available(&repository, &digest).await {
+    if !app.is_blob_available(&repository, &digest).await {
         return Responses::NotFound {};
     }
 
-    let actions = vec![RegistryAction::ManifestUnmounted {
+    let actions = vec![RegistryAction::BlobUnmounted {
         timestamp: Utc::now(),
         digest,
         repository,
         user: token.sub.clone(),
     }];
 
-    if !submission.send(actions).await {
-        return Responses::Failed {};
-    }
-
-    Responses::Ok {}
-}
-
-#[delete("/<repository>/manifests/<tag>", rank = 2)]
-pub(crate) async fn delete_by_tag(
-    repository: RepositoryName,
-    tag: String,
-    state: &State<Arc<RegistryState>>,
-    submission: &State<Arc<RpcClient>>,
-    token: Token,
-) -> Responses {
-    let state: &RegistryState = state.inner();
-    let submission: &RpcClient = submission.inner();
-
-    if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
-        };
-    }
-
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
-    }
-
-    let digest = match state.get_tag(&repository, &tag).await {
-        Some(tag) => tag,
-        None => return Responses::NotFound {},
-    };
-
-    if !state.is_manifest_available(&repository, &digest).await {
-        return Responses::NotFound {};
-    }
-
-    let actions = vec![RegistryAction::ManifestUnmounted {
-        timestamp: Utc::now(),
-        digest,
-        repository,
-        user: token.sub.clone(),
-    }];
-
-    if !submission.send(actions).await {
+    if !app.submit(actions).await {
         return Responses::Failed {};
     }
 

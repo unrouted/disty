@@ -1,6 +1,7 @@
+use crate::app::RegistryApp;
 use crate::headers::Token;
-use crate::types::RegistryState;
 use crate::types::RepositoryName;
+use rocket::get;
 use rocket::http::Header;
 use rocket::http::Status;
 use rocket::request::Request;
@@ -28,7 +29,7 @@ impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
             Responses::MustAuthenticate { challenge } => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
                     "authentication required",
                 );
@@ -40,7 +41,7 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .ok()
             }
             Responses::AccessDenied {} => {
-                let body = crate::views::utils::simple_oci_error(
+                let body = crate::registry::utils::simple_oci_error(
                     "DENIED",
                     "requested access to the resource is denied",
                 );
@@ -107,10 +108,10 @@ pub(crate) async fn get(
     repository: RepositoryName,
     last: Option<String>,
     n: Option<usize>,
-    state: &State<Arc<RegistryState>>,
+    app: &State<Arc<RegistryApp>>,
     token: Token,
 ) -> Responses {
-    let state: &RegistryState = state.inner();
+    let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -122,7 +123,7 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    match state.get_tags(&repository).await {
+    match app.get_tags(&repository).await {
         Some(mut tags) => {
             tags.sort();
 

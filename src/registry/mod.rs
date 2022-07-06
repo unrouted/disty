@@ -1,10 +1,20 @@
+mod blobs;
+mod get;
+mod manifests;
+mod tags;
+pub(crate) mod utils;
+
 use std::sync::Arc;
 
 use prometheus_client::registry::Registry;
 use regex::Captures;
-use rocket::{fairing::AdHoc, http::uri::Origin, Build, Rocket, Route};
+use rocket::{fairing::AdHoc, http::uri::Origin, routes, Build, Rocket, Route};
 
-use crate::{config::Configuration, rpc::RpcClient, types::RegistryState};
+use crate::{
+    app::RegistryApp,
+    middleware::prometheus::{HttpMetrics, Port},
+    webhook::start_webhook_worker,
+};
 
 pub fn rewrite_urls(url: &str) -> String {
     // /v2/foo/bar/manifests/tagname -> /v2/foo:bar/manifests/tagname
@@ -26,69 +36,68 @@ pub fn rewrite_urls(url: &str) -> String {
 pub fn routes() -> Vec<Route> {
     routes![
         // Uploads
-        crate::views::blobs::uploads::delete::delete,
-        crate::views::blobs::uploads::patch::patch,
-        crate::views::blobs::uploads::post::post,
-        crate::views::blobs::uploads::put::put,
-        crate::views::blobs::uploads::get::get,
+        blobs::uploads::delete::delete,
+        blobs::uploads::patch::patch,
+        blobs::uploads::post::post,
+        blobs::uploads::put::put,
+        blobs::uploads::get::get,
         // Blobs
-        crate::views::blobs::delete::delete,
-        crate::views::blobs::get::get,
+        blobs::delete::delete,
+        blobs::get::get,
         // Manifests
-        crate::views::manifests::put::put,
-        crate::views::manifests::get::get,
-        crate::views::manifests::get::get_by_tag,
-        crate::views::manifests::delete::delete,
-        crate::views::manifests::delete::delete_by_tag,
+        manifests::put::put,
+        manifests::get::get,
+        manifests::get::get_by_tag,
+        manifests::delete::delete,
+        manifests::delete::delete_by_tag,
         // Tags
-        crate::views::tags::get::get,
+        tags::get::get,
         // Root
-        crate::views::get::get,
+        get::get,
     ]
 }
 
-fn configure(
-    config: Configuration,
-    registry: &mut Registry,
-    state: Arc<RegistryState>,
-    rpc_client: Arc<RpcClient>,
-) -> Rocket<Build> {
-    let extractor = crate::extractor::Extractor::new(config.clone());
+fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
+    let extractor = crate::extractor::Extractor::new(app.settings.clone());
+    let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), registry);
 
     let registry_conf = rocket::Config::figment()
-        .merge(("port", &config.registry.port))
-        .merge(("address", &config.registry.address));
+        .merge(("port", &app.settings.registry.port))
+        .merge(("address", &app.settings.registry.address));
 
     rocket::custom(registry_conf)
-        .attach(AdHoc::on_request("URL Rewriter", |req, _| {
+        .attach(AdHoc::on_request("Registry URL Rewriter", |req, _| {
             Box::pin(async move {
                 let origin = req.uri().to_string();
                 req.set_uri(Origin::parse_owned(rewrite_urls(&origin)).unwrap());
             })
         }))
-        .manage(config)
-        .manage(state)
+        .manage(app)
         .manage(extractor)
-        .manage(rpc_client)
-        .attach(crate::prometheus::HttpMetrics::new(registry))
-        .mount("/v2/", crate::registry::routes())
+        .manage(webhook_queue)
+        .attach(HttpMetrics::new(registry, Port::Registry))
+        .mount("/v2/", routes())
 }
 
-pub fn launch(
-    config: Configuration,
-    registry: &mut Registry,
-    state: Arc<RegistryState>,
-    rpc_client: Arc<RpcClient>,
-) {
-    tokio::spawn(configure(config, registry, state, rpc_client).launch());
+pub async fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
+    let service = configure(app.clone(), registry);
+
+    app.spawn(async {
+        service.launch().await;
+    })
+    .await;
 }
 
 #[cfg(test)]
 mod test {
-    use crate::config::{PrometheusConfig, RaftConfig, RegistryConfig};
+    use crate::{
+        config::{Configuration, PeerConfig, PrometheusConfig, RaftConfig, RegistryConfig},
+        start_registry_services,
+    };
 
     use super::*;
     use lazy_static::lazy_static;
+    use log::debug;
     use reqwest::{
         header::{HeaderMap, CONTENT_TYPE},
         StatusCode, Url,
@@ -130,11 +139,13 @@ mod test {
         _tempdir: TempDir,
         _address: ResourcePoolGuard<String>,
     }
+
     async fn configure() -> TestInstance {
         let tempdir = tempfile::tempdir().unwrap();
         let address = IP_ADDRESSES.get().await;
 
         let config = Configuration {
+            identifier: "registry-1".into(),
             registry: RegistryConfig {
                 address: address.clone(),
                 port: 8000,
@@ -148,11 +159,22 @@ mod test {
                 port: 7080,
             },
             storage: tempdir.path().to_str().unwrap().to_owned(),
+            peers: vec![PeerConfig {
+                name: "registry-1".into(),
+                raft: RaftConfig {
+                    address: address.clone(),
+                    port: 8080,
+                },
+                registry: RegistryConfig {
+                    address: address.clone(),
+                    port: 8000,
+                },
+            }],
             ..Default::default()
         };
         debug!("Launching registry with config: {:?}", config);
 
-        tokio::spawn(crate::launch(config));
+        start_registry_services(config).await.unwrap();
 
         let url = format!("http://{}:8000/v2/", address.clone());
         debug!("Registry url: {url}");

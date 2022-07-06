@@ -81,7 +81,6 @@ impl<'de> Deserialize<'de> for PublicKey {
             let config_dir = app_dirs.config_dir;
             p = config_dir.join(p);
         }
-        debug!("Loading token verification key: {p:?}");
         let pem = std::fs::read_to_string(&p).unwrap();
         Ok(PublicKey {
             path: s,
@@ -150,19 +149,23 @@ impl Default for Configuration {
     }
 }
 
-pub fn config() -> Configuration {
-    let mut config = Figment::from(Serialized::defaults(Configuration::default()));
+pub fn config(config: Option<PathBuf>) -> Configuration {
+    let mut fig = Figment::from(Serialized::defaults(Configuration::default()));
 
-    let app_dirs = AppDirs::new(Some("distribd"), true).unwrap();
-    let config_dir = app_dirs.config_dir;
-    let config_path = config_dir.join("config.yaml");
+    fig = match config {
+        Some(config_path) => fig.merge(Yaml::file(config_path)),
+        None => {
+            let app_dirs = AppDirs::new(Some("distribd"), true).unwrap();
+            let config_dir = app_dirs.config_dir;
+            let config_path = config_dir.join("config.yaml");
+            match config_path.exists() {
+                true => fig.merge(Yaml::file(config_path)),
+                false => fig,
+            }
+        }
+    };
 
-    if config_path.exists() {
-        config = config.merge(Yaml::file(config_path));
-    }
-
-    config
-        .merge(Env::prefixed("DISTRIBD_"))
+    fig.merge(Env::prefixed("DISTRIBD_"))
         .extract()
         .expect("Failed to load config.yaml")
 }
@@ -181,7 +184,7 @@ mod test {
                 .as_os_str(),
         );
 
-        let config = config();
+        let config = config(None);
         assert_eq!(config.identifier, "node1".to_string());
     }
 
