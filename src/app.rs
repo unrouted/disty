@@ -376,7 +376,7 @@ async fn handle_commits(
                         user: _,
                     } => {
                         if &app.settings.identifier == location {
-                            app.manifest_available(digest).await;
+                            app.blob_available(digest).await;
                         }
                     }
                     _ => {}
