@@ -1,7 +1,7 @@
 FROM rust:alpine3.16 as builder
 WORKDIR /src
 
-RUN apk --no-cache add musl-dev
+RUN apk --no-cache add musl-dev protoc
 RUN USER=root cargo init --name distribd /src
 COPY Cargo.toml Cargo.lock /src/
 RUN cargo build --target x86_64-unknown-linux-musl --release
