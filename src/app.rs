@@ -5,11 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use log::{error, info};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
-use rocket::Shutdown;
-use tokio::join;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
@@ -89,12 +88,12 @@ impl RegistryApp {
     pub async fn wait_for_shutdown(&self) -> Result<()> {
         tokio::signal::ctrl_c().await.unwrap();
 
-        println!("Starting shutdown...");
+        info!("Starting shutdown...");
         self.lifecycle
             .send(Lifecycle::Shutdown)
             .context("Failed to notify services of shutdown")?;
 
-        println!("Awaiting on pending services");
+        info!("Awaiting on pending services");
         for handle in self.services.write().await.drain(..) {
             handle.await;
         }
@@ -135,13 +134,10 @@ impl RegistryApp {
 
         match rx.await {
             Err(err) => {
-                println!("RECV FAILURE: {err:?}");
+                error!("RECV FAILURE: {err:?}");
                 None
             }
-            Ok(value) => {
-                println!("SUBMIT SUCCESS");
-                Some(value)
-            }
+            Ok(value) => Some(value),
         }
     }
 
@@ -260,8 +256,6 @@ async fn handle_commits(
     }
 
     for entry in entries {
-        println!("Applying: {}", entry.index);
-
         if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
             store.dispatch_actions(&actions);
@@ -274,11 +268,8 @@ async fn handle_commits(
         }
 
         store.applied_index = entry.index;
-        println!("Applied: {}", entry.index);
         // TODO: handle EntryConfChange
     }
-
-    println!("Done handling commits");
 }
 
 async fn on_ready(

@@ -291,7 +291,7 @@ pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<Regi
             }
         };
 
-        info!("Mirroring: There are {} mirroring tasks", requests.len());
+        debug!("Mirroring: There are {} mirroring tasks", requests.len());
 
         // FIXME: Ideally we'd have some worker pool here are download a bunch
         // of objects in parallel.

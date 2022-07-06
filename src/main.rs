@@ -1,6 +1,7 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
 use anyhow::{bail, Context, Result};
+use fern::colors::{Color, ColoredLevelConfig};
 use raft::{raw_node::RawNode, Config};
 use std::{
     collections::HashMap,
@@ -132,6 +133,33 @@ struct Opts {
 
 #[rocket::main]
 async fn main() -> Result<()> {
+    let colors = ColoredLevelConfig::new()
+        .error(Color::Red)
+        .warn(Color::Yellow)
+        .info(Color::White)
+        .debug(Color::White)
+        .trace(Color::BrightBlack);
+
+    fern::Dispatch::new()
+        .level(log::LevelFilter::Info)
+        .level_for("rocket", log::LevelFilter::Error)
+        // Rocket uses a target of '_' for some of its logging, which is noisy as hell so drop it
+        .level_for("_", log::LevelFilter::Error)
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{color_line}[{date}] [{target}] [{level}{color_line}] {message}\x1B[0m",
+                color_line =
+                    format_args!("\x1B[{}m", colors.get_color(&record.level()).to_fg_str()),
+                date = chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                level = colors.color(record.level()),
+                target = record.target(),
+                message = message,
+            ));
+        })
+        .chain(std::io::stdout())
+        .apply()
+        .context("Failed to configure logging")?;
+
     let opts = Opts::parse();
 
     let settings = crate::config::config(opts.config);

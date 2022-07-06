@@ -1,3 +1,4 @@
+use log::{error, info, warn};
 use raft::{eraftpb::*, RaftState, Storage};
 
 use raft::util::limit_size;
@@ -111,14 +112,15 @@ impl RegistryStorage {
     }
 
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
-        println!("Apply snapshot");
-
         let meta = snapshot.take_metadata();
         let index = meta.index;
 
         if self.first_index() > index {
+            error!("Asked to apply an out of date snapshot");
             return Err(Error::Store(StorageError::SnapshotOutOfDate));
         }
+
+        warn!("Applying snapshot at index: {index}");
 
         self.snapshot_metadata = meta.clone();
         self.store = serde_json::from_slice(&snapshot.data).unwrap();
@@ -199,7 +201,7 @@ impl Storage for RegistryStorage {
             raft_state.hard_state.term = bincode::deserialize(&term).unwrap();
         }
 
-        println!("intial_state: {raft_state:?}");
+        info!("Loaded intial raft state: {raft_state:?}");
 
         Ok(raft_state)
     }
@@ -278,7 +280,10 @@ impl Storage for RegistryStorage {
 
         snapshot.set_data(serde_json::to_vec(&self.store).unwrap().into());
 
-        println!("Snapshot: {snapshot:?}");
+        info!(
+            "Generated new snapshot for index {} (requested {request_index})",
+            self.applied_index
+        );
 
         Ok(snapshot)
     }
