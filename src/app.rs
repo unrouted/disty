@@ -5,13 +5,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use log::{error, info};
+use log::{error, info, warn};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -41,6 +41,8 @@ pub struct RegistryApp {
     pub settings: Configuration,
     services: RwLock<Vec<JoinHandle<()>>>,
     lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
+    manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
+    blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
 }
 
 pub enum Msg {
@@ -69,6 +71,8 @@ impl RegistryApp {
             settings,
             services: RwLock::new(vec![]),
             lifecycle: tx,
+            blob_waiters: Mutex::new(HashMap::new()),
+            manifest_waiters: Mutex::new(HashMap::new()),
         }
     }
 
@@ -171,6 +175,95 @@ impl RegistryApp {
         true
     }
 
+    async fn blob_available(&self, digest: &Digest) {
+        let mut waiters = self.blob_waiters.lock().await;
+
+        if let Some(blobs) = waiters.remove(digest) {
+            info!(
+                "State: Wait for blob: {digest} now available. {} waiters to process",
+                blobs.len()
+            );
+            for sender in blobs {
+                if sender.send(()).is_err() {
+                    warn!("Some blob waiters may have failed: {digest}");
+                }
+            }
+        } else {
+            info!("State: Wait for blob: {digest} now available - no active waiters");
+        }
+    }
+
+    pub async fn wait_for_blob(&self, digest: &Digest) {
+        let mut waiters = self.blob_waiters.lock().await;
+
+        if let Some(blob) = self.get_blob_directly(digest).await {
+            if blob.locations.contains(&self.settings.identifier) {
+                // Blob already exists at this endpoint, no need to wait
+                info!("State: Wait for blob: {digest} already available");
+                return;
+            }
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+        values.push(tx);
+
+        drop(waiters);
+
+        info!("State: Wait for blob: Waiting for {digest} to download");
+
+        match rx.await {
+            Ok(_) => {
+                info!("State: Wait for blob: {digest}: Download complete");
+            }
+            Err(err) => {
+                warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+            }
+        }
+    }
+
+    async fn manifest_available(&self, digest: &Digest) {
+        let mut waiters = self.manifest_waiters.lock().await;
+
+        if let Some(manifests) = waiters.remove(digest) {
+            for sender in manifests {
+                if sender.send(()).is_err() {
+                    warn!("Some manifest waiters may have failed: {digest}");
+                }
+            }
+        }
+    }
+
+    pub async fn wait_for_manifest(&self, digest: &Digest) {
+        let mut waiters = self.manifest_waiters.lock().await;
+
+        if let Some(manifest) = self.get_manifest_directly(digest).await {
+            if manifest.locations.contains(&self.settings.identifier) {
+                // manifest already exists at this endpoint, no need to wait
+                return;
+            }
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+        values.push(tx);
+
+        drop(waiters);
+
+        match rx.await {
+            Ok(_) => (),
+            Err(err) => {
+                warn!("Failure whilst waiting for manifest to be downloaded: {digest}: {err}");
+            }
+        }
+    }
+
     pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
         let group = self.group.read().await;
         let state = &group.store().store;
@@ -245,7 +338,7 @@ async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
 }
 
 async fn handle_commits(
-    _app: Arc<RegistryApp>,
+    app: Arc<RegistryApp>,
     store: &mut RegistryStorage,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
@@ -262,6 +355,32 @@ async fn handle_commits(
 
             if let Some(cb) = cbs.remove(&bincode::deserialize(&entry.context).unwrap()) {
                 cb.send(entry.index);
+            }
+
+            for action in &actions {
+                match action {
+                    RegistryAction::ManifestStored {
+                        timestamp,
+                        digest,
+                        location,
+                        user,
+                    } => {
+                        if &app.settings.identifier == location {
+                            app.manifest_available(digest).await;
+                        }
+                    }
+                    RegistryAction::BlobStored {
+                        timestamp,
+                        digest,
+                        location,
+                        user,
+                    } => {
+                        if &app.settings.identifier == location {
+                            app.manifest_available(digest).await;
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             actions_tx.send(actions).await;

@@ -124,7 +124,7 @@ pub(crate) async fn get(
         return Responses::ManifestNotFound {};
     }
 
-    // state.wait_for_manifest(&digest).await;
+    app.wait_for_manifest(&digest).await;
 
     let manifest = match app.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,
@@ -194,7 +194,7 @@ pub(crate) async fn get_by_tag(
         return Responses::ManifestNotFound {};
     }
 
-    // state.wait_for_manifest(&digest).await;
+    app.wait_for_manifest(&digest).await;
 
     let manifest = match app.get_manifest(&repository, &digest).await {
         Some(manifest) => manifest,

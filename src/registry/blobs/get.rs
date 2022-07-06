@@ -121,7 +121,7 @@ pub(crate) async fn get(
         }
     };
 
-    // state.wait_for_blob(&digest).await;
+    app.wait_for_blob(&digest).await;
 
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
