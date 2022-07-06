@@ -1,8 +1,8 @@
 use prometheus_client::registry::Registry;
 use raft::eraftpb::Message;
 use rocket::serde::json::Json;
-use rocket::Route;
 use rocket::{post, Build, Rocket, State};
+use rocket::{Route, Shutdown};
 use std::sync::Arc;
 
 use crate::app::{Msg, RegistryApp};
@@ -49,8 +49,7 @@ pub(crate) fn configure(
 pub(crate) async fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
-        .merge(("address", app.settings.raft.address.clone()))
-        .merge(("shutdown.ctrlc", false));
+        .merge(("address", app.settings.raft.address.clone()));
 
     let service = configure(rocket::custom(fig), app.clone(), registry);
 

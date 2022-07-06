@@ -56,8 +56,7 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
 pub(crate) async fn launch(app: Arc<RegistryApp>, registry: Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.prometheus.port))
-        .merge(("address", app.settings.prometheus.address.clone()))
-        .merge(("shutdown.ctrlc", false));
+        .merge(("address", app.settings.prometheus.address.clone()));
 
     let service = configure(rocket::custom(fig), registry);
 

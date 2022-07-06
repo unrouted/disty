@@ -63,8 +63,7 @@ fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
 
     let registry_conf = rocket::Config::figment()
         .merge(("port", &app.settings.registry.port))
-        .merge(("address", &app.settings.registry.address))
-        .merge(("shutdown.ctrlc", false));
+        .merge(("address", &app.settings.registry.address));
 
     rocket::custom(registry_conf)
         .attach(AdHoc::on_request("Registry URL Rewriter", |req, _| {
