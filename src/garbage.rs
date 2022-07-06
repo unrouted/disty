@@ -8,6 +8,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use log::{info, warn};
 use tokio::fs::remove_file;
+use tokio::select;
 use tokio::time::{sleep, Duration};
 
 use crate::app::RegistryApp;
@@ -174,9 +175,18 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
 }
 
 pub async fn do_garbage_collect(app: Arc<RegistryApp>) {
+    let mut lifecycle = app.subscribe_lifecycle();
+
     loop {
         do_garbage_collect_phase1(&app).await;
         do_garbage_collect_phase2(&app).await;
-        sleep(Duration::from_secs(60)).await;
+
+        select! {
+            _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
+            Ok(ev) = lifecycle.recv() => {
+                info!("Garbage collection: Graceful shutdown");
+                return;
+            }
+        };
     }
 }

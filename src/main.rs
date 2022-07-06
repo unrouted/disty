@@ -111,8 +111,10 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx));
 
-    tokio::spawn(crate::garbage::do_garbage_collect(app.clone()));
-    tokio::spawn(crate::mirror::do_miroring(app.clone(), actions_rx));
+    app.spawn(crate::garbage::do_garbage_collect(app.clone()))
+        .await;
+    app.spawn(crate::mirror::do_miroring(app.clone(), actions_rx))
+        .await;
 
     Ok(app)
 }

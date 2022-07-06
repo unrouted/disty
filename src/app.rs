@@ -4,11 +4,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::{Context, Result};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
 use rocket::Shutdown;
 use tokio::join;
+use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -25,6 +27,11 @@ use crate::types::ManifestEntry;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 
+#[derive(Clone, Debug)]
+pub enum Lifecycle {
+    Shutdown,
+}
+
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
 pub struct RegistryApp {
@@ -34,6 +41,7 @@ pub struct RegistryApp {
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
     services: RwLock<Vec<JoinHandle<()>>>,
+    lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
 }
 
 pub enum Msg {
@@ -52,6 +60,8 @@ impl RegistryApp {
         outboxes: HashMap<u64, Sender<Vec<u8>>>,
         settings: Configuration,
     ) -> Self {
+        let (tx, rx) = tokio::sync::broadcast::channel(16);
+
         RegistryApp {
             group,
             inbox,
@@ -59,7 +69,12 @@ impl RegistryApp {
             outboxes,
             settings,
             services: RwLock::new(vec![]),
+            lifecycle: tx,
         }
+    }
+
+    pub fn subscribe_lifecycle(&self) -> Receiver<Lifecycle> {
+        self.lifecycle.subscribe()
     }
 
     pub async fn spawn<T>(&self, task: T)
@@ -71,16 +86,21 @@ impl RegistryApp {
         self.services.write().await.push(handle);
     }
 
-    pub async fn wait_for_shutdown(&self) {
+    pub async fn wait_for_shutdown(&self) -> Result<()> {
         tokio::signal::ctrl_c().await.unwrap();
 
         println!("Starting shutdown...");
+        self.lifecycle
+            .send(Lifecycle::Shutdown)
+            .context("Failed to notify services of shutdown")?;
 
         println!("Awaiting on pending services");
         for handle in self.services.write().await.drain(..) {
             handle.await;
         }
         // self.shutdown.notify()
+
+        Ok(())
     }
 
     async fn wait_for_leader(&self) -> u64 {

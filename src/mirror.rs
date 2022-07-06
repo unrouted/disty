@@ -277,11 +277,17 @@ pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<Regi
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
+    let mut lifecycle = app.subscribe_lifecycle();
+
     loop {
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
             Some(actions) = rx.recv() => {
                 requests.extend(get_tasks_from_raft_event(actions));
+            }
+            Ok(ev) = lifecycle.recv() => {
+                info!("Mirroring: Graceful shutdown");
+                return;
             }
         };
 
