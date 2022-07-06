@@ -19,6 +19,7 @@ pub struct RegistryStorage {
     conf_state: ConfState,
     snapshot_metadata: SnapshotMetadata,
     pub store: RegistryState,
+    pub applied_index: u64,
 }
 
 impl RegistryStorage {
@@ -47,6 +48,7 @@ impl RegistryStorage {
             conf_state,
             snapshot_metadata: SnapshotMetadata::default(),
             store: RegistryState::default(),
+            applied_index: 0,
         };
 
         store.ensure_initialized()?;
@@ -258,18 +260,19 @@ impl Storage for RegistryStorage {
     }
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        // FIXME: This check should be for *applied index* not last index
-        let applied_index = self.last_index();
+        if request_index == 0 {
+            return Err(Error::Store(StorageError::Unavailable));
+        }
 
-        if request_index > applied_index {
+        if request_index > self.applied_index {
             return Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable));
         }
 
         let mut snapshot = Snapshot::default();
 
         let meta = snapshot.mut_metadata();
-        meta.index = applied_index;
-        meta.term = self.term(applied_index)?;
+        meta.index = self.applied_index;
+        meta.term = self.term(self.applied_index)?;
 
         // meta.set_conf_state(self.raft_state.conf_state.clone());
 

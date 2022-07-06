@@ -53,13 +53,18 @@ fn configure(rocket: Rocket<Build>, mut registry: Registry) -> Rocket<Build> {
         .manage(Arc::new(Mutex::new(registry)))
 }
 
-pub(crate) fn launch(app: Arc<RegistryApp>, registry: Registry) {
+pub(crate) async fn launch(app: Arc<RegistryApp>, registry: Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.prometheus.port))
         .merge(("address", app.settings.prometheus.address.clone()))
-        .merge(("log_level", "off"));
+        .merge(("shutdown.ctrlc", false));
 
-    tokio::spawn(configure(rocket::custom(fig), registry).launch());
+    let service = configure(rocket::custom(fig), registry);
+
+    app.spawn(async {
+        service.launch().await;
+    })
+    .await;
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,8 +7,11 @@ use std::time::Duration;
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
+use rocket::Shutdown;
+use tokio::join;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
@@ -29,6 +33,7 @@ pub struct RegistryApp {
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
+    services: RwLock<Vec<JoinHandle<()>>>,
 }
 
 pub enum Msg {
@@ -41,6 +46,43 @@ pub enum Msg {
 }
 
 impl RegistryApp {
+    pub fn new(
+        group: RwLock<RawNode<RegistryStorage>>,
+        inbox: Sender<Msg>,
+        outboxes: HashMap<u64, Sender<Vec<u8>>>,
+        settings: Configuration,
+    ) -> Self {
+        RegistryApp {
+            group,
+            inbox,
+            seq: AtomicU64::new(1),
+            outboxes,
+            settings,
+            services: RwLock::new(vec![]),
+        }
+    }
+
+    pub async fn spawn<T>(&self, task: T)
+    where
+        T: Future<Output = ()>,
+        T: Send + 'static,
+    {
+        let handle: JoinHandle<()> = tokio::spawn(task);
+        self.services.write().await.push(handle);
+    }
+
+    pub async fn wait_for_shutdown(&self) {
+        tokio::signal::ctrl_c().await.unwrap();
+
+        println!("Starting shutdown...");
+
+        println!("Awaiting on pending services");
+        for handle in self.services.write().await.drain(..) {
+            handle.await;
+        }
+        // self.shutdown.notify()
+    }
+
     async fn wait_for_leader(&self) -> u64 {
         loop {
             let group = self.group.read().await;
@@ -188,17 +230,14 @@ async fn handle_commits(
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
+    if entries.len() == 0 {
+        return;
+    }
+
     for entry in entries {
-        // Mostly, you need to save the last apply index to resume applying
-        // after restart. Here we just ignore this because we use a Memory storage.
-        let _last_apply_index = entry.index;
+        println!("Applying: {}", entry.index);
 
-        if entry.data.is_empty() {
-            // Emtpy entry, when the peer becomes Leader it will send an empty entry.
-            continue;
-        }
-
-        if entry.get_entry_type() == EntryType::EntryNormal {
+        if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
             store.dispatch_actions(&actions);
 
@@ -209,8 +248,12 @@ async fn handle_commits(
             actions_tx.send(actions).await;
         }
 
+        store.applied_index = entry.index;
+        println!("Applied: {}", entry.index);
         // TODO: handle EntryConfChange
     }
+
+    println!("Done handling commits");
 }
 
 async fn on_ready(

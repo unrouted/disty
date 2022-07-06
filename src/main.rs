@@ -103,17 +103,11 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
-    let app = Arc::new(RegistryApp {
-        group,
-        inbox,
-        outboxes,
-        settings,
-        seq: AtomicU64::new(1),
-    });
+    let app = Arc::new(RegistryApp::new(group, inbox, outboxes, settings));
 
-    crate::network::server::launch(app.clone(), &mut registry);
-    crate::registry::launch(app.clone(), &mut registry);
-    crate::prometheus::launch(app.clone(), registry);
+    crate::network::server::launch(app.clone(), &mut registry).await;
+    crate::registry::launch(app.clone(), &mut registry).await;
+    crate::prometheus::launch(app.clone(), registry).await;
 
     tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx));
 
@@ -140,10 +134,9 @@ async fn main() -> Result<()> {
 
     let settings = crate::config::config(opts.config);
 
-    let _app = start_registry_services(settings).await?;
+    let app = start_registry_services(settings).await?;
 
-    // Temporary hack
-    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 30)).await;
+    app.wait_for_shutdown().await;
 
     Ok(())
 }

@@ -64,7 +64,7 @@ fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
     let registry_conf = rocket::Config::figment()
         .merge(("port", &app.settings.registry.port))
         .merge(("address", &app.settings.registry.address))
-        .merge(("log_level", "off"));
+        .merge(("shutdown.ctrlc", false));
 
     rocket::custom(registry_conf)
         .attach(AdHoc::on_request("Registry URL Rewriter", |req, _| {
@@ -80,8 +80,13 @@ fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
         .mount("/v2/", routes())
 }
 
-pub fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
-    tokio::spawn(configure(app, registry).launch());
+pub async fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
+    let service = configure(app.clone(), registry);
+
+    app.spawn(async {
+        service.launch().await;
+    })
+    .await;
 }
 
 #[cfg(test)]

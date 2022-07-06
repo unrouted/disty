@@ -46,11 +46,16 @@ pub(crate) fn configure(
         .attach(HttpMetrics::new(registry, Port::Raft))
 }
 
-pub(crate) fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
+pub(crate) async fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
         .merge(("address", app.settings.raft.address.clone()))
-        .merge(("log_level", "off"));
+        .merge(("shutdown.ctrlc", false));
 
-    tokio::spawn(configure(rocket::custom(fig), app, registry).launch());
+    let service = configure(rocket::custom(fig), app.clone(), registry);
+
+    app.spawn(async {
+        service.launch().await;
+    })
+    .await;
 }
