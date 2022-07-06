@@ -360,20 +360,20 @@ async fn handle_commits(
             for action in &actions {
                 match action {
                     RegistryAction::ManifestStored {
-                        timestamp,
+                        timestamp: _,
                         digest,
                         location,
-                        user,
+                        user: _,
                     } => {
                         if &app.settings.identifier == location {
                             app.manifest_available(digest).await;
                         }
                     }
                     RegistryAction::BlobStored {
-                        timestamp,
+                        timestamp: _,
                         digest,
                         location,
-                        user,
+                        user: _,
                     } => {
                         if &app.settings.identifier == location {
                             app.manifest_available(digest).await;
