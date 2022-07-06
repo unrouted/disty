@@ -20,8 +20,7 @@ use crate::{
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
 async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
-    //if app.raft.is_leader().await.is_err() {
-    if true {
+    if app.is_leader().await {
         info!("Garbage collection: Phase 1: Not leader");
         return;
     }

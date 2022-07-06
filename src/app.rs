@@ -103,6 +103,11 @@ impl RegistryApp {
         Ok(())
     }
 
+    pub async fn is_leader(&self) -> bool {
+        let group = self.group.read().await;
+        group.raft.leader_id == group.raft.id
+    }
+
     async fn wait_for_leader(&self) -> u64 {
         loop {
             let group = self.group.read().await;
