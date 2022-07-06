@@ -3,11 +3,7 @@ use crate::config::Configuration;
 use anyhow::{bail, Context, Result};
 use fern::colors::{Color, ColoredLevelConfig};
 use raft::{raw_node::RawNode, Config};
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{atomic::AtomicU64, Arc},
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use store::RegistryStorage;
 use tokio::sync::RwLock;
 use types::RegistryAction;

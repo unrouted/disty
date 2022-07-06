@@ -9,7 +9,6 @@ use chrono::Utc;
 use log::{info, warn};
 use tokio::fs::remove_file;
 use tokio::select;
-use tokio::time::{sleep, Duration};
 
 use crate::app::RegistryApp;
 use crate::{
@@ -182,7 +181,7 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) {
 
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
-            Ok(ev) = lifecycle.recv() => {
+            Ok(_ev) = lifecycle.recv() => {
                 info!("Garbage collection: Graceful shutdown");
                 return;
             }

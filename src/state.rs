@@ -899,7 +899,7 @@ mod tests {
             RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                repository: repository,
+                repository,
                 digest: manifest_digest.clone(),
             },
             RegistryAction::ManifestUnstored {

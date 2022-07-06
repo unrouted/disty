@@ -59,7 +59,7 @@ impl RegistryApp {
         outboxes: HashMap<u64, Sender<Vec<u8>>>,
         settings: Configuration,
     ) -> Self {
-        let (tx, rx) = tokio::sync::broadcast::channel(16);
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
 
         RegistryApp {
             group,
@@ -251,7 +251,7 @@ async fn handle_commits(
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
-    if entries.len() == 0 {
+    if entries.is_empty() {
         return;
     }
 

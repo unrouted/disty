@@ -1,8 +1,8 @@
 use prometheus_client::registry::Registry;
 use raft::eraftpb::Message;
 use rocket::serde::json::Json;
+use rocket::Route;
 use rocket::{post, Build, Rocket, State};
-use rocket::{Route, Shutdown};
 use std::sync::Arc;
 
 use crate::app::{Msg, RegistryApp};

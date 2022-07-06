@@ -285,7 +285,7 @@ pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<Regi
             Some(actions) = rx.recv() => {
                 requests.extend(get_tasks_from_raft_event(actions));
             }
-            Ok(ev) = lifecycle.recv() => {
+            Ok(_ev) = lifecycle.recv() => {
                 info!("Mirroring: Graceful shutdown");
                 return;
             }
