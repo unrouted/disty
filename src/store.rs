@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use log::{error, info, warn};
 use raft::{eraftpb::*, RaftState, Storage};
+use std::io::ErrorKind;
 
 use raft::util::limit_size;
 use raft::{Error, Result, StorageError};
@@ -18,14 +21,16 @@ pub struct RegistryStorage {
     entries: sled::Tree,
     state: sled::Tree,
     conf_state: ConfState,
-    snapshot_metadata: SnapshotMetadata,
+    pub snapshot_metadata: Option<SnapshotMetadata>,
     pub store: RegistryState,
     pub applied_index: u64,
+    storage_path: PathBuf,
 }
 
 impl RegistryStorage {
-    pub fn new(config: &Configuration) -> anyhow::Result<RegistryStorage> {
-        let path = std::path::Path::new(&config.storage).join("raft");
+    pub async fn new(config: &Configuration) -> anyhow::Result<RegistryStorage> {
+        let storage_path = std::path::Path::new(&config.storage);
+        let path = storage_path.join("raft");
         let db = sled::open(path)?;
         let entries = db.open_tree("entries")?;
         let state = db.open_tree("state")?;
@@ -42,14 +47,34 @@ impl RegistryStorage {
             ..Default::default()
         };
 
+        let store = RegistryState::default();
+        let mut snapshot_metadata = None;
+
+        match tokio::fs::read(&storage_path.join("snapshot.latest")).await {
+            Ok(data) => {
+                let mut snapshot =
+                    <Snapshot as protobuf::Message>::parse_from_bytes(&data).unwrap();
+
+                snapshot_metadata = Some(snapshot.take_metadata());
+                // store = serde_json::from_slice(&snapshot.take_data()).unwrap();
+            }
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => {}
+                err => {
+                    panic!("Unexpected error");
+                }
+            },
+        };
+
         let store = RegistryStorage {
             db,
             entries,
             state,
             conf_state,
-            snapshot_metadata: SnapshotMetadata::default(),
-            store: RegistryState::default(),
+            snapshot_metadata: snapshot_metadata,
+            store: store,
             applied_index: 0,
+            storage_path: storage_path.to_path_buf(),
         };
 
         store.ensure_initialized()?;
@@ -60,12 +85,12 @@ impl RegistryStorage {
     pub fn ensure_initialized(&self) -> Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
             self.append(&[Entry {
-                index: 1,
+                index: 0,
                 term: 1,
                 ..Default::default()
             }])?;
             self.set_hardstate(HardState {
-                commit: 1,
+                commit: 0,
                 term: 1,
                 ..Default::default()
             });
@@ -96,7 +121,10 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        self.snapshot_metadata.index
+        match &self.snapshot_metadata {
+            Some(meta) => meta.index,
+            None => 0
+        }
     }
 
     pub fn first_index(&self) -> u64 {
@@ -104,11 +132,29 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        self.snapshot_metadata.index + 1
+        match &self.snapshot_metadata {
+            Some(meta) => meta.index + 1,
+            None => 0
+        }
     }
 
     pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
         self.store.dispatch_actions(actions);
+    }
+
+    pub async fn store_snapshot(&mut self) {
+        let incoming_path = self.storage_path.join("snapshot.incoming");
+        let snapshot_path = self.storage_path.join("snapshot.latest");
+
+        let mut snapshot = self.snapshot(self.applied_index).unwrap();
+        let bytes = protobuf::Message::write_to_bytes(&snapshot).unwrap();
+        tokio::fs::write(&incoming_path, bytes).await;
+
+        tokio::fs::rename(&incoming_path, &snapshot_path).await;
+
+        self.compact(self.applied_index);
+
+        self.snapshot_metadata = Some(snapshot.take_metadata());
     }
 
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
@@ -122,7 +168,7 @@ impl RegistryStorage {
 
         warn!("Applying snapshot at index: {index}");
 
-        self.snapshot_metadata = meta.clone();
+        self.snapshot_metadata = Some(meta.clone());
         self.store = serde_json::from_slice(&snapshot.data).unwrap();
 
         let mut hs = self.initial_state().unwrap().hard_state;
@@ -158,6 +204,8 @@ impl RegistryStorage {
         if ents.is_empty() {
             return Ok(());
         }
+        println!("{} {}", self.first_index(), ents[0].index);
+
         if self.first_index() > ents[0].index {
             panic!(
                 "overwrite compacted raft logs, compacted: {}, append: {}",
@@ -241,8 +289,10 @@ impl Storage for RegistryStorage {
             return Ok(entry.term);
         }
 
-        if idx == self.snapshot_metadata.index {
-            return Ok(self.snapshot_metadata.term);
+        if let Some(snapshot_metadata) = &self.snapshot_metadata {
+            if idx == snapshot_metadata.index {
+                return Ok(snapshot_metadata.term);
+            }    
         }
 
         let offset = self.first_index();
@@ -295,7 +345,7 @@ mod test {
 
     use super::*;
 
-    fn get_test_storage() -> RegistryStorage {
+    async fn get_test_storage() -> RegistryStorage {
         let tempdir = tempfile::tempdir().unwrap();
 
         let config = Configuration {
@@ -314,12 +364,12 @@ mod test {
             ..Default::default()
         };
 
-        RegistryStorage::new(&config).unwrap()
+        RegistryStorage::new(&config).await.unwrap()
     }
 
-    #[test]
-    fn test_initial_state() {
-        let store = get_test_storage();
+    #[tokio::test]
+    async fn test_initial_state() {
+        let store = get_test_storage().await;
         let initial_state = store.initial_state().unwrap();
 
         assert_eq!(initial_state.conf_state.voters, vec![1]);
@@ -329,9 +379,9 @@ mod test {
         assert_eq!(initial_state.hard_state.vote, 0);
     }
 
-    #[test]
-    fn test_append() {
-        let store = get_test_storage();
+    #[tokio::test]
+    async fn test_append() {
+        let store = get_test_storage().await;
 
         let entries = vec![
             Entry {
@@ -351,9 +401,9 @@ mod test {
         assert_eq!(store.last_index(), 2);
     }
 
-    #[test]
-    fn test_compact() {
-        let store = get_test_storage();
+    #[tokio::test]
+    async fn test_compact() {
+        let store = get_test_storage().await;
 
         let entries = vec![
             Entry {
@@ -379,9 +429,9 @@ mod test {
         assert_eq!(store.first_index(), 2);
     }
 
-    #[test]
-    fn test_term() {
-        let store = get_test_storage();
+    #[tokio::test]
+    async fn test_term() {
+        let store = get_test_storage().await;
 
         let entries = vec![
             Entry {

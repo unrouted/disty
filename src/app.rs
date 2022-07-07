@@ -167,9 +167,11 @@ impl RegistryApp {
         if leader_id == self.group.read().await.raft.id {
             self.submit_local(actions).await;
         } else {
-            self.submit_remote(actions, leader_id).await;
-
-            // FIXME: Wait until this commit is available locally
+            if let Some(target) = self.submit_remote(actions, leader_id).await {
+                // while self.group.read().await.raft.store().applied_index < target {
+                //    tokio::time::sleep(Duration::from_millis(100)).await;
+                // }
+            }
         }
 
         true
@@ -344,11 +346,15 @@ async fn handle_commits(
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
+    println!("Applying entries: {}", entries.len());
+
     if entries.is_empty() {
         return;
     }
 
     for entry in entries {
+        println!("Applying entry {entry:?}");
+
         if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
             store.dispatch_actions(&actions);
@@ -412,6 +418,7 @@ async fn on_ready(
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
+        println!("Apply snapshot");
         let store = &mut group.raft.raft_log.store;
         store.apply_snapshot(ready.snapshot().clone()).unwrap();
     }

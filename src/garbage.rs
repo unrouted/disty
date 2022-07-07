@@ -2,6 +2,7 @@
 //!
 //! distribd automatically garbage collects blobs and manifests that are no longer referenced by other objects in the DAG.
 
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -30,7 +31,8 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     let mut actions = vec![];
 
     for entry in app.get_orphaned_manifests().await {
-        if (Utc::now() - entry.manifest.created) > minimum_age {
+        let age = Utc::now() - entry.manifest.created;
+        if age < minimum_age {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
                 &entry.digest,
@@ -48,7 +50,8 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
         }
     }
     for entry in app.get_orphaned_blobs().await {
-        if (Utc::now() - entry.blob.created) > minimum_age {
+        let age = Utc::now() - entry.blob.created;
+        if age < minimum_age {
             info!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
                 &entry.digest,
@@ -75,16 +78,13 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
 }
 
 async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
-    let image_directory = Path::new(image_directory).canonicalize().unwrap();
-    let path = path.canonicalize().unwrap();
-
     if path.exists() && remove_file(&path).await.is_err() {
         warn!("Error whilst removing: {:?}", path);
         return false;
     }
 
     while let Some(path) = path.parent() {
-        if path == image_directory {
+        if path.strip_prefix(image_directory).unwrap() == Path::new("") {
             // We've hit the root directory
             return true;
         }
@@ -97,10 +97,13 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
                     return true;
                 }
             }
-            Err(_) => {
-                warn!("Error whilst checking contents of {:?}", path);
-                return false;
-            }
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => {}
+                err => {
+                    warn!("Error {err:?} whilst checking contents of {:?}", path);
+                    return false;
+                }
+            },
         }
 
         if tokio::fs::remove_dir(path).await.is_err() {

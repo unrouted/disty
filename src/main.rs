@@ -19,6 +19,7 @@ mod mirror;
 pub mod network;
 mod prometheus;
 mod registry;
+mod snapshot;
 mod state;
 mod store;
 mod types;
@@ -90,7 +91,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         .validate()
         .context("Unable to configure raft module")?;
 
-    let storage = RegistryStorage::new(&settings)?;
+    let storage = RegistryStorage::new(&settings).await?;
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
@@ -112,6 +113,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         .await;
     app.spawn(crate::mirror::do_miroring(app.clone(), actions_rx))
         .await;
+    app.spawn(crate::snapshot::do_snapshot(app.clone())).await;
 
     Ok(app)
 }
