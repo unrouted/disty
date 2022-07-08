@@ -65,7 +65,7 @@ pub fn get_temp_mirror_path(images_directory: &str) -> std::path::PathBuf {
 }
 
 pub async fn launch(rocket: Rocket<Build>) -> anyhow::Result<()> {
-    rocket
+    let _ = rocket
         .launch()
         .await
         .context("Failure running http endpoint")?;
