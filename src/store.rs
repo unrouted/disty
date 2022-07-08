@@ -220,20 +220,20 @@ impl RegistryStorage {
         Ok(())
     }
 
-    pub fn append(&self, ents: &[Entry]) -> Result<()> {
+    pub async fn append(&self, ents: &[Entry]) -> anyhow::Result<()> {
         if ents.is_empty() {
             return Ok(());
         }
 
         if self.first_index() > ents[0].index {
-            panic!(
+            bail!(
                 "overwrite compacted raft logs, compacted: {}, append: {}",
                 self.first_index() - 1,
                 ents[0].index,
             );
         }
         if self.last_index() + 1 < ents[0].index {
-            panic!(
+            bail!(
                 "raft logs should be continuous, last index: {}, new appended: {}",
                 self.last_index(),
                 ents[0].index,
@@ -249,6 +249,11 @@ impl RegistryStorage {
             let value = protobuf::Message::write_to_bytes(ent).unwrap();
             self.entries.insert(key, value);
         }
+
+        self.db
+            .flush_async()
+            .await
+            .context("Failed to flush appended entries to journal")?;
 
         Ok(())
     }

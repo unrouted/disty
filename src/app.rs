@@ -399,11 +399,11 @@ async fn on_ready(
     app: &Arc<RegistryApp>,
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
-) {
+) -> anyhow::Result<()> {
     let mut group = app.group.write().await;
 
     if !group.has_ready() {
-        return;
+        return Ok(());
     }
 
     // Get the `Ready` with `RawNode::ready` interface.
@@ -437,7 +437,10 @@ async fn on_ready(
 
     if !ready.entries().is_empty() {
         let store = &mut group.raft.raft_log.store;
-        store.append(ready.entries()).unwrap();
+        store
+            .append(ready.entries())
+            .await
+            .context("Failed to persist log entries")?;
     }
 
     if let Some(hs) = ready.hs() {
@@ -469,6 +472,8 @@ async fn on_ready(
     }
 
     group.advance_apply();
+
+    Ok(())
 }
 
 pub async fn do_raft_ticks(
