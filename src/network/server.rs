@@ -1,3 +1,4 @@
+use log::error;
 use prometheus_client::registry::Registry;
 use raft::eraftpb::Message;
 use rocket::serde::json::Json;
@@ -26,7 +27,9 @@ async fn post(app: &State<Arc<RegistryApp>>, body: Vec<u8>) -> Json<bool> {
     let app: &RegistryApp = app.inner();
 
     let payload = <Message as protobuf::Message>::parse_from_bytes(&body).unwrap();
-    app.inbox.send(Msg::Raft(payload)).await;
+    if let Err(err) = app.inbox.send(Msg::Raft(payload)).await {
+        error!("Could not queue incoming raft message: {}", err.to_string());
+    }
 
     Json(true)
 }
@@ -38,7 +41,8 @@ fn routes() -> Vec<Route> {
 pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
-        .merge(("address", app.settings.raft.address.clone()));
+        .merge(("address", app.settings.raft.address.clone()))
+        .merge(("limits.bytes", 8 * 1024 * 1024));
 
     rocket::custom(fig)
         .mount("/", routes())

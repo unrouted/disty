@@ -3,7 +3,9 @@ use crate::config::Configuration;
 use crate::utils::launch;
 use anyhow::{bail, Context, Result};
 use fern::colors::{Color, ColoredLevelConfig};
+use log::error;
 use raft::{raw_node::RawNode, Config};
+use reqwest::StatusCode;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use store::RegistryStorage;
 use tokio::sync::RwLock;
@@ -46,6 +48,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
     let mut outboxes = HashMap::new();
     for (idx, peer) in settings.peers.iter().cloned().enumerate() {
+        let idx = idx + 1;
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
 
         tokio::spawn(async move {
@@ -60,15 +63,26 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
 
             loop {
                 match rx.recv().await {
-                    Some(payload) => {
-                        client.post(&url).body(payload).send().await;
-                    }
+                    Some(payload) => match client.post(&url).body(payload).send().await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Raft Outbox: {} when writing to {idx}: {:?}",
+                                    resp.status(),
+                                    resp.bytes().await
+                                );
+                            }
+                        }
+                        Err(err) => {
+                            error!("Raft Outbox: Error whilst posting payload: {:?}", err)
+                        }
+                    },
                     None => return,
                 }
             }
         });
 
-        outboxes.insert((idx + 1) as u64, tx);
+        outboxes.insert(idx as u64, tx);
     }
 
     let id = match settings

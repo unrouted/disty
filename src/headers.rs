@@ -1,7 +1,7 @@
 use crate::app::RegistryApp;
 use crate::types::RepositoryName;
 use jwt_simple::prelude::*;
-use log::info;
+use log::{debug, info};
 use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome, Request};
 use std::collections::HashSet;
@@ -160,14 +160,14 @@ impl Token {
         }
 
         if self.admin {
-            info!("Got an admin token");
+            debug!("Got an admin token");
             return true;
         }
 
         info!("Need {permission} for {repository}");
 
         for access in self.access.iter() {
-            info!("Checking {access:?}");
+            debug!("Checking {access:?}");
 
             if &access.repository == repository
                 && access.permissions.contains(&permission.to_string())

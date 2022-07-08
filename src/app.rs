@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
@@ -203,7 +203,7 @@ impl RegistryApp {
         let mut waiters = self.blob_waiters.lock().await;
 
         if let Some(blobs) = waiters.remove(digest) {
-            info!(
+            debug!(
                 "State: Wait for blob: {digest} now available. {} waiters to process",
                 blobs.len()
             );
@@ -213,7 +213,7 @@ impl RegistryApp {
                 }
             }
         } else {
-            info!("State: Wait for blob: {digest} now available - no active waiters");
+            debug!("State: Wait for blob: {digest} now available - no active waiters");
         }
     }
 
@@ -223,7 +223,7 @@ impl RegistryApp {
         if let Some(blob) = self.get_blob_directly(digest).await {
             if blob.locations.contains(&self.settings.identifier) {
                 // Blob already exists at this endpoint, no need to wait
-                info!("State: Wait for blob: {digest} already available");
+                debug!("State: Wait for blob: {digest} already available");
                 return;
             }
         }
@@ -237,11 +237,11 @@ impl RegistryApp {
 
         drop(waiters);
 
-        info!("State: Wait for blob: Waiting for {digest} to download");
+        debug!("State: Wait for blob: Waiting for {digest} to download");
 
         match rx.await {
             Ok(_) => {
-                info!("State: Wait for blob: {digest}: Download complete");
+                debug!("State: Wait for blob: {digest}: Download complete");
             }
             Err(err) => {
                 warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
@@ -382,7 +382,7 @@ async fn handle_commits(
             continue;
         }
 
-        println!("Applying entry {entry:?}");
+        info!("Applying entry {entry:?}");
 
         if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();
@@ -494,7 +494,6 @@ async fn on_ready(
     }
 
     let mut light_rd = group.advance(ready);
-    println!("{light_rd:?}");
     if let Some(commit) = light_rd.commit_index() {
         let store = &mut group.raft.raft_log.store;
         store.set_commit(commit);

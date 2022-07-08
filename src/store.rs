@@ -55,12 +55,13 @@ impl RegistryStorage {
 
         match tokio::fs::read(&storage_path.join("snapshot.latest")).await {
             Ok(data) => {
-                let mut snapshot =
-                    <Snapshot as protobuf::Message>::parse_from_bytes(&data).unwrap();
+                let snapshot = <Snapshot as protobuf::Message>::parse_from_bytes(&data).unwrap();
 
-                snapshot_metadata = snapshot.take_metadata();
+                Self::validate_snapshot(&snapshot).context("Failed to validate snapshot")?;
+
+                snapshot_metadata = snapshot.get_metadata().clone();
                 applied_index = snapshot_metadata.index;
-                store = serde_json::from_slice(&snapshot.take_data()).unwrap();
+                store = serde_json::from_slice(snapshot.get_data()).unwrap();
             }
             Err(err) => match err.kind() {
                 ErrorKind::NotFound => {}
@@ -89,8 +90,8 @@ impl RegistryStorage {
     pub fn ensure_initialized(&self) -> anyhow::Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
             self.set_hardstate(HardState {
-                commit: 0,
-                term: 1,
+                commit: self.snapshot_metadata.index,
+                term: self.snapshot_metadata.term,
                 ..Default::default()
             })
             .context("Could not initialize hard state")?;
@@ -138,6 +139,22 @@ impl RegistryStorage {
         self.store.dispatch_actions(actions);
     }
 
+    fn validate_snapshot(snapshot: &Snapshot) -> anyhow::Result<()> {
+        if !snapshot.has_metadata() {
+            bail!("Snapshot has no metadata");
+        }
+
+        if snapshot.get_metadata().term == 0 {
+            bail!("Snapshot has invalid term");
+        }
+
+        if !snapshot.get_metadata().has_conf_state() {
+            bail!("Snapshot has no conf state");
+        }
+
+        Ok(())
+    }
+
     /// Replace the current snapshot on disk with `snapshot`.
     pub async fn persist_snapshot(&self, snapshot: &Snapshot) -> anyhow::Result<()> {
         let incoming_path = self.storage_path.join("snapshot.incoming");
@@ -159,9 +176,11 @@ impl RegistryStorage {
     }
 
     pub async fn store_snapshot(&mut self) -> anyhow::Result<()> {
-        let mut snapshot = self
+        let snapshot = self
             .snapshot(self.applied_index)
             .context("Failed to generate a local snapshot")?;
+
+        Self::validate_snapshot(&snapshot).context("Failed to validate local snapshot")?;
 
         self.persist_snapshot(&snapshot)
             .await
@@ -170,18 +189,20 @@ impl RegistryStorage {
         self.compact(self.applied_index)
             .context("Failure to compact after making snapshot")?;
 
-        self.snapshot_metadata = snapshot.take_metadata();
+        self.snapshot_metadata = snapshot.get_metadata().clone();
 
         Ok(())
     }
 
-    pub async fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> anyhow::Result<()> {
-        let meta = snapshot.take_metadata();
+    pub async fn apply_snapshot(&mut self, snapshot: Snapshot) -> anyhow::Result<()> {
+        let meta = snapshot.get_metadata();
         let index = meta.index;
 
         if self.first_index() > index {
             bail!("Asked to apply an out of date snapshot");
         }
+
+        Self::validate_snapshot(&snapshot).context("Failed to validate local snapshot")?;
 
         self.persist_snapshot(&snapshot)
             .await
@@ -344,7 +365,7 @@ impl Storage for RegistryStorage {
     }
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        info!("Snapshot requested");
+        info!("Snapshot requested: {}", request_index);
 
         if request_index > self.applied_index {
             return Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable));
