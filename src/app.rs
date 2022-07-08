@@ -167,7 +167,7 @@ impl RegistryApp {
         if leader_id == self.group.read().await.raft.id {
             self.submit_local(actions).await;
         } else {
-            if let Some(target) = self.submit_remote(actions, leader_id).await {
+            if let Some(_) = self.submit_remote(actions, leader_id).await {
                 // while self.group.read().await.raft.store().applied_index < target {
                 //    tokio::time::sleep(Duration::from_millis(100)).await;
                 // }
