@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::{bail, Context};
 use log::{error, info, warn};
 use raft::{eraftpb::*, RaftState, Storage};
 use std::io::ErrorKind;
@@ -21,7 +22,7 @@ pub struct RegistryStorage {
     entries: sled::Tree,
     state: sled::Tree,
     conf_state: ConfState,
-    pub snapshot_metadata: Option<SnapshotMetadata>,
+    pub snapshot_metadata: SnapshotMetadata,
     pub store: RegistryState,
     pub applied_index: u64,
     storage_path: PathBuf,
@@ -48,14 +49,15 @@ impl RegistryStorage {
         };
 
         let store = RegistryState::default();
-        let mut snapshot_metadata = None;
+        let mut snapshot_metadata = SnapshotMetadata::default();
+        snapshot_metadata.term = 1;
 
         match tokio::fs::read(&storage_path.join("snapshot.latest")).await {
             Ok(data) => {
                 let mut snapshot =
                     <Snapshot as protobuf::Message>::parse_from_bytes(&data).unwrap();
 
-                snapshot_metadata = Some(snapshot.take_metadata());
+                snapshot_metadata = snapshot.take_metadata();
                 // store = serde_json::from_slice(&snapshot.take_data()).unwrap();
             }
             Err(err) => match err.kind() {
@@ -84,11 +86,11 @@ impl RegistryStorage {
 
     pub fn ensure_initialized(&self) -> Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
-            self.append(&[Entry {
-                index: 0,
-                term: 1,
-                ..Default::default()
-            }])?;
+            //self.append(&[Entry {
+            //    index: 0,
+            //    term: 1,
+            //    ..Default::default()
+            //}])?;
             self.set_hardstate(HardState {
                 commit: 0,
                 term: 1,
@@ -121,10 +123,7 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        match &self.snapshot_metadata {
-            Some(meta) => meta.index,
-            None => 0
-        }
+        self.snapshot_metadata.index
     }
 
     pub fn first_index(&self) -> u64 {
@@ -132,49 +131,70 @@ impl RegistryStorage {
             return bincode::deserialize(&key).unwrap();
         }
 
-        match &self.snapshot_metadata {
-            Some(meta) => meta.index + 1,
-            None => 0
-        }
+        self.snapshot_metadata.index + 1
     }
 
     pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
         self.store.dispatch_actions(actions);
     }
 
-    pub async fn store_snapshot(&mut self) {
+    /// Replace the current snapshot on disk with `snapshot`.
+    pub async fn persist_snapshot(&self, snapshot: &Snapshot) -> anyhow::Result<()> {
         let incoming_path = self.storage_path.join("snapshot.incoming");
         let snapshot_path = self.storage_path.join("snapshot.latest");
 
-        let mut snapshot = self.snapshot(self.applied_index).unwrap();
-        let bytes = protobuf::Message::write_to_bytes(&snapshot).unwrap();
-        tokio::fs::write(&incoming_path, bytes).await;
+        let bytes = protobuf::Message::write_to_bytes(snapshot).unwrap();
 
-        tokio::fs::rename(&incoming_path, &snapshot_path).await;
+        tokio::fs::write(&incoming_path, bytes)
+            .await
+            .context(format!("Failure writing snapshot to {incoming_path:?}"))?;
+
+        tokio::fs::rename(&incoming_path, &snapshot_path)
+            .await
+            .context(format!(
+                "Failure renaming {incoming_path:?} to {snapshot_path:?}"
+            ))?;
+
+        Ok(())
+    }
+
+    pub async fn store_snapshot(&mut self) -> anyhow::Result<()> {
+        let mut snapshot = self.snapshot(self.applied_index).unwrap();
+
+        self.persist_snapshot(&snapshot)
+            .await
+            .context("Failure to persist a local snapshot")?;
 
         self.compact(self.applied_index);
 
-        self.snapshot_metadata = Some(snapshot.take_metadata());
+        self.snapshot_metadata = snapshot.take_metadata();
+
+        Ok(())
     }
 
-    pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
+    pub async fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> anyhow::Result<()> {
         let meta = snapshot.take_metadata();
         let index = meta.index;
 
         if self.first_index() > index {
-            error!("Asked to apply an out of date snapshot");
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+            bail!("Asked to apply an out of date snapshot");
         }
+
+        self.persist_snapshot(&snapshot)
+            .await
+            .context("Failure to apply snapshot from raft cluster")?;
 
         warn!("Applying snapshot at index: {index}");
 
-        self.snapshot_metadata = Some(meta.clone());
+        self.snapshot_metadata = meta.clone();
         self.store = serde_json::from_slice(&snapshot.data).unwrap();
 
         let mut hs = self.initial_state().unwrap().hard_state;
         hs.commit = index;
         hs.term = std::cmp::max(meta.term, hs.term);
         self.set_hardstate(hs);
+
+        self.applied_index = index;
 
         Ok(())
     }
@@ -204,7 +224,6 @@ impl RegistryStorage {
         if ents.is_empty() {
             return Ok(());
         }
-        println!("{} {}", self.first_index(), ents[0].index);
 
         if self.first_index() > ents[0].index {
             panic!(
@@ -289,10 +308,8 @@ impl Storage for RegistryStorage {
             return Ok(entry.term);
         }
 
-        if let Some(snapshot_metadata) = &self.snapshot_metadata {
-            if idx == snapshot_metadata.index {
-                return Ok(snapshot_metadata.term);
-            }    
+        if idx == self.snapshot_metadata.index {
+            return Ok(self.snapshot_metadata.term);
         }
 
         let offset = self.first_index();
@@ -312,9 +329,7 @@ impl Storage for RegistryStorage {
     }
 
     fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        if request_index == 0 {
-            return Err(Error::Store(StorageError::Unavailable));
-        }
+        info!("Snapshot requested");
 
         if request_index > self.applied_index {
             return Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable));
@@ -326,7 +341,7 @@ impl Storage for RegistryStorage {
         meta.index = self.applied_index;
         meta.term = self.term(self.applied_index)?;
 
-        // meta.set_conf_state(self.raft_state.conf_state.clone());
+        meta.set_conf_state(self.conf_state.clone());
 
         snapshot.set_data(serde_json::to_vec(&self.store).unwrap().into());
 

@@ -346,8 +346,6 @@ async fn handle_commits(
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
 ) {
-    println!("Applying entries: {}", entries.len());
-
     if entries.is_empty() {
         return;
     }
@@ -418,9 +416,11 @@ async fn on_ready(
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
-        println!("Apply snapshot");
         let store = &mut group.raft.raft_log.store;
-        store.apply_snapshot(ready.snapshot().clone()).unwrap();
+        store
+            .apply_snapshot(ready.snapshot().clone())
+            .await
+            .unwrap();
     }
 
     {
