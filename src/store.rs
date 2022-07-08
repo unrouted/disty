@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context};
-use log::{error, info, warn};
+use log::{info, warn};
 use raft::{eraftpb::*, RaftState, Storage};
 use std::io::ErrorKind;
 
@@ -86,19 +86,20 @@ impl RegistryStorage {
         Ok(store)
     }
 
-    pub fn ensure_initialized(&self) -> Result<()> {
+    pub fn ensure_initialized(&self) -> anyhow::Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
             self.set_hardstate(HardState {
                 commit: 0,
                 term: 1,
                 ..Default::default()
-            });
+            })
+            .context("Could not initialize hard state")?;
         }
 
         Ok(())
     }
 
-    pub fn set_hardstate(&self, hs: HardState) {
+    pub fn set_hardstate(&self, hs: HardState) -> anyhow::Result<()> {
         self.state
             .transaction::<_, _, sled::transaction::TransactionError>(|t| {
                 t.insert(KEY_HARD_INDEX, bincode::serialize(&hs.commit).unwrap())?;
@@ -106,7 +107,9 @@ impl RegistryStorage {
                 t.insert(KEY_HARD_VOTE, bincode::serialize(&hs.vote).unwrap())?;
                 Ok(())
             })
-            .unwrap();
+            .context("Transaction failure")?;
+
+        Ok(())
     }
 
     pub fn set_commit(&self, commit: u64) {
@@ -156,13 +159,16 @@ impl RegistryStorage {
     }
 
     pub async fn store_snapshot(&mut self) -> anyhow::Result<()> {
-        let mut snapshot = self.snapshot(self.applied_index).unwrap();
+        let mut snapshot = self
+            .snapshot(self.applied_index)
+            .context("Failed to generate a local snapshot")?;
 
         self.persist_snapshot(&snapshot)
             .await
             .context("Failure to persist a local snapshot")?;
 
-        self.compact(self.applied_index);
+        self.compact(self.applied_index)
+            .context("Failure to compact after making snapshot")?;
 
         self.snapshot_metadata = snapshot.take_metadata();
 
@@ -189,21 +195,21 @@ impl RegistryStorage {
         let mut hs = self.initial_state().unwrap().hard_state;
         hs.commit = index;
         hs.term = std::cmp::max(meta.term, hs.term);
-        self.set_hardstate(hs);
+        self.set_hardstate(hs)?;
 
         self.applied_index = index;
 
         Ok(())
     }
 
-    pub fn compact(&self, compact_index: u64) -> Result<()> {
+    fn compact(&self, compact_index: u64) -> anyhow::Result<()> {
         if compact_index <= self.first_index() {
             // Don't need to treat this case as an error.
             return Ok(());
         }
 
         if compact_index > self.last_index() + 1 {
-            panic!(
+            bail!(
                 "compact not received raft logs: {}, last index: {}",
                 compact_index,
                 self.last_index()
@@ -211,7 +217,7 @@ impl RegistryStorage {
         }
 
         while self.first_index() < compact_index {
-            self.entries.pop_min();
+            self.entries.pop_min().context("Failed to compact old log entry")?;
         }
 
         Ok(())
@@ -238,13 +244,13 @@ impl RegistryStorage {
         }
 
         while self.last_index() > ents[0].index {
-            self.entries.pop_max();
+            self.entries.pop_max().context("Failed to truncate log entry before appending")?;
         }
 
         for ent in ents {
             let key = bincode::serialize(&ent.index).unwrap();
             let value = protobuf::Message::write_to_bytes(ent).unwrap();
-            self.entries.insert(key, value);
+            self.entries.insert(key, value).context("Failed to store log entry")?;
         }
 
         self.db
@@ -414,7 +420,7 @@ mod test {
                 ..Default::default()
             },
         ];
-        store.append(&entries);
+        store.append(&entries).await.unwrap();
         assert_eq!(store.last_index(), 2);
     }
 
@@ -436,13 +442,13 @@ mod test {
                 ..Default::default()
             },
         ];
-        store.append(&entries);
+        store.append(&entries).await.unwrap();
         assert_eq!(store.first_index(), 1);
 
-        store.compact(2);
+        store.compact(2).unwrap();
         assert_eq!(store.first_index(), 2);
 
-        store.compact(2);
+        store.compact(2).unwrap();
         assert_eq!(store.first_index(), 2);
     }
 
@@ -464,7 +470,7 @@ mod test {
                 ..Default::default()
             },
         ];
-        store.append(&entries);
+        store.append(&entries).await.unwrap();
 
         assert_eq!(store.term(1), Ok(1));
         assert_eq!(store.term(2), Ok(1));
