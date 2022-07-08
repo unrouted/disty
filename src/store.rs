@@ -48,7 +48,8 @@ impl RegistryStorage {
             ..Default::default()
         };
 
-        let store = RegistryState::default();
+        let mut applied_index = 0;
+        let mut store = RegistryState::default();
         let mut snapshot_metadata = SnapshotMetadata::default();
         snapshot_metadata.term = 1;
 
@@ -58,12 +59,13 @@ impl RegistryStorage {
                     <Snapshot as protobuf::Message>::parse_from_bytes(&data).unwrap();
 
                 snapshot_metadata = snapshot.take_metadata();
-                // store = serde_json::from_slice(&snapshot.take_data()).unwrap();
+                applied_index = snapshot_metadata.index;
+                store = serde_json::from_slice(&snapshot.take_data()).unwrap();
             }
             Err(err) => match err.kind() {
                 ErrorKind::NotFound => {}
-                err => {
-                    panic!("Unexpected error");
+                _ => {
+                    bail!("Unexpected error: {err:?}");
                 }
             },
         };
@@ -73,9 +75,9 @@ impl RegistryStorage {
             entries,
             state,
             conf_state,
-            snapshot_metadata: snapshot_metadata,
-            store: store,
-            applied_index: 0,
+            snapshot_metadata,
+            store,
+            applied_index,
             storage_path: storage_path.to_path_buf(),
         };
 
@@ -86,11 +88,6 @@ impl RegistryStorage {
 
     pub fn ensure_initialized(&self) -> Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
-            //self.append(&[Entry {
-            //    index: 0,
-            //    term: 1,
-            //    ..Default::default()
-            //}])?;
             self.set_hardstate(HardState {
                 commit: 0,
                 term: 1,

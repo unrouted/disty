@@ -351,6 +351,10 @@ async fn handle_commits(
     }
 
     for entry in entries {
+        if entry.index <= store.applied_index {
+            continue;
+        }
+
         println!("Applying entry {entry:?}");
 
         if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
