@@ -12,7 +12,7 @@ use raft::RawNode;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
@@ -39,7 +39,7 @@ pub struct RegistryApp {
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
-    services: RwLock<Vec<JoinHandle<anyhow::Result<()>>>>,
+    services: RwLock<JoinSet<anyhow::Result<()>>>,
     lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
@@ -69,7 +69,7 @@ impl RegistryApp {
             seq: AtomicU64::new(1),
             outboxes,
             settings,
-            services: RwLock::new(vec![]),
+            services: RwLock::new(JoinSet::new()),
             lifecycle: tx,
             blob_waiters: Mutex::new(HashMap::new()),
             manifest_waiters: Mutex::new(HashMap::new()),
@@ -85,23 +85,45 @@ impl RegistryApp {
         T: Future<Output = anyhow::Result<()>>,
         T: Send + 'static,
     {
-        let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(task);
-        self.services.write().await.push(handle);
+        self.services.write().await.spawn(task);
     }
 
     pub async fn wait_for_shutdown(&self) -> Result<()> {
-        tokio::signal::ctrl_c().await.unwrap();
+        let mut services = self.services.write().await;
 
-        info!("Starting shutdown...");
+        tokio::select!(
+            _ = tokio::signal::ctrl_c() => {
+                warn!("Got ctrl+c. Starting graceful shutdown");
+            }
+            Some(res) = services.join_one() => {
+                match res? {
+                    Ok(()) => {
+                        warn!("Service task unexpectedly exited! Will exit now to prevent corruption.");
+                    }
+                    Err(err) => {
+                        error!("{err:?}");
+                    }
+                }
+            }
+        );
+
         self.lifecycle
             .send(Lifecycle::Shutdown)
             .context("Failed to notify services of shutdown")?;
 
-        info!("Awaiting on pending services");
-        for handle in self.services.write().await.drain(..) {
-            handle.await??;
+        info!("Waiting for graceful shutdown");
+        while let Some(res) = services.join_one().await {
+            match res {
+                Ok(inner) => {
+                    if let Err(err) = inner {
+                        error!("{err:?}");
+                    }
+                }
+                Err(err) => {
+                    error!("{err:?}");
+                }
+            }
         }
-        // self.shutdown.notify()
 
         Ok(())
     }
@@ -507,25 +529,35 @@ pub async fn do_raft_ticks(
     let mut timeout = Duration::from_millis(100);
     let mut cbs = HashMap::new();
 
+    let mut lifecycle = app.subscribe_lifecycle();
+
     loop {
-        match tokio::time::timeout(timeout, mailbox.recv()).await {
-            Ok(Some(crate::app::Msg::Propose { actions, id, cb })) => {
-                cbs.insert(id, cb);
-                let mut r = app.group.write().await;
-                r.propose(
-                    bincode::serialize(&id).unwrap(),
-                    serde_json::to_vec(&actions).unwrap(),
-                )
-                .unwrap();
+        tokio::select! {
+            post = mailbox.recv() => {
+                match post {
+                    Some(crate::app::Msg::Propose { actions, id, cb }) => {
+                        cbs.insert(id, cb);
+                        let mut r = app.group.write().await;
+                        r.propose(
+                            bincode::serialize(&id).unwrap(),
+                            serde_json::to_vec(&actions).unwrap(),
+                        )
+                        .unwrap();
+                    }
+                    Some(crate::app::Msg::Raft(m)) => {
+                        let mut r = app.group.write().await;
+                        r.step(m).unwrap();
+                    }
+                    None => {
+                        break;
+                    }
+                }
             }
-            Ok(Some(crate::app::Msg::Raft(m))) => {
-                let mut r = app.group.write().await;
-                r.step(m).unwrap();
+            _ = tokio::time::sleep(timeout) => {},
+            Ok(_ev) = lifecycle.recv() => {
+                info!("Raft loop: Graceful shutdown");
+                break;
             }
-            Ok(None) => {
-                return Ok(());
-            }
-            Err(_) => return Ok(()),
         }
 
         let d = t.elapsed();
@@ -542,4 +574,6 @@ pub async fn do_raft_ticks(
             .await
             .context("Failed to apply ready state")?;
     }
+
+    Ok(())
 }

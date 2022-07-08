@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context};
-use log::{info, warn, error};
+use log::{error, info, warn};
 use raft::{eraftpb::*, RaftState, Storage};
 use std::io::ErrorKind;
 

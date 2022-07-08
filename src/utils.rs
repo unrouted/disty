@@ -70,5 +70,7 @@ pub async fn launch(rocket: Rocket<Build>) -> anyhow::Result<()> {
         .await
         .context("Failure running http endpoint")?;
 
+    println!("Exiting");
+
     Ok(())
 }
