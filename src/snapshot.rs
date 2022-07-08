@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use log::info;
-use raft::Storage;
 use tokio::select;
 
 use crate::app::RegistryApp;

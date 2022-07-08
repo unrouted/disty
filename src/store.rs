@@ -217,7 +217,9 @@ impl RegistryStorage {
         }
 
         while self.first_index() < compact_index {
-            self.entries.pop_min().context("Failed to compact old log entry")?;
+            self.entries
+                .pop_min()
+                .context("Failed to compact old log entry")?;
         }
 
         Ok(())
@@ -244,13 +246,17 @@ impl RegistryStorage {
         }
 
         while self.last_index() > ents[0].index {
-            self.entries.pop_max().context("Failed to truncate log entry before appending")?;
+            self.entries
+                .pop_max()
+                .context("Failed to truncate log entry before appending")?;
         }
 
         for ent in ents {
             let key = bincode::serialize(&ent.index).unwrap();
             let value = protobuf::Message::write_to_bytes(ent).unwrap();
-            self.entries.insert(key, value).context("Failed to store log entry")?;
+            self.entries
+                .insert(key, value)
+                .context("Failed to store log entry")?;
         }
 
         self.db

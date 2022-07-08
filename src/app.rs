@@ -329,14 +329,19 @@ impl RegistryApp {
     }
 }
 
-async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) {
+async fn handle_messages(app: &RegistryApp, messages: Vec<Message>) -> anyhow::Result<()> {
     for msg in messages {
         let serialized = protobuf::Message::write_to_bytes(&msg).unwrap();
         let dest = msg.to;
         if let Some(outbox) = app.outboxes.get(&dest) {
-            outbox.send(serialized).await;
+            outbox
+                .send(serialized)
+                .await
+                .context("Failure to enqueue message to {dest}")?;
         }
     }
+
+    Ok(())
 }
 
 async fn handle_commits(
@@ -345,9 +350,9 @@ async fn handle_commits(
     cbs: &mut HashMap<u64, tokio::sync::oneshot::Sender<u64>>,
     actions_tx: &tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
     entries: Vec<Entry>,
-) {
+) -> anyhow::Result<()> {
     if entries.is_empty() {
-        return;
+        return Ok(());
     }
 
     for entry in entries {
@@ -362,7 +367,7 @@ async fn handle_commits(
             store.dispatch_actions(&actions);
 
             if let Some(cb) = cbs.remove(&bincode::deserialize(&entry.context).unwrap()) {
-                cb.send(entry.index);
+                cb.send(entry.index).unwrap();
             }
 
             for action in &actions {
@@ -391,12 +396,16 @@ async fn handle_commits(
                 }
             }
 
-            actions_tx.send(actions).await;
+            actions_tx
+                .send(actions)
+                .await
+                .context("Failed to notify mirrorer about new application state")?;
         }
 
         store.applied_index = entry.index;
-        // TODO: handle EntryConfChange
     }
+
+    Ok(())
 }
 
 async fn on_ready(
@@ -415,7 +424,9 @@ async fn on_ready(
 
     if !ready.messages().is_empty() {
         // Send out the messages come from the node.comm
-        handle_messages(app, ready.take_messages()).await;
+        handle_messages(app, ready.take_messages())
+            .await
+            .context("Failed to send ready messages")?;
     }
 
     if !ready.snapshot().is_empty() {
@@ -436,7 +447,7 @@ async fn on_ready(
             actions_tx,
             ready.take_committed_entries(),
         )
-        .await;
+        .await?;
     }
 
     if !ready.entries().is_empty() {
@@ -449,19 +460,26 @@ async fn on_ready(
 
     if let Some(hs) = ready.hs() {
         let store = &mut group.raft.raft_log.store;
-        store.set_hardstate(hs.clone());
+        store
+            .set_hardstate(hs.clone())
+            .context("Failed to update hardstate")?;
     }
 
     if !ready.persisted_messages().is_empty() {
-        handle_messages(app, ready.take_persisted_messages()).await;
+        handle_messages(app, ready.take_persisted_messages())
+            .await
+            .context("Failed to send persisted messages")?;
     }
 
     let mut light_rd = group.advance(ready);
+    println!("{light_rd:?}");
     if let Some(commit) = light_rd.commit_index() {
         let store = &mut group.raft.raft_log.store;
         store.set_commit(commit);
     }
-    handle_messages(app, light_rd.take_messages()).await;
+    handle_messages(app, light_rd.take_messages())
+        .await
+        .context("Filed to send light ready messages")?;
 
     {
         let store = &mut group.raft.raft_log.store;
@@ -472,7 +490,7 @@ async fn on_ready(
             actions_tx,
             light_rd.take_committed_entries(),
         )
-        .await;
+        .await?;
     }
 
     group.advance_apply();
@@ -484,7 +502,7 @@ pub async fn do_raft_ticks(
     app: Arc<RegistryApp>,
     mut mailbox: tokio::sync::mpsc::Receiver<Msg>,
     actions_tx: tokio::sync::mpsc::Sender<Vec<RegistryAction>>,
-) {
+) -> anyhow::Result<()> {
     let mut t = Instant::now();
     let mut timeout = Duration::from_millis(100);
     let mut cbs = HashMap::new();
@@ -505,9 +523,9 @@ pub async fn do_raft_ticks(
                 r.step(m).unwrap();
             }
             Ok(None) => {
-                return;
+                return Ok(());
             }
-            Err(_) => {}
+            Err(err) => return Ok(()),
         }
 
         let d = t.elapsed();
@@ -520,6 +538,8 @@ pub async fn do_raft_ticks(
             timeout -= d;
         }
 
-        on_ready(&app, &mut cbs, &actions_tx).await;
+        on_ready(&app, &mut cbs, &actions_tx)
+            .await
+            .context("Failed to apply ready state")?;
     }
 }
