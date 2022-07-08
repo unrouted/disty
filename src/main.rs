@@ -1,5 +1,6 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
+use crate::utils::launch;
 use anyhow::{bail, Context, Result};
 use fern::colors::{Color, ColoredLevelConfig};
 use raft::{raw_node::RawNode, Config};
@@ -103,11 +104,21 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
     // be later used on the actix-web services.
     let app = Arc::new(RegistryApp::new(group, inbox, outboxes, settings));
 
-    crate::network::server::launch(app.clone(), &mut registry).await;
-    crate::registry::launch(app.clone(), &mut registry).await;
-    crate::prometheus::launch(app.clone(), registry).await;
+    app.spawn(launch(crate::network::server::configure(
+        app.clone(),
+        &mut registry,
+    )))
+    .await;
+    app.spawn(launch(crate::registry::configure(
+        app.clone(),
+        &mut registry,
+    )))
+    .await;
+    app.spawn(launch(crate::prometheus::configure(app.clone(), registry)))
+        .await;
 
-    tokio::spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx));
+    app.spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx))
+        .await;
 
     app.spawn(crate::garbage::do_garbage_collect(app.clone()))
         .await;

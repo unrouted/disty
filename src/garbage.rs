@@ -175,7 +175,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
     }
 }
 
-pub async fn do_garbage_collect(app: Arc<RegistryApp>) {
+pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     let mut lifecycle = app.subscribe_lifecycle();
 
     loop {
@@ -186,8 +186,10 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) {
             _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
             Ok(_ev) = lifecycle.recv() => {
                 info!("Garbage collection: Graceful shutdown");
-                return;
+                break;
             }
         };
     }
+
+    Ok(())
 }

@@ -35,26 +35,13 @@ fn routes() -> Vec<Route> {
     rocket::routes![post, submit]
 }
 
-pub(crate) fn configure(
-    rocket: Rocket<Build>,
-    app: Arc<RegistryApp>,
-    registry: &mut Registry,
-) -> Rocket<Build> {
-    rocket
-        .mount("/", routes())
-        .manage(app)
-        .attach(HttpMetrics::new(registry, Port::Raft))
-}
-
-pub(crate) async fn launch(app: Arc<RegistryApp>, registry: &mut Registry) {
+pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
     let fig = rocket::Config::figment()
         .merge(("port", app.settings.raft.port))
         .merge(("address", app.settings.raft.address.clone()));
 
-    let service = configure(rocket::custom(fig), app.clone(), registry);
-
-    app.spawn(async {
-        service.launch().await;
-    })
-    .await;
+    rocket::custom(fig)
+        .mount("/", routes())
+        .manage(app)
+        .attach(HttpMetrics::new(registry, Port::Raft))
 }

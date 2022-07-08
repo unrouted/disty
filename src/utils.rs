@@ -1,4 +1,6 @@
 use crate::types::Digest;
+use anyhow::Context;
+use rocket::{Build, Rocket};
 use std::path::Path;
 use uuid::Uuid;
 
@@ -60,4 +62,13 @@ pub fn get_temp_mirror_path(images_directory: &str) -> std::path::PathBuf {
     path.push(format!("mirror-{upload_id}"));
 
     path
+}
+
+pub async fn launch(rocket: Rocket<Build>) -> anyhow::Result<()> {
+    rocket
+        .launch()
+        .await
+        .context("Failure running http endpoint")?;
+
+    Ok(())
 }

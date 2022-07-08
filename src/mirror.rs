@@ -267,7 +267,10 @@ fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest>
     tasks
 }
 
-pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<RegistryAction>>) {
+pub(crate) async fn do_miroring(
+    app: Arc<RegistryApp>,
+    mut rx: Receiver<Vec<RegistryAction>>,
+) -> anyhow::Result<()> {
     let mint = Mint::new(app.settings.mirroring.clone());
 
     let client = reqwest::Client::builder()
@@ -287,7 +290,7 @@ pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<Regi
             }
             Ok(_ev) = lifecycle.recv() => {
                 info!("Mirroring: Graceful shutdown");
-                return;
+                break;
             }
         };
 
@@ -317,4 +320,6 @@ pub(crate) async fn do_miroring(app: Arc<RegistryApp>, mut rx: Receiver<Vec<Regi
             }
         }
     }
+
+    Ok(())
 }

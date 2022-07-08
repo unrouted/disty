@@ -5,7 +5,7 @@ use tokio::select;
 
 use crate::app::RegistryApp;
 
-pub async fn do_snapshot(app: Arc<RegistryApp>) {
+pub async fn do_snapshot(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     let mut lifecycle = app.subscribe_lifecycle();
 
     loop {
@@ -13,7 +13,7 @@ pub async fn do_snapshot(app: Arc<RegistryApp>) {
             _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
             Ok(_ev) = lifecycle.recv() => {
                 info!("Snapshotter: Graceful shutdown");
-                return;
+                break;
             }
         };
 
@@ -24,4 +24,6 @@ pub async fn do_snapshot(app: Arc<RegistryApp>) {
             store.store_snapshot().await;
         }
     }
+
+    Ok(())
 }

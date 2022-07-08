@@ -39,7 +39,7 @@ pub struct RegistryApp {
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
-    services: RwLock<Vec<JoinHandle<()>>>,
+    services: RwLock<Vec<JoinHandle<anyhow::Result<()>>>>,
     lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
@@ -82,10 +82,10 @@ impl RegistryApp {
 
     pub async fn spawn<T>(&self, task: T)
     where
-        T: Future<Output = ()>,
+        T: Future<Output = anyhow::Result<()>>,
         T: Send + 'static,
     {
-        let handle: JoinHandle<()> = tokio::spawn(task);
+        let handle: JoinHandle<anyhow::Result<()>> = tokio::spawn(task);
         self.services.write().await.push(handle);
     }
 
@@ -99,7 +99,7 @@ impl RegistryApp {
 
         info!("Awaiting on pending services");
         for handle in self.services.write().await.drain(..) {
-            handle.await;
+            handle.await?;
         }
         // self.shutdown.notify()
 
@@ -525,7 +525,7 @@ pub async fn do_raft_ticks(
             Ok(None) => {
                 return Ok(());
             }
-            Err(err) => return Ok(()),
+            Err(_) => return Ok(()),
         }
 
         let d = t.elapsed();
