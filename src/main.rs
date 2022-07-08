@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
 
     let app = start_registry_services(settings).await?;
 
-    app.wait_for_shutdown().await;
+    app.wait_for_shutdown().await?;
 
     Ok(())
 }

@@ -99,7 +99,7 @@ impl RegistryApp {
 
         info!("Awaiting on pending services");
         for handle in self.services.write().await.drain(..) {
-            handle.await?;
+            handle.await??;
         }
         // self.shutdown.notify()
 
