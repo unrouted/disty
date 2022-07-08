@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context};
-use log::{info, warn};
+use log::{info, warn, error};
 use raft::{eraftpb::*, RaftState, Storage};
 use std::io::ErrorKind;
 
@@ -295,11 +295,12 @@ impl Storage for RegistryStorage {
         }
 
         if high > self.last_index() + 1 {
-            panic!(
+            error!(
                 "index out of bound (last: {}, high: {})",
                 self.last_index() + 1,
                 high
             );
+            return Err(Error::Store(StorageError::Unavailable));
         }
 
         let low = bincode::serialize(&low).unwrap();
