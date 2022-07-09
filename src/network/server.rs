@@ -17,9 +17,13 @@ async fn submit(
 ) -> Json<Option<u64>> {
     let app: &RegistryApp = app.inner();
 
-    let res = app.submit_local(body.to_vec()).await;
-
-    Json(res)
+    match app.submit_local(body.to_vec()).await {
+        Ok(res) => Json(Some(res)),
+        Err(err) => {
+            error!("Could not queue incoming raft message: {}", err.to_string());
+            return Json(None);
+        }
+    }
 }
 
 #[post("/raft", data = "<body>")]

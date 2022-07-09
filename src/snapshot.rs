@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use log::info;
+use anyhow::Context;
+use log::{error, info};
 use tokio::select;
 
 use crate::app::RegistryApp;
@@ -21,7 +22,13 @@ pub async fn do_snapshot(app: Arc<RegistryApp>) -> anyhow::Result<()> {
         let store = group.mut_store();
         if store.snapshot_metadata.index < store.applied_index {
             info!("Snapshotter: Snapshot is stale - updating");
-            store.store_snapshot().await;
+            if let Err(err) = store
+                .store_snapshot()
+                .await
+                .context("Snapshotter: Failed to update snapshot")
+            {
+                error!("{err:?}");
+            }
         }
     }
 

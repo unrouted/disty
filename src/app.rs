@@ -147,7 +147,7 @@ impl RegistryApp {
         }
     }
 
-    pub async fn submit_local(&self, actions: Vec<RegistryAction>) -> Option<u64> {
+    pub async fn submit_local(&self, actions: Vec<RegistryAction>) -> Result<u64> {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         let proposal = Msg::Propose {
@@ -156,18 +156,16 @@ impl RegistryApp {
             cb: tx,
         };
 
-        self.inbox.send(proposal).await;
+        self.inbox
+            .send(proposal)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .context("Failed to enqueue local proposal")?;
 
-        match rx.await {
-            Err(err) => {
-                error!("RECV FAILURE: {err:?}");
-                None
-            }
-            Ok(value) => Some(value),
-        }
+        Ok(rx.await.context("Failed to wait fot local proposal")?)
     }
 
-    pub async fn submit_remote(&self, actions: Vec<RegistryAction>, idx: u64) -> Option<u64> {
+    pub async fn submit_remote(&self, actions: Vec<RegistryAction>, idx: u64) -> Result<u64> {
         let peer = self.settings.peers.get((idx as usize) - 1).unwrap();
         let address = &peer.raft.address;
         let port = peer.raft.port;
@@ -178,22 +176,20 @@ impl RegistryApp {
             .build()
             .unwrap();
 
-        let resp = client.post(&url).json(&actions).send().await;
+        let resp = client.post(&url).json(&actions).send().await?;
 
-        Some(resp.unwrap().json().await.unwrap())
+        Ok(resp.json().await?)
     }
 
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
         let leader_id = self.wait_for_leader().await;
 
         if leader_id == self.group.read().await.raft.id {
-            self.submit_local(actions).await;
-        } else {
-            if let Some(_) = self.submit_remote(actions, leader_id).await {
-                // while self.group.read().await.raft.store().applied_index < target {
-                //    tokio::time::sleep(Duration::from_millis(100)).await;
-                // }
-            }
+            self.submit_local(actions).await.unwrap();
+        } else if (self.submit_remote(actions, leader_id).await).is_ok() {
+            // while self.group.read().await.raft.store().applied_index < target {
+            //    tokio::time::sleep(Duration::from_millis(100)).await;
+            // }
         }
 
         true

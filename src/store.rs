@@ -50,8 +50,10 @@ impl RegistryStorage {
 
         let mut applied_index = 0;
         let mut store = RegistryState::default();
-        let mut snapshot_metadata = SnapshotMetadata::default();
-        snapshot_metadata.term = 1;
+        let mut snapshot_metadata = SnapshotMetadata {
+            term: 1,
+            ..Default::default()
+        };
 
         match tokio::fs::read(&storage_path.join("snapshot.latest")).await {
             Ok(data) => {
@@ -291,9 +293,10 @@ impl RegistryStorage {
 
 impl Storage for RegistryStorage {
     fn initial_state(&self) -> Result<RaftState> {
-        let mut raft_state = RaftState::default();
-
-        raft_state.conf_state = self.conf_state.clone();
+        let mut raft_state = RaftState {
+            conf_state: self.conf_state.clone(),
+            ..Default::default()
+        };
 
         if let Some(index) = self.state.get(KEY_HARD_INDEX).unwrap() {
             raft_state.hard_state.commit = bincode::deserialize(&index).unwrap();
