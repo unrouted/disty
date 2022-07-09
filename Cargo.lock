@@ -600,6 +600,7 @@ dependencies = [
  "data-encoding",
  "fern",
  "figment",
+ "futures",
  "jsonl",
  "jsonschema",
  "jwt-simple",

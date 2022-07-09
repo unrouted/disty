@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use log::{debug, error, info, warn};
 use raft::eraftpb::Message;
 use raft::prelude::*;
@@ -12,11 +14,10 @@ use raft::RawNode;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinSet;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
-
 use crate::store::RegistryStorage;
 use crate::types::Blob;
 use crate::types::BlobEntry;
@@ -39,7 +40,7 @@ pub struct RegistryApp {
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
-    services: RwLock<JoinSet<anyhow::Result<()>>>,
+    services: RwLock<FuturesUnordered<JoinHandle<anyhow::Result<()>>>>,
     lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
     blob_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
@@ -69,7 +70,7 @@ impl RegistryApp {
             seq: AtomicU64::new(1),
             outboxes,
             settings,
-            services: RwLock::new(JoinSet::new()),
+            services: RwLock::new(FuturesUnordered::new()),
             lifecycle: tx,
             blob_waiters: Mutex::new(HashMap::new()),
             manifest_waiters: Mutex::new(HashMap::new()),
@@ -85,7 +86,7 @@ impl RegistryApp {
         T: Future<Output = anyhow::Result<()>>,
         T: Send + 'static,
     {
-        self.services.write().await.spawn(task);
+        self.services.write().await.push(tokio::spawn(task));
     }
 
     pub async fn wait_for_shutdown(&self) -> Result<()> {
@@ -95,7 +96,7 @@ impl RegistryApp {
             _ = tokio::signal::ctrl_c() => {
                 warn!("Got ctrl+c. Starting graceful shutdown");
             }
-            Some(res) = services.join_one() => {
+            Some(res) = services.next() => {
                 match res? {
                     Ok(()) => {
                         warn!("Service task unexpectedly exited! Will exit now to prevent corruption.");
@@ -112,7 +113,7 @@ impl RegistryApp {
             .context("Failed to notify services of shutdown")?;
 
         info!("Waiting for graceful shutdown");
-        while let Some(res) = services.join_one().await {
+        while let Some(res) = services.next().await {
             match res {
                 Ok(inner) => {
                     if let Err(err) = inner {
