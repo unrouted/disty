@@ -428,7 +428,7 @@ mod test {
 
         assert_eq!(initial_state.conf_state.voters, vec![1]);
 
-        assert_eq!(initial_state.hard_state.commit, 1);
+        assert_eq!(initial_state.hard_state.commit, 0);
         assert_eq!(initial_state.hard_state.term, 1);
         assert_eq!(initial_state.hard_state.vote, 0);
     }
