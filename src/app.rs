@@ -163,7 +163,7 @@ impl RegistryApp {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
             .context("Failed to enqueue local proposal")?;
 
-        Ok(rx.await.context("Failed to wait fot local proposal")?)
+        rx.await.context("Failed to wait for local proposal")
     }
 
     pub async fn submit_remote(&self, actions: Vec<RegistryAction>, idx: u64) -> Result<u64> {

@@ -21,7 +21,7 @@ async fn submit(
         Ok(res) => Json(Some(res)),
         Err(err) => {
             error!("Could not queue incoming raft message: {}", err.to_string());
-            return Json(None);
+            Json(None)
         }
     }
 }
