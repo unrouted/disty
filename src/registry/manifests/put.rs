@@ -1,5 +1,4 @@
 use crate::app::RegistryApp;
-use crate::extractor::Extractor;
 use crate::headers::ContentType;
 use crate::headers::Token;
 use crate::registry::utils::get_hash;
@@ -101,14 +100,13 @@ pub(crate) async fn put(
     repository: RepositoryName,
     tag: String,
     app: &State<Arc<RegistryApp>>,
-    extractor: &State<Extractor>,
     webhook_queue: &State<Sender<Event>>,
     content_type: ContentType,
     token: Token,
     body: Data<'_>,
 ) -> Responses {
     let app: &RegistryApp = app.inner();
-    let extractor: &Extractor = extractor.inner();
+    let extractor = &app.extractor;
 
     if !token.validated_token {
         return Responses::MustAuthenticate {

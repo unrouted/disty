@@ -18,6 +18,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::Configuration;
+use crate::extractor::Extractor;
 use crate::store::RegistryStorage;
 use crate::types::Blob;
 use crate::types::BlobEntry;
@@ -40,6 +41,7 @@ pub struct RegistryApp {
     pub seq: AtomicU64,
     pub outboxes: HashMap<u64, Sender<Vec<u8>>>,
     pub settings: Configuration,
+    pub extractor: Extractor,
     services: RwLock<FuturesUnordered<JoinHandle<anyhow::Result<()>>>>,
     lifecycle: tokio::sync::broadcast::Sender<Lifecycle>,
     manifest_waiters: Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>,
@@ -64,12 +66,15 @@ impl RegistryApp {
     ) -> Self {
         let (tx, _rx) = tokio::sync::broadcast::channel(16);
 
+        let extractor = crate::extractor::Extractor::new(settings.clone());
+
         RegistryApp {
             group,
             inbox,
             seq: AtomicU64::new(1),
             outboxes,
             settings,
+            extractor,
             services: RwLock::new(FuturesUnordered::new()),
             lifecycle: tx,
             blob_waiters: Mutex::new(HashMap::new()),

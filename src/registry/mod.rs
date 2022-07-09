@@ -58,7 +58,6 @@ pub fn routes() -> Vec<Route> {
 }
 
 pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocket<Build> {
-    let extractor = crate::extractor::Extractor::new(app.settings.clone());
     let webhook_queue = start_webhook_worker(app.settings.webhooks.clone(), registry);
 
     let registry_conf = rocket::Config::figment()
@@ -73,7 +72,6 @@ pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocke
             })
         }))
         .manage(app)
-        .manage(extractor)
         .manage(webhook_queue)
         .attach(HttpMetrics::new(registry, Port::Registry))
         .mount("/v2/", routes())
