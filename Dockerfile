@@ -7,8 +7,9 @@ COPY Cargo.toml Cargo.lock /src/
 RUN cargo build --target x86_64-unknown-linux-musl --release
 
 COPY src /src/src
+RUN touch src/main.rs
 RUN cargo build --target x86_64-unknown-linux-musl --release
 
 FROM scratch
-COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/distribd /app
-CMD ["/app/bin/distribd"]
+COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/distribd /distribd
+CMD ["/distribd"]
