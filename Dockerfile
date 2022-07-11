@@ -11,5 +11,6 @@ RUN touch src/main.rs
 RUN cargo build --target x86_64-unknown-linux-musl --release
 
 FROM scratch
+STOPSIGNAL SIGINT
 COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/distribd /distribd
 CMD ["/distribd"]
