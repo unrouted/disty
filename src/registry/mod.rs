@@ -12,7 +12,10 @@ use rocket::{fairing::AdHoc, http::uri::Origin, routes, Build, Rocket, Route};
 
 use crate::{
     app::RegistryApp,
-    middleware::prometheus::{HttpMetrics, Port},
+    middleware::{
+        prometheus::{HttpMetrics, Port},
+        shutdown::Lifecycle,
+    },
     webhook::start_webhook_worker,
 };
 
@@ -74,6 +77,7 @@ pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocke
         .manage(app)
         .manage(webhook_queue)
         .attach(HttpMetrics::new(registry, Port::Registry))
+        .attach(Lifecycle {})
         .mount("/v2/", routes())
 }
 

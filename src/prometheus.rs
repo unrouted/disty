@@ -10,6 +10,7 @@ use rocket::{Build, Rocket, Route};
 
 use crate::app::RegistryApp;
 use crate::middleware::prometheus::{HttpMetrics, Port};
+use crate::middleware::shutdown::Lifecycle;
 
 pub(crate) enum Responses {
     Ok {},
@@ -54,6 +55,8 @@ pub(crate) fn configure(app: Arc<RegistryApp>, mut registry: Registry) -> Rocket
     rocket::custom(fig)
         .mount("/", routes())
         .attach(HttpMetrics::new(&mut registry, Port::Prometheus))
+        .attach(Lifecycle {})
+        .manage(app)
         .manage(Arc::new(Mutex::new(registry)))
 }
 

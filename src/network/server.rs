@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::app::{Msg, RegistryApp};
 use crate::middleware::prometheus::{HttpMetrics, Port};
+use crate::middleware::shutdown::Lifecycle;
 use crate::types::RegistryAction;
 
 #[post("/submit", data = "<body>")]
@@ -52,4 +53,5 @@ pub(crate) fn configure(app: Arc<RegistryApp>, registry: &mut Registry) -> Rocke
         .mount("/", routes())
         .manage(app)
         .attach(HttpMetrics::new(registry, Port::Raft))
+        .attach(Lifecycle {})
 }
