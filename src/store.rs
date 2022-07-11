@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context};
 use log::{error, info, warn};
+use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use raft::{eraftpb::*, RaftState, Storage};
@@ -27,6 +28,7 @@ pub struct StorageMetrics {
     last_index: Gauge,
     snapshot_index: Gauge,
     snapshot_term: Gauge,
+    flushed_bytes: Counter,
 }
 
 impl StorageMetrics {
@@ -78,6 +80,13 @@ impl StorageMetrics {
             Box::new(snapshot_term.clone()),
         );
 
+        let flushed_bytes = Counter::default();
+        registry.register(
+            "flushed_bytes",
+            "Journal data flushed to disk",
+            Box::new(flushed_bytes.clone()),
+        );
+
         Self {
             hs_index,
             hs_term,
@@ -86,6 +95,7 @@ impl StorageMetrics {
             last_index,
             snapshot_index,
             snapshot_term,
+            flushed_bytes,
         }
     }
 }
@@ -390,10 +400,13 @@ impl RegistryStorage {
 
         self.metrics.last_index.set(self.last_index());
 
-        self.db
+        let flushed = self
+            .db
             .flush_async()
             .await
             .context("Failed to flush appended entries to journal")?;
+
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
 
         Ok(())
     }
