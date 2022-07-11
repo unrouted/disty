@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context};
 use log::{error, info, warn};
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
 use raft::{eraftpb::*, RaftState, Storage};
 use std::io::ErrorKind;
 
@@ -17,6 +19,77 @@ const KEY_HARD_TERM: &[u8; 7] = b"hs-term";
 const KEY_HARD_VOTE: &[u8; 7] = b"hs-vote";
 
 #[derive(Clone)]
+pub struct StorageMetrics {
+    hs_index: Gauge,
+    hs_term: Gauge,
+    applied_index: Gauge,
+    first_index: Gauge,
+    last_index: Gauge,
+    snapshot_index: Gauge,
+    snapshot_term: Gauge,
+}
+
+impl StorageMetrics {
+    fn new(registry: &mut Registry) -> Self {
+        let registry = registry.sub_registry_with_prefix("distribd_storage");
+
+        let hs_index = Gauge::default();
+        registry.register(
+            "commit_index",
+            "The most recently commit",
+            Box::new(hs_index.clone()),
+        );
+
+        let hs_term = Gauge::default();
+        registry.register("term", "The most recent term", Box::new(hs_term.clone()));
+
+        let applied_index = Gauge::default();
+        registry.register(
+            "applied_index",
+            "The latest applied log entry in the journal",
+            Box::new(applied_index.clone()),
+        );
+
+        let first_index = Gauge::default();
+        registry.register(
+            "first_index",
+            "The first log entry in the journal",
+            Box::new(first_index.clone()),
+        );
+
+        let last_index = Gauge::default();
+        registry.register(
+            "last_index",
+            "The last log entry in the journal",
+            Box::new(last_index.clone()),
+        );
+
+        let snapshot_index = Gauge::default();
+        registry.register(
+            "snapshot_index",
+            "The last log entry of the most recent snapshot",
+            Box::new(snapshot_index.clone()),
+        );
+
+        let snapshot_term = Gauge::default();
+        registry.register(
+            "snapshot_term",
+            "The term of the most recent snapshot",
+            Box::new(snapshot_term.clone()),
+        );
+
+        Self {
+            hs_index,
+            hs_term,
+            applied_index,
+            first_index,
+            last_index,
+            snapshot_index,
+            snapshot_term,
+        }
+    }
+}
+#[derive(Clone)]
 pub struct RegistryStorage {
     db: sled::Db,
     entries: sled::Tree,
@@ -26,10 +99,14 @@ pub struct RegistryStorage {
     pub store: RegistryState,
     pub applied_index: u64,
     storage_path: PathBuf,
+    metrics: StorageMetrics,
 }
 
 impl RegistryStorage {
-    pub async fn new(config: &Configuration) -> anyhow::Result<RegistryStorage> {
+    pub async fn new(
+        config: &Configuration,
+        registry: &mut Registry,
+    ) -> anyhow::Result<RegistryStorage> {
         let storage_path = std::path::Path::new(&config.storage);
         let path = storage_path.join("raft");
         let db = sled::open(path)?;
@@ -73,6 +150,11 @@ impl RegistryStorage {
             },
         };
 
+        let metrics = StorageMetrics::new(registry);
+        metrics.applied_index.set(applied_index);
+        metrics.snapshot_index.set(snapshot_metadata.index);
+        metrics.snapshot_term.set(snapshot_metadata.term);
+
         let store = RegistryStorage {
             db,
             entries,
@@ -82,6 +164,7 @@ impl RegistryStorage {
             store,
             applied_index,
             storage_path: storage_path.to_path_buf(),
+            metrics,
         };
 
         store.ensure_initialized()?;
@@ -112,6 +195,9 @@ impl RegistryStorage {
             })
             .context("Transaction failure")?;
 
+        self.metrics.hs_index.set(hs.commit);
+        self.metrics.hs_term.set(hs.term);
+
         Ok(())
     }
 
@@ -119,6 +205,8 @@ impl RegistryStorage {
         self.state
             .insert(KEY_HARD_INDEX, bincode::serialize(&commit).unwrap())
             .unwrap();
+
+        self.metrics.hs_index.set(commit);
     }
 
     pub fn last_index(&self) -> u64 {
@@ -192,6 +280,10 @@ impl RegistryStorage {
             .context("Failure to compact after making snapshot")?;
 
         self.snapshot_metadata = snapshot.get_metadata().clone();
+        self.metrics
+            .snapshot_index
+            .set(self.snapshot_metadata.index);
+        self.metrics.snapshot_term.set(self.snapshot_metadata.term);
 
         Ok(())
     }
@@ -213,6 +305,17 @@ impl RegistryStorage {
         warn!("Applying snapshot at index: {index}");
 
         self.snapshot_metadata = meta.clone();
+        self.metrics
+            .snapshot_index
+            .set(self.snapshot_metadata.index);
+        self.metrics.snapshot_term.set(self.snapshot_metadata.term);
+
+        self.entries
+            .clear()
+            .context("Failed to clear entries journal")?;
+        self.metrics.first_index.set(self.first_index());
+        self.metrics.last_index.set(self.last_index());
+
         self.store = serde_json::from_slice(&snapshot.data).unwrap();
 
         let mut hs = self.initial_state().unwrap().hard_state;
@@ -221,6 +324,7 @@ impl RegistryStorage {
         self.set_hardstate(hs)?;
 
         self.applied_index = index;
+        self.metrics.applied_index.set(index);
 
         Ok(())
     }
@@ -244,6 +348,8 @@ impl RegistryStorage {
                 .pop_min()
                 .context("Failed to compact old log entry")?;
         }
+
+        self.metrics.first_index.set(self.first_index());
 
         Ok(())
     }
@@ -282,6 +388,8 @@ impl RegistryStorage {
                 .context("Failed to store log entry")?;
         }
 
+        self.metrics.last_index.set(self.last_index());
+
         self.db
             .flush_async()
             .await
@@ -307,6 +415,9 @@ impl Storage for RegistryStorage {
         }
 
         info!("Loaded intial raft state: {raft_state:?}");
+
+        self.metrics.hs_index.set(raft_state.hard_state.commit);
+        self.metrics.hs_term.set(raft_state.hard_state.term);
 
         Ok(raft_state)
     }
@@ -418,7 +529,9 @@ mod test {
             ..Default::default()
         };
 
-        RegistryStorage::new(&config).await.unwrap()
+        let mut registry = <prometheus_client::registry::Registry>::default();
+
+        RegistryStorage::new(&config, &mut registry).await.unwrap()
     }
 
     #[tokio::test]

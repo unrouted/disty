@@ -106,7 +106,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
         .validate()
         .context("Unable to configure raft module")?;
 
-    let storage = RegistryStorage::new(&settings).await?;
+    let storage = RegistryStorage::new(&settings, &mut registry).await?;
 
     let group = RwLock::new(RawNode::with_default_logger(&config, storage).unwrap());
 
