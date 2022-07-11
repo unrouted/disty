@@ -153,7 +153,20 @@ impl RegistryStorage {
                 store = serde_json::from_slice(snapshot.get_data()).unwrap();
             }
             Err(err) => match err.kind() {
-                ErrorKind::NotFound => {}
+                ErrorKind::NotFound => {
+                    match tokio::fs::read(&storage_path.join("snapshot.bootstrap")).await {
+                        Ok(data) => {
+                            store = serde_json::from_slice(&data)
+                                .context("Failed to parse bootstrap snapshot")?;
+                        }
+                        Err(err) => match err.kind() {
+                            ErrorKind::NotFound => {}
+                            _ => {
+                                bail!("Unexpected error: {err:?}");
+                            }
+                        },
+                    };
+                }
                 _ => {
                     bail!("Unexpected error: {err:?}");
                 }
