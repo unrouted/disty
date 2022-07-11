@@ -155,7 +155,6 @@ struct Opts {
     /// Name of the peer
     #[clap(short, long, value_parser)]
     name: Option<String>,
-
 }
 
 #[rocket::main]
