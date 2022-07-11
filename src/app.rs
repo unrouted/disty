@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
