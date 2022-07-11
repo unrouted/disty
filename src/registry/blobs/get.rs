@@ -109,14 +109,14 @@ pub(crate) async fn get(
     }
 
     if !token.has_permission(&repository, "pull") {
-        info!("Token does not have access to perform this action");
+        debug!("Token does not have access to perform this action");
         return Responses::AccessDenied {};
     }
 
     let blob = match app.get_blob(&repository, &digest).await {
         Some(blob) => blob,
         None => {
-            info!("get_blob returned no blob found");
+            debug!("get_blob returned no blob found");
             return Responses::BlobNotFound {};
         }
     };
@@ -131,7 +131,7 @@ pub(crate) async fn get(
     let content_length = match blob.size {
         Some(content_length) => content_length,
         _ => {
-            info!("Blob was present but size not available");
+            debug!("Blob was present but size not available");
             return Responses::BlobNotFound {};
         }
     };

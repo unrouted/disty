@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use raft::eraftpb::Message;
 use raft::prelude::*;
 use raft::RawNode;
@@ -189,13 +189,16 @@ impl RegistryApp {
 
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
         let leader_id = self.wait_for_leader().await;
+        let my_id = self.group.read().await.raft.id;
 
-        if leader_id == self.group.read().await.raft.id {
+        if leader_id == my_id {
             self.submit_local(actions).await.unwrap();
-        } else if (self.submit_remote(actions, leader_id).await).is_ok() {
-            // while self.group.read().await.raft.store().applied_index < target {
-            //    tokio::time::sleep(Duration::from_millis(100)).await;
-            // }
+        } else {
+            if (self.submit_remote(actions, leader_id).await).is_ok() {
+                // while self.group.read().await.raft.store().applied_index < target {
+                //    tokio::time::sleep(Duration::from_millis(100)).await;
+                // }
+            }
         }
 
         true
@@ -220,9 +223,12 @@ impl RegistryApp {
     }
 
     pub async fn wait_for_blob(&self, digest: &Digest) {
+        let group = self.group.read().await;
+        let state = &group.store().store;
+
         let mut waiters = self.blob_waiters.lock().await;
 
-        if let Some(blob) = self.get_blob_directly(digest).await {
+        if let Some(blob) = state.get_blob_directly(digest) {
             if blob.locations.contains(&self.settings.identifier) {
                 // Blob already exists at this endpoint, no need to wait
                 debug!("State: Wait for blob: {digest} already available");
@@ -264,9 +270,12 @@ impl RegistryApp {
     }
 
     pub async fn wait_for_manifest(&self, digest: &Digest) {
+        let group = self.group.read().await;
+        let state = &group.store().store;
+
         let mut waiters = self.manifest_waiters.lock().await;
 
-        if let Some(manifest) = self.get_manifest_directly(digest).await {
+        if let Some(manifest) = state.get_manifest_directly(digest) {
             if manifest.locations.contains(&self.settings.identifier) {
                 // manifest already exists at this endpoint, no need to wait
                 return;
@@ -384,7 +393,7 @@ async fn handle_commits(
             continue;
         }
 
-        info!("Applying entry {entry:?}");
+        debug!("Applying entry {entry:?}");
 
         if entry.get_entry_type() == EntryType::EntryNormal && !entry.data.is_empty() {
             let actions: Vec<RegistryAction> = serde_json::from_slice(entry.get_data()).unwrap();

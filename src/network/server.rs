@@ -5,6 +5,7 @@ use rocket::serde::json::Json;
 use rocket::Route;
 use rocket::{post, Build, Rocket, State};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::app::{Msg, RegistryApp};
 use crate::middleware::prometheus::{HttpMetrics, Port};
@@ -18,10 +19,14 @@ async fn submit(
 ) -> Json<Option<u64>> {
     let app: &RegistryApp = app.inner();
 
-    match app.submit_local(body.to_vec()).await {
-        Ok(res) => Json(Some(res)),
-        Err(err) => {
+    match tokio::time::timeout(Duration::from_secs(5), app.submit_local(body.to_vec())).await {
+        Ok(Ok(res)) => Json(Some(res)),
+        Ok(Err(err)) => {
             error!("Could not queue incoming raft message: {}", err.to_string());
+            Json(None)
+        }
+        Err(err) => {
+            error!("Timeout waiting for sbumission: {}", err.to_string());
             Json(None)
         }
     }

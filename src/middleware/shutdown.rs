@@ -18,7 +18,9 @@ impl Fairing for Lifecycle {
     }
 
     async fn on_liftoff(&self, rocket: &Rocket<Orbit>) {
-        let app = rocket.state::<Arc<RegistryApp>>().expect("Expect some registry app");
+        let app = rocket
+            .state::<Arc<RegistryApp>>()
+            .expect("Expect some registry app");
         let mut lifecycle = app.subscribe_lifecycle();
 
         let shutdown = rocket.shutdown().clone();

@@ -157,6 +157,7 @@ impl Extractor {
                 }
 
                 Manifest::ManifestV2 { config, layers } => {
+                    println!("Got a v2 manifest: {layers:?}");
                     results.insert(Extraction {
                         digest: config.digest.clone(),
                         content_type: config.media_type,
@@ -237,7 +238,7 @@ impl Extractor {
 
                 match app.get_blob(repository, &extraction.digest).await {
                     Some(blob) => {
-                        if blob.content_type.is_some() || blob.dependencies.is_some() {
+                        if blob.content_type.is_some() {
                             // Was already analyzed, don't do it again!
                             continue;
                         }

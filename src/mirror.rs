@@ -140,12 +140,12 @@ async fn do_transfer(
         }
     };
 
-    info!("Mirroring: Will download: {url}");
+    debug!("Mirroring: Will download: {url}");
 
     let mut resp = match builder.send().await {
         Ok(resp) => resp,
         Err(err) => {
-            warn!("Mirroring: Unable to fetch {url}: {err}");
+            debug!("Mirroring: Unable to fetch {url}: {err}");
             return MirrorResult::Retry { request };
         }
     };
@@ -153,7 +153,7 @@ async fn do_transfer(
     let status_code = resp.status();
 
     if status_code != reqwest::StatusCode::OK {
-        warn!("Mirroring: Unable to fetch {url}: {status_code}");
+        debug!("Mirroring: Unable to fetch {url}: {status_code}");
         return MirrorResult::Retry { request };
     }
 
@@ -165,7 +165,7 @@ async fn do_transfer(
             file
         }
         Err(err) => {
-            warn!("Mirroring: Failed creating output file for {url}: {err}");
+            debug!("Mirroring: Failed creating output file for {url}: {err}");
             return MirrorResult::Retry { request };
         }
     };
