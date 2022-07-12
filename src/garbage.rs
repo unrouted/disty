@@ -190,6 +190,12 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     let mut lifecycle = app.subscribe_lifecycle();
 
     loop {
+        let leader_id = app.group.read().await.raft.leader_id;
+
+        if leader_id > 0 {
+            info!("Garbage collection: Skipped as leader not known");
+        }
+
         do_garbage_collect_phase1(&app).await;
         do_garbage_collect_phase2(&app).await;
 
