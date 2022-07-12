@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
-use log::{info, warn};
+use log::{debug, info, warn};
 use tokio::fs::remove_file;
 use tokio::select;
 
@@ -21,11 +21,11 @@ const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
 async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     if !app.is_leader().await {
-        info!("Garbage collection: Phase 1: Not leader");
+        debug!("Garbage collection: Phase 1: Not leader");
         return;
     }
 
-    info!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
+    debug!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
 
     let minimum_age = chrono::Duration::seconds(MINIMUM_GARBAGE_AGE);
     let mut actions = vec![];
@@ -33,7 +33,7 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     for entry in app.get_orphaned_manifests().await {
         let age = Utc::now() - entry.manifest.created;
         if age < minimum_age {
-            info!(
+            debug!(
                 "Garbage collection: Phase 1: {} is orphaned but less than 12 hours old",
                 &entry.digest,
             );
@@ -116,7 +116,7 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
 }
 
 async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
-    info!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
+    debug!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
     let images_directory = &app.settings.storage;
 
