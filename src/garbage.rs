@@ -110,9 +110,15 @@ async fn cleanup_object(image_directory: &str, path: &PathBuf) -> anyhow::Result
             },
         }
 
-        tokio::fs::remove_dir(path)
-            .await
-            .context(format!("Unable to remove directory {path:?}"))?;
+        match tokio::fs::remove_dir(path).await {
+            Ok(_) => {}
+            Err(err) => match err.kind() {
+                ErrorKind::NotFound => {}
+                _ => {
+                    Err(err).context(format!("Error whilst removing {path:?}"))?;
+                }
+            },
+        }
     }
 
     Ok(())
