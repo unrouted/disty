@@ -50,7 +50,7 @@ impl HttpMetrics {
     pub fn new(registry: &mut Registry, port: Port) -> Self {
         let http_requests_total = Family::<HttpRequestLabels, Counter>::default();
         registry.register(
-            "distribd_http_requests_total",
+            "distribd_http_requests",
             "Number of HTTP requests",
             Box::new(http_requests_total.clone()),
         );
