@@ -155,7 +155,7 @@ impl Token {
 
     pub fn has_permission(&self, repository: &RepositoryName, permission: &str) -> bool {
         if !self.validated_token {
-            info!("Not a validated token");
+            debug!("Not a validated token");
             return false;
         }
 
@@ -164,7 +164,7 @@ impl Token {
             return true;
         }
 
-        info!("Need {permission} for {repository}");
+        debug!("Need {permission} for {repository}");
 
         for access in self.access.iter() {
             debug!("Checking {access:?}");
@@ -267,7 +267,7 @@ impl<'r> FromRequest<'r> for Token {
             }
         };
 
-        info!("Validated token for subject \"{subject}\"");
+        debug!("Validated token for subject \"{subject}\"");
 
         Outcome::Success(Token {
             access: claims.custom.access.clone(),
