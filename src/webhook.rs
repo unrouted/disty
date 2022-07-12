@@ -26,7 +26,7 @@ pub fn start_webhook_worker(
 ) -> tokio::sync::mpsc::Sender<Event> {
     let webhooks_total = Family::<WebhookMetricLabels, Counter>::default();
     registry.register(
-        "distribd_webhooks_total",
+        "distribd_webhooks_post",
         "Number of webhooks sent",
         Box::new(webhooks_total.clone()),
     );
