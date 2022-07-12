@@ -195,6 +195,7 @@ impl RegistryStorage {
         Ok(store)
     }
 
+    #[inline(always)]
     pub fn set_applied_index(&mut self, applied_index: u64) {
         self.applied_index = applied_index;
         self.metrics.applied_index.set(applied_index);
