@@ -6,8 +6,9 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::Context;
 use chrono::Utc;
-use log::{debug, info, warn};
+use log::{debug, error, info};
 use tokio::fs::remove_file;
 use tokio::select;
 
@@ -77,16 +78,20 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     }
 }
 
-async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
-    if path.exists() && remove_file(&path).await.is_err() {
-        warn!("Error whilst removing: {:?}", path);
-        return false;
+async fn cleanup_object(image_directory: &str, path: &PathBuf) -> anyhow::Result<()> {
+    if path.exists() {
+        remove_file(&path)
+            .await
+            .context(format!("Error while removing {path:?}"))?;
     }
 
     while let Some(path) = path.parent() {
-        if path.strip_prefix(image_directory).unwrap() == Path::new("") {
+        let stripped = path
+            .strip_prefix(image_directory)
+            .context(format!("Error whilst stripping: {path:?}"))?;
+        if stripped == Path::new("") {
             // We've hit the root directory
-            return true;
+            return Ok(());
         }
 
         match path.read_dir() {
@@ -94,25 +99,23 @@ async fn cleanup_object(image_directory: &str, path: PathBuf) -> bool {
                 if iter.next().is_some() {
                     // We've hit a shared directory
                     // This counts as a win
-                    return true;
+                    return Ok(());
                 }
             }
             Err(err) => match err.kind() {
                 ErrorKind::NotFound => {}
-                err => {
-                    warn!("Error {err:?} whilst checking contents of {:?}", path);
-                    return false;
+                _ => {
+                    Err(err).context(format!("Error whilst reading contents of {path:?}"))?;
                 }
             },
         }
 
-        if tokio::fs::remove_dir(path).await.is_err() {
-            warn!("Error whilst removing: {:?}", path);
-            return false;
-        }
+        tokio::fs::remove_dir(path)
+            .await
+            .context(format!("Unable to remove directory {path:?}"))?;
     }
 
-    true
+    Ok(())
 }
 
 async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
@@ -132,7 +135,8 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         }
 
         let path = get_manifest_path(images_directory, &entry.digest);
-        if !cleanup_object(images_directory, path).await {
+        if let Err(err) = cleanup_object(images_directory, &path).await {
+            error!("Unable to cleanup filesystem for: {path:?}: {err:?}");
             continue;
         }
 
@@ -154,7 +158,8 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         }
 
         let path = get_blob_path(images_directory, &entry.digest);
-        if !cleanup_object(images_directory, path).await {
+        if let Err(err) = cleanup_object(images_directory, &path).await {
+            error!("Unable to cleanup filesystem for: {path:?}: {err:?}");
             continue;
         }
 
