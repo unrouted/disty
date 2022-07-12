@@ -435,7 +435,7 @@ async fn handle_commits(
                 .context("Failed to notify mirrorer about new application state")?;
         }
 
-        store.applied_index = entry.index;
+        store.set_applied_index(entry.index);
     }
 
     Ok(())

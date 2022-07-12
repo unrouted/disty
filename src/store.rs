@@ -195,6 +195,11 @@ impl RegistryStorage {
         Ok(store)
     }
 
+    pub fn set_applied_index(&mut self, applied_index: u64) {
+        self.applied_index = applied_index;
+        self.metrics.applied_index.set(applied_index);
+    }
+
     pub fn ensure_initialized(&self) -> anyhow::Result<()> {
         if self.state.get(KEY_HARD_INDEX).unwrap().is_none() {
             self.set_hardstate(HardState {
@@ -346,8 +351,7 @@ impl RegistryStorage {
         hs.term = std::cmp::max(meta.term, hs.term);
         self.set_hardstate(hs)?;
 
-        self.applied_index = index;
-        self.metrics.applied_index.set(index);
+        self.set_applied_index(index);
 
         Ok(())
     }
