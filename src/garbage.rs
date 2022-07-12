@@ -193,11 +193,11 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
         let leader_id = app.group.read().await.raft.leader_id;
 
         if leader_id > 0 {
+            do_garbage_collect_phase1(&app).await;
+            do_garbage_collect_phase2(&app).await;
+        } else {
             info!("Garbage collection: Skipped as leader not known");
         }
-
-        do_garbage_collect_phase1(&app).await;
-        do_garbage_collect_phase2(&app).await;
 
         select! {
             _ = tokio::time::sleep(core::time::Duration::from_secs(60)) => {},
