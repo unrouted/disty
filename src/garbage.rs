@@ -3,7 +3,7 @@
 //! distribd automatically garbage collects blobs and manifests that are no longer referenced by other objects in the DAG.
 
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -78,22 +78,16 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     }
 }
 
-async fn cleanup_object(image_directory: &str, path: &PathBuf) -> anyhow::Result<()> {
+async fn cleanup_object(path: &PathBuf) -> anyhow::Result<()> {
     if path.exists() {
         remove_file(&path)
             .await
             .context(format!("Error while removing {path:?}"))?;
+
+        info!("Garbage collection: Removed file {path:?}");
     }
 
-    while let Some(path) = path.parent() {
-        let stripped = path
-            .strip_prefix(image_directory)
-            .context(format!("Error whilst stripping: {path:?}"))?;
-        if stripped == Path::new("") {
-            // We've hit the root directory
-            return Ok(());
-        }
-
+    for path in path.parent().unwrap().ancestors().take(3) {
         match path.read_dir() {
             Ok(mut iter) => {
                 if iter.next().is_some() {
@@ -103,7 +97,9 @@ async fn cleanup_object(image_directory: &str, path: &PathBuf) -> anyhow::Result
                 }
             }
             Err(err) => match err.kind() {
-                ErrorKind::NotFound => {}
+                ErrorKind::NotFound => {
+                    continue;
+                }
                 _ => {
                     Err(err).context(format!("Error whilst reading contents of {path:?}"))?;
                 }
@@ -111,9 +107,13 @@ async fn cleanup_object(image_directory: &str, path: &PathBuf) -> anyhow::Result
         }
 
         match tokio::fs::remove_dir(path).await {
-            Ok(_) => {}
+            Ok(_) => {
+                info!("Garbage collection: Removed directory {path:?}");
+            }
             Err(err) => match err.kind() {
-                ErrorKind::NotFound => {}
+                ErrorKind::NotFound => {
+                    continue;
+                }
                 _ => {
                     Err(err).context(format!("Error whilst removing {path:?}"))?;
                 }
@@ -141,7 +141,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         }
 
         let path = get_manifest_path(images_directory, &entry.digest);
-        if let Err(err) = cleanup_object(images_directory, &path).await {
+        if let Err(err) = cleanup_object(&path).await {
             error!("Unable to cleanup filesystem for: {path:?}: {err:?}");
             continue;
         }
@@ -164,7 +164,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         }
 
         let path = get_blob_path(images_directory, &entry.digest);
-        if let Err(err) = cleanup_object(images_directory, &path).await {
+        if let Err(err) = cleanup_object(&path).await {
             error!("Unable to cleanup filesystem for: {path:?}: {err:?}");
             continue;
         }
