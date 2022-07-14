@@ -2,31 +2,31 @@
 
 [![codecov](https://codecov.io/gh/distribd/distribd/branch/main/graph/badge.svg?token=8AIAEN68AO)](https://codecov.io/gh/distribd/distribd)
 
-A simple replicated docker registry cluster. `distribd` is like a [distribution](https://github.com/docker/distribution/) instance running in local file system mode, but nodes can form a cluster and replicate images amongst themselves. A cluster of nodes can tolerate outages as long as there is a quorum.
+A simple clustered replicated container image registry. `distribd` is as simple and easy to deploy as [distribution](https://github.com/docker/distribution/) running in local file system mode, but nodes form a cluster and replicate images amongst themselves. A cluster of nodes can tolerate outages as long as there is a quorum.
 
-:exclamation: `distribd` is currently still in Alpha. In particular, we just moved from Python to Rust. Stay away unless you want to help fix bugs. :exclamation:
+:exclamation: `distribd` is currently still in Beta. Bug fixes welcome!. :exclamation:
 
 ## Is it for me?
 
-There is no denying it, distribd is niche. You probably shouldn't use it.
+There are a very specific set of circumstances where you might like a container image registry like this:
 
-* If you are OK using a private repository on a public registry then you probably should.
-* If you are on the cloud then you should probably use their registry.
-* If you are self-hosting and have the resources (both hardware and manpower) to run a full registry like [Quay](https://www.openshift.com/products/quay) or [Harbor](https://goharbor.io/), you probably should.
-* If you already have a self-hosted GitLab and have modest requirements around access control from your kubernetes install, you probably should its container reigsry.
-* If you have a fault tolerant object store like MinIO or file store then you should just configure [distribution](https://github.com/docker/distribution/) to use it.
+* You need to self-host, you can't use a cloud image registry and you can't use your hosts image registry (or it doesn't offer one)
+* You need to run everything in-cluster (dedicated Quay or Harbor machines means less machines for Kubernetes)
+* You need some level of fault tolerance
 
-On the other hand, if you have a small to medium self-hosted cluster, and want to run a simple fault tolerant minimal registry then distribd may be for you.
+distribd is straightforward to deploy on a Kubernetes cluster and doesn't need you to supply fault tolerant storage or database layers.
 
 ## How does it work?
 
-Artifacts are stored on local disk like with distribution. Then it uses raft to replicate metadata about the registry contents:
+Artifacts are stored on local disk like with distribution. We use raft to replicate a metadata journal about the registry contents between cluster members. The jorunal contains:
 
 * Hashes of blobs and manifests and where they are stored in the cluster
 * Hashes of blobs and manifests and the repository that owned them. This is used so that you can't access blobs unless they belong to a repository you have access to.
 * Tag/Hash pairs, by repository. This is for looking up all tags within a repository and for finding the hash to retrieve from a tag.
 
 Each member of the cluster tries to maintain a full copy of all blobs and manifests. When it sees a new hash in the raft log it tries to retrieve it from the server that announced it. When a node has acquired a copy of the blob it records in the cluster that it has a copy of that blob.
+
+Objects that are no longer reachable from a tag are automatically garbage collected and deleted from all cluster nodes.
 
 ## Setting up token auth
 
