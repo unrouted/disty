@@ -23,7 +23,7 @@ impl Fairing for Lifecycle {
             .expect("Expect some registry app");
         let mut lifecycle = app.subscribe_lifecycle();
 
-        let shutdown = rocket.shutdown().clone();
+        let shutdown = rocket.shutdown();
 
         tokio::spawn(async move {
             match lifecycle.recv().await {

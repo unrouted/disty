@@ -193,12 +193,10 @@ impl RegistryApp {
 
         if leader_id == my_id {
             self.submit_local(actions).await.unwrap();
-        } else {
-            if (self.submit_remote(actions, leader_id).await).is_ok() {
-                // while self.group.read().await.raft.store().applied_index < target {
-                //    tokio::time::sleep(Duration::from_millis(100)).await;
-                // }
-            }
+        } else if (self.submit_remote(actions, leader_id).await).is_ok() {
+            // while self.group.read().await.raft.store().applied_index < target {
+            //    tokio::time::sleep(Duration::from_millis(100)).await;
+            // }
         }
 
         true
