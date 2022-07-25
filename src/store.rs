@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context};
+use bincode::Options;
 use log::{error, info, warn};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use raft::{eraftpb::*, RaftState, Storage};
+use sled::IVec;
 use std::io::ErrorKind;
 
 use raft::util::limit_size;
@@ -29,6 +31,16 @@ pub struct StorageMetrics {
     snapshot_index: Gauge,
     snapshot_term: Gauge,
     flushed_bytes: Counter,
+}
+
+fn serialize_u64(value: &u64) -> anyhow::Result<IVec> {
+    let options = bincode::options().with_fixint_encoding().with_big_endian();
+    Ok(options.serialize(value).unwrap().into())
+}
+
+fn deserialize_u64(value: &IVec) -> anyhow::Result<u64> {
+    let options = bincode::options().with_fixint_encoding().with_big_endian();
+    Ok(options.deserialize(value).unwrap())
 }
 
 impl StorageMetrics {
@@ -217,9 +229,9 @@ impl RegistryStorage {
     pub fn set_hardstate(&self, hs: HardState) -> anyhow::Result<()> {
         self.state
             .transaction::<_, _, sled::transaction::TransactionError>(|t| {
-                t.insert(KEY_HARD_INDEX, bincode::serialize(&hs.commit).unwrap())?;
-                t.insert(KEY_HARD_TERM, bincode::serialize(&hs.term).unwrap())?;
-                t.insert(KEY_HARD_VOTE, bincode::serialize(&hs.vote).unwrap())?;
+                t.insert(KEY_HARD_INDEX, serialize_u64(&hs.commit).unwrap())?;
+                t.insert(KEY_HARD_TERM, serialize_u64(&hs.term).unwrap())?;
+                t.insert(KEY_HARD_VOTE, serialize_u64(&hs.vote).unwrap())?;
                 Ok(())
             })
             .context("Transaction failure")?;
@@ -232,7 +244,7 @@ impl RegistryStorage {
 
     pub fn set_commit(&self, commit: u64) {
         self.state
-            .insert(KEY_HARD_INDEX, bincode::serialize(&commit).unwrap())
+            .insert(KEY_HARD_INDEX, serialize_u64(&commit).unwrap())
             .unwrap();
 
         self.metrics.hs_index.set(commit);
@@ -240,7 +252,7 @@ impl RegistryStorage {
 
     pub fn last_index(&self) -> u64 {
         if let Some((key, _value)) = self.entries.last().unwrap() {
-            return bincode::deserialize(&key).unwrap();
+            return deserialize_u64(&key).unwrap();
         }
 
         self.snapshot_metadata.index
@@ -248,7 +260,7 @@ impl RegistryStorage {
 
     pub fn first_index(&self) -> u64 {
         if let Some((key, _value)) = self.entries.first().unwrap() {
-            return bincode::deserialize(&key).unwrap();
+            return deserialize_u64(&key).unwrap();
         }
 
         self.snapshot_metadata.index + 1
@@ -409,7 +421,7 @@ impl RegistryStorage {
         }
 
         for ent in ents {
-            let key = bincode::serialize(&ent.index).unwrap();
+            let key = serialize_u64(&ent.index)?;
             let value = protobuf::Message::write_to_bytes(ent).unwrap();
             self.entries
                 .insert(key, value)
@@ -438,11 +450,11 @@ impl Storage for RegistryStorage {
         };
 
         if let Some(index) = self.state.get(KEY_HARD_INDEX).unwrap() {
-            raft_state.hard_state.commit = bincode::deserialize(&index).unwrap();
+            raft_state.hard_state.commit = deserialize_u64(&index).unwrap();
         }
 
         if let Some(term) = self.state.get(KEY_HARD_TERM).unwrap() {
-            raft_state.hard_state.term = bincode::deserialize(&term).unwrap();
+            raft_state.hard_state.term = deserialize_u64(&term).unwrap();
         }
 
         info!("Loaded intial raft state: {raft_state:?}");
@@ -469,8 +481,8 @@ impl Storage for RegistryStorage {
             return Err(Error::Store(StorageError::Unavailable));
         }
 
-        let low = bincode::serialize(&low).unwrap();
-        let high = bincode::serialize(&high).unwrap();
+        let low = serialize_u64(&low).unwrap();
+        let high = serialize_u64(&high).unwrap();
         let mut ents = self
             .entries
             .range(low..high)
@@ -483,7 +495,7 @@ impl Storage for RegistryStorage {
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
-        let encoded_idx = bincode::serialize(&idx).unwrap();
+        let encoded_idx = serialize_u64(&idx).unwrap();
         if let Some(bytes) = self.entries.get(encoded_idx).unwrap() {
             let entry = <Entry as protobuf::Message>::parse_from_bytes(&bytes).unwrap();
             return Ok(entry.term);
@@ -565,6 +577,21 @@ mod test {
         RegistryStorage::new(&config, &mut registry).await.unwrap()
     }
 
+    #[test]
+    fn test_key_assumptions() {
+        let i: u64 = 1;
+        assert_eq!(serialize_u64(&i).unwrap(), [0, 0, 0, 0, 0, 0, 0, 1]);
+
+        let i: u64 = 254;
+        assert_eq!(serialize_u64(&i).unwrap(), [0, 0, 0, 0, 0, 0, 0, 254]);
+
+        let i: u64 = 255;
+        assert_eq!(serialize_u64(&i).unwrap(), [0, 0, 0, 0, 0, 0, 0, 255]);
+
+        let i: u64 = 256;
+        assert_eq!(serialize_u64(&i).unwrap(), [0, 0, 0, 0, 0, 0, 1, 0]);
+    }
+
     #[tokio::test]
     async fn test_initial_state() {
         let store = get_test_storage().await;
@@ -597,6 +624,29 @@ mod test {
         ];
         store.append(&entries).await.unwrap();
         assert_eq!(store.last_index(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_append_lots() {
+        let store = get_test_storage().await;
+
+        assert_eq!(store.first_index(), 1);
+        assert_eq!(store.last_index(), 0);
+
+        let mut entries = Vec::with_capacity(1024);
+        for i in 1..1025 {
+            entries.push(Entry {
+                entry_type: EntryType::EntryNormal,
+                index: i,
+                term: 1,
+                ..Default::default()
+            });
+        }
+
+        store.append(&entries).await.unwrap();
+
+        assert_eq!(store.first_index(), 1);
+        assert_eq!(store.last_index(), 1024);
     }
 
     #[tokio::test]
