@@ -26,29 +26,29 @@ impl RegistryStateMetrics {
 
         let blob_entry = Gauge::default();
         registry.register(
-            "blob_netry",
-            "The most recently commit",
+            "blob_entries",
+            "How many blobs are registered in the store",
             Box::new(blob_entry.clone()),
         );
 
         let blob_disk_usage = Gauge::default();
         registry.register(
             "blob_disk_usage",
-            "The most recent term",
+            "How much disk space the full collection of blobs uses",
             Box::new(blob_disk_usage.clone()),
         );
 
         let manifest_entry = Gauge::default();
         registry.register(
-            "manifest_entry",
-            "The latest applied log entry in the journal",
+            "manifest_entries",
+            "How many manifests are registered in the store",
             Box::new(manifest_entry.clone()),
         );
 
         let manifest_disk_usage = Gauge::default();
         registry.register(
-            "manifest_disk_usae",
-            "The first log entry in the journal",
+            "manifest_disk_usage",
+            "How much disk space the full collection of manifests uses",
             Box::new(manifest_disk_usage.clone()),
         );
 
