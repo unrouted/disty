@@ -78,15 +78,23 @@ impl RegistryState {
         None
     }
 
-    fn get_or_insert_blob(&mut self, digest: Digest, timestamp: DateTime<Utc>) -> &mut Blob {
-        let mut blob = self.blobs.entry(digest).or_insert_with(|| Blob {
-            created: timestamp,
-            updated: timestamp,
-            content_type: None,
-            size: None,
-            dependencies: Some(vec![]),
-            locations: HashSet::new(),
-            repositories: HashSet::new(),
+    fn get_or_insert_blob(
+        &mut self,
+        digest: Digest,
+        timestamp: DateTime<Utc>,
+        metrics: &RegistryStateMetrics,
+    ) -> &mut Blob {
+        let mut blob = self.blobs.entry(digest).or_insert_with(|| {
+            metrics.blob_entry.inc();
+            Blob {
+                created: timestamp,
+                updated: timestamp,
+                content_type: None,
+                size: None,
+                dependencies: Some(vec![]),
+                locations: HashSet::new(),
+                repositories: HashSet::new(),
+            }
         });
 
         blob.updated = timestamp;
@@ -111,15 +119,20 @@ impl RegistryState {
         &mut self,
         digest: Digest,
         timestamp: DateTime<Utc>,
+        metrics: &RegistryStateMetrics,
     ) -> &mut Manifest {
-        let mut manifest = self.manifests.entry(digest).or_insert_with(|| Manifest {
-            created: timestamp,
-            updated: timestamp,
-            content_type: None,
-            size: None,
-            dependencies: Some(vec![]),
-            locations: HashSet::new(),
-            repositories: HashSet::new(),
+        let mut manifest = self.manifests.entry(digest).or_insert_with(|| {
+            metrics.manifest_entry.inc();
+
+            Manifest {
+                created: timestamp,
+                updated: timestamp,
+                content_type: None,
+                size: None,
+                dependencies: Some(vec![]),
+                locations: HashSet::new(),
+                repositories: HashSet::new(),
+            }
         });
 
         manifest.updated = timestamp;
@@ -292,7 +305,7 @@ impl RegistryState {
                     digest,
                     location,
                 } => {
-                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp, metrics);
                     blob.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
@@ -309,6 +322,10 @@ impl RegistryState {
                         blob.locations.remove(location);
 
                         if blob.locations.is_empty() {
+                            metrics.blob_entry.dec();
+                            if let Some(size) = blob.size {
+                                metrics.blob_disk_usage.dec_by(size);
+                            }
                             self.blobs.remove(digest);
                         }
                     }
@@ -319,7 +336,7 @@ impl RegistryState {
                     digest,
                     repository,
                 } => {
-                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp);
+                    let blob = self.get_or_insert_blob(digest.clone(), *timestamp, metrics);
                     blob.repositories.insert(repository.clone());
                 }
                 RegistryAction::BlobUnmounted {
@@ -362,7 +379,7 @@ impl RegistryState {
                     digest,
                     location,
                 } => {
-                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp, metrics);
                     manifest.locations.insert(location.clone());
 
                     //if location == self.machine_identifier {
@@ -379,6 +396,10 @@ impl RegistryState {
                         manifest.locations.remove(location);
 
                         if manifest.locations.is_empty() {
+                            metrics.manifest_entry.dec();
+                            if let Some(size) = manifest.size {
+                                metrics.manifest_disk_usage.dec_by(size);
+                            }
                             self.manifests.remove(digest);
                         }
                     }
@@ -389,7 +410,7 @@ impl RegistryState {
                     digest,
                     repository,
                 } => {
-                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp);
+                    let manifest = self.get_or_insert_manifest(digest.clone(), *timestamp, metrics);
                     manifest.repositories.insert(repository.clone());
                 }
                 RegistryAction::ManifestUnmounted {
