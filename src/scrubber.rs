@@ -104,13 +104,13 @@ fn _cleanup_folder(path: &PathBuf) -> anyhow::Result<()> {
 
     let is_empty = path.read_dir()?.next().is_none();
     if is_empty {
-        let created = path.metadata()?.created()?;
+        let modified = path.metadata()?.modified()?;
         let now = SystemTime::now();
 
         // This can Err if the clock goes backwards.
         // We ignore that and hope that eventually in a later scrub it won't go back
         // At least not enough to trigger an error
-        if let Ok(duration) = now.duration_since(created) {
+        if let Ok(duration) = now.duration_since(modified) {
             if duration > Duration::from_secs(60 * 60) {
                 info!("Scrubber: {:?}: Deleting empty folder", path);
                 std::fs::remove_dir(path)?;
