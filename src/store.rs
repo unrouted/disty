@@ -30,8 +30,11 @@ pub enum RegistryStorageError {
         snapshot_index: u64,
         first_index: u64,
     },
+    #[error("Hard state term lagging log state - may indicate corruption: hs_term@{hs_term}, log_term@{log_term}")]
+    HardStateStaleTerm { hs_term: u64, log_term: u64 },
+    #[error("Hard state commit points at invalid log index, indicates corruption: last_index@{last_index}, commit@{commit}")]
+    HardStateDanglingCommit { commit: u64, last_index: u64 },
 }
-
 #[derive(Clone)]
 pub struct StorageMetrics {
     hs_index: Gauge,
@@ -262,6 +265,25 @@ impl RegistryStorage {
                 return Err(RegistryStorageError::LogsMissing {
                     expected: expected_log_length,
                     actual: log_length,
+                }
+                .into());
+            }
+        }
+
+        let hs = self.initial_state().unwrap().hard_state;
+        if hs.commit > self.last_index() {
+            return Err(RegistryStorageError::HardStateDanglingCommit {
+                last_index: self.last_index(),
+                commit: hs.commit,
+            }
+            .into());
+        }
+
+        if let Ok(term) = self.term(self.last_index()) {
+            if hs.term < term {
+                return Err(RegistryStorageError::HardStateStaleTerm {
+                    hs_term: hs.term,
+                    log_term: term,
                 }
                 .into());
             }
@@ -868,5 +890,77 @@ mod test {
 
         assert!(store.ensure_initialized().is_ok());
         assert_eq!(store.first_index(), 2);
+    }
+
+    #[tokio::test]
+    async fn hard_state_term_stale() {
+        let store = get_test_storage().await;
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 2,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 3,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 3,
+                term: 4,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries).await.unwrap();
+
+        match store.ensure_initialized() {
+            Ok(_) => {
+                panic!("Error condition was not detected");
+            }
+            Err(err) => {
+                let actual_err = err.downcast::<RegistryStorageError>().unwrap();
+                assert!(matches!(
+                    actual_err,
+                    RegistryStorageError::HardStateStaleTerm {
+                        hs_term: 1,
+                        log_term: 4
+                    }
+                ));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn hard_state_commit_dangling() {
+        let store = get_test_storage().await;
+
+        store
+            .set_hardstate(HardState {
+                commit: 512,
+                term: 1,
+                ..Default::default()
+            })
+            .unwrap();
+
+        match store.ensure_initialized() {
+            Ok(_) => {
+                panic!("Error condition was not detected");
+            }
+            Err(err) => {
+                let actual_err = err.downcast::<RegistryStorageError>().unwrap();
+                assert!(matches!(
+                    actual_err,
+                    RegistryStorageError::HardStateDanglingCommit {
+                        commit: 512,
+                        last_index: 0
+                    }
+                ));
+            }
+        }
     }
 }
