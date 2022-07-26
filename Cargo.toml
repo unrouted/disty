@@ -42,3 +42,7 @@ reqwest-middleware = "*"
 lazy_static = "*"
 simple-pool = "*"
 tempfile = "*"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
