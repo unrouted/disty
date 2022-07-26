@@ -94,7 +94,7 @@ async fn do_scrub_pass(app: &Arc<RegistryApp>) {
 }
 
 fn _cleanup_folder(path: &PathBuf) -> anyhow::Result<()> {
-    for child in path.read_dir()?.into_iter() {
+    for child in path.read_dir()? {
         let child = child?;
         let file_type = child.file_type()?;
         if file_type.is_dir() {
