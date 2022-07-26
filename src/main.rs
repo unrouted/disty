@@ -22,6 +22,7 @@ mod mirror;
 pub mod network;
 mod prometheus;
 mod registry;
+mod scrubber;
 mod snapshot;
 mod state;
 mod store;
@@ -137,6 +138,7 @@ pub async fn start_registry_services(settings: Configuration) -> Result<Arc<Regi
     app.spawn(crate::app::do_raft_ticks(app.clone(), rx, actions_tx))
         .await;
 
+    app.spawn(crate::scrubber::do_scrub(app.clone())).await;
     app.spawn(crate::garbage::do_garbage_collect(app.clone()))
         .await;
     app.spawn(crate::mirror::do_miroring(app.clone(), actions_rx))

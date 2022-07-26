@@ -347,6 +347,17 @@ impl RegistryApp {
         state.is_manifest_available(repository, hash)
     }
 
+    pub async fn get_all_blobs(&self) -> Vec<Digest> {
+        let group = self.group.read().await;
+        let state = &group.store().store;
+        state.get_all_blobs()
+    }
+
+    pub async fn get_all_manifests(&self) -> Vec<Digest> {
+        let group = self.group.read().await;
+        let state = &group.store().store;
+        state.get_all_manifests()
+    }
     pub async fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
         let group = self.group.read().await;
         let state = &group.store().store;

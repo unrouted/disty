@@ -177,6 +177,10 @@ impl RegistryState {
             .collect::<Vec<BlobEntry>>()
     }
 
+    pub fn get_all_blobs(&self) -> Vec<Digest> {
+        self.blobs.keys().cloned().collect()
+    }
+
     pub fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
         let manifests: HashSet<Digest> = self.manifests.keys().cloned().collect();
         let mut tags: HashSet<Digest> = HashSet::new();
@@ -193,6 +197,10 @@ impl RegistryState {
                 digest,
             })
             .collect::<Vec<ManifestEntry>>()
+    }
+
+    pub fn get_all_manifests(&self) -> Vec<Digest> {
+        self.manifests.keys().cloned().collect()
     }
 
     pub(crate) fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {

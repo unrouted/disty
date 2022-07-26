@@ -260,6 +260,24 @@ fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest>
                     digest: digest.clone(),
                 });
             }
+            RegistryAction::BlobUnstored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => tasks.push(MirrorRequest::Blob {
+                digest: digest.clone(),
+            }),
+            RegistryAction::ManifestUnstored {
+                timestamp: _,
+                digest,
+                location: _,
+                user: _,
+            } => {
+                tasks.push(MirrorRequest::Manifest {
+                    digest: digest.clone(),
+                });
+            }
             _ => {}
         }
     }
