@@ -292,6 +292,8 @@ impl RegistryStorage {
             }
         }
 
+        info!("Loaded intial hard state: {hs:?}");
+
         Ok(())
     }
 
@@ -520,8 +522,6 @@ impl Storage for RegistryStorage {
         if let Some(term) = self.state.get(KEY_HARD_TERM).unwrap() {
             raft_state.hard_state.term = deserialize_u64(&term).unwrap();
         }
-
-        info!("Loaded intial raft state: {raft_state:?}");
 
         self.metrics.hs_index.set(raft_state.hard_state.commit);
         self.metrics.hs_term.set(raft_state.hard_state.term);
