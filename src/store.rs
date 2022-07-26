@@ -144,6 +144,9 @@ impl RegistryStorage {
         registry: &mut Registry,
     ) -> anyhow::Result<RegistryStorage> {
         let storage_path = std::path::Path::new(&config.storage);
+
+        std::fs::create_dir_all(storage_path).context("Failed to ensure store location existed")?;
+
         let path = storage_path.join("raft");
         let db = sled::open(path)?;
         let entries = db.open_tree("entries")?;
@@ -324,12 +327,17 @@ impl RegistryStorage {
         self.snapshot_metadata.index
     }
 
-    pub fn first_index(&self) -> u64 {
+    pub fn log_first_index(&self) -> Option<u64> {
         if let Some((key, _value)) = self.entries.first().unwrap() {
-            return deserialize_u64(&key).unwrap();
+            return Some(deserialize_u64(&key).unwrap());
         }
 
-        self.snapshot_metadata.index + 1
+        None
+    }
+
+    pub fn first_index(&self) -> u64 {
+        self.log_first_index()
+            .unwrap_or(self.snapshot_metadata.index + 1)
     }
 
     pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
@@ -383,8 +391,10 @@ impl RegistryStorage {
             .await
             .context("Failure to persist a local snapshot")?;
 
-        self.compact(self.applied_index)
-            .context("Failure to compact after making snapshot")?;
+        self.entries
+            .clear()
+            .context("Failed to flush log entries after taking snapshot")?;
+        self.metrics.first_index.set(self.first_index());
 
         self.snapshot_metadata = snapshot.get_metadata().clone();
         self.metrics
@@ -431,31 +441,6 @@ impl RegistryStorage {
         self.set_hardstate(hs)?;
 
         self.set_applied_index(index);
-
-        Ok(())
-    }
-
-    fn compact(&self, compact_index: u64) -> anyhow::Result<()> {
-        if compact_index <= self.first_index() {
-            // Don't need to treat this case as an error.
-            return Ok(());
-        }
-
-        if compact_index > self.last_index() + 1 {
-            bail!(
-                "compact not received raft logs: {}, last index: {}",
-                compact_index,
-                self.last_index()
-            );
-        }
-
-        while self.first_index() < compact_index {
-            self.entries
-                .pop_min()
-                .context("Failed to compact old log entry")?;
-        }
-
-        self.metrics.first_index.set(self.first_index());
 
         Ok(())
     }
@@ -514,6 +499,10 @@ impl RegistryStorage {
         self.entries.remove(serialize_u64(&idx).unwrap()).unwrap();
 
         Ok(())
+    }
+
+    pub fn size(&self) -> u64 {
+        self.entries.len() as u64
     }
 }
 
@@ -625,31 +614,57 @@ impl Storage for RegistryStorage {
 #[cfg(test)]
 mod test {
     use crate::config::{PeerConfig, RaftConfig, RegistryConfig};
+    use std::ops::{Deref, DerefMut};
+    use tempfile::TempDir;
 
     use super::*;
 
-    async fn get_test_storage() -> RegistryStorage {
-        let tempdir = tempfile::tempdir().unwrap();
+    struct TestStorage {
+        storage: RegistryStorage,
+        _tempdir: TempDir,
+    }
 
-        let config = Configuration {
-            peers: vec![PeerConfig {
-                name: "registry-1".into(),
-                raft: RaftConfig {
-                    address: "127.0.0.1".into(),
-                    port: 8080,
-                },
-                registry: RegistryConfig {
-                    address: "127.0.0.1".into(),
-                    port: 8080,
-                },
-            }],
-            storage: tempdir.path().to_str().unwrap().to_owned(),
-            ..Default::default()
-        };
+    impl TestStorage {
+        async fn new() -> Self {
+            let tempdir = tempfile::tempdir().unwrap();
 
-        let mut registry = <prometheus_client::registry::Registry>::default();
+            let config = Configuration {
+                peers: vec![PeerConfig {
+                    name: "registry-1".into(),
+                    raft: RaftConfig {
+                        address: "127.0.0.1".into(),
+                        port: 8080,
+                    },
+                    registry: RegistryConfig {
+                        address: "127.0.0.1".into(),
+                        port: 8080,
+                    },
+                }],
+                storage: tempdir.path().to_str().unwrap().to_owned(),
+                ..Default::default()
+            };
 
-        RegistryStorage::new(&config, &mut registry).await.unwrap()
+            let mut registry = <prometheus_client::registry::Registry>::default();
+
+            TestStorage {
+                storage: RegistryStorage::new(&config, &mut registry).await.unwrap(),
+                _tempdir: tempdir,
+            }
+        }
+    }
+
+    impl Deref for TestStorage {
+        type Target = RegistryStorage;
+
+        fn deref(&self) -> &Self::Target {
+            &self.storage
+        }
+    }
+
+    impl DerefMut for TestStorage {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.storage
+        }
     }
 
     #[test]
@@ -669,7 +684,7 @@ mod test {
 
     #[tokio::test]
     async fn test_initial_state() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
         let initial_state = store.initial_state().unwrap();
 
         assert_eq!(initial_state.conf_state.voters, vec![1]);
@@ -681,7 +696,7 @@ mod test {
 
     #[tokio::test]
     async fn test_append() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -703,7 +718,7 @@ mod test {
 
     #[tokio::test]
     async fn test_append_lots() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         assert_eq!(store.first_index(), 1);
         assert_eq!(store.last_index(), 0);
@@ -725,36 +740,31 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_compact() {
-        let store = get_test_storage().await;
+    async fn take_snapshot() {
+        let mut store = TestStorage::new().await;
 
-        let entries = vec![
-            Entry {
+        let mut entries = Vec::with_capacity(1024);
+        for i in 1..1025 {
+            entries.push(Entry {
                 entry_type: EntryType::EntryNormal,
-                index: 1,
+                index: i,
                 term: 1,
                 ..Default::default()
-            },
-            Entry {
-                entry_type: EntryType::EntryNormal,
-                index: 2,
-                term: 1,
-                ..Default::default()
-            },
-        ];
+            });
+        }
+
         store.append(&entries).await.unwrap();
-        assert_eq!(store.first_index(), 1);
+        assert_eq!(store.size(), 1024);
 
-        store.compact(2).unwrap();
-        assert_eq!(store.first_index(), 2);
+        store.applied_index = 1024;
+        store.store_snapshot().await.unwrap();
 
-        store.compact(2).unwrap();
-        assert_eq!(store.first_index(), 2);
+        assert_eq!(store.size(), 0);
     }
 
     #[tokio::test]
     async fn test_term() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -779,7 +789,7 @@ mod test {
 
     #[tokio::test]
     async fn test_fsck_snapshot_log_gap() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -819,7 +829,7 @@ mod test {
 
     #[tokio::test]
     async fn test_fsck_log_gap() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -864,7 +874,7 @@ mod test {
 
     #[tokio::test]
     async fn test_fsck_log_compaction() {
-        let mut store = get_test_storage().await;
+        let mut store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -894,7 +904,7 @@ mod test {
 
     #[tokio::test]
     async fn hard_state_term_stale() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         let entries = vec![
             Entry {
@@ -937,7 +947,7 @@ mod test {
 
     #[tokio::test]
     async fn hard_state_commit_dangling() {
-        let store = get_test_storage().await;
+        let store = TestStorage::new().await;
 
         store
             .set_hardstate(HardState {
