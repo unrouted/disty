@@ -6,12 +6,12 @@ use log::{error, info, warn};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use raft::util::limit_size;
 use raft::{eraftpb::*, RaftState, Storage};
+use raft::{Error, Result, StorageError};
 use sled::IVec;
 use std::io::ErrorKind;
-
-use raft::util::limit_size;
-use raft::{Error, Result, StorageError};
+use thiserror::Error;
 
 use crate::config::Configuration;
 use crate::state::RegistryState;
@@ -20,6 +20,17 @@ use crate::types::RegistryAction;
 const KEY_HARD_INDEX: &[u8; 8] = b"hs-index";
 const KEY_HARD_TERM: &[u8; 7] = b"hs-term";
 const KEY_HARD_VOTE: &[u8; 7] = b"hs-vote";
+
+#[derive(Error, Debug)]
+pub enum RegistryStorageError {
+    #[error("Gaps in log entries: expected:{expected} actual:{actual}")]
+    LogsMissing { expected: u64, actual: u64 },
+    #[error("Gaps between snapshot and log entries: snapshot@{snapshot_index}, first_index@{first_index}")]
+    LogsTooCompacted {
+        snapshot_index: u64,
+        first_index: u64,
+    },
+}
 
 #[derive(Clone)]
 pub struct StorageMetrics {
@@ -235,7 +246,25 @@ impl RegistryStorage {
         }
 
         if expected_first_index < self.first_index() {
-            bail!("Storage may be corrupt; there are gaps between the snapshot and the logs (snapshot@{}, logs start@{})", self.snapshot_metadata.index, self.first_index());
+            return Err(RegistryStorageError::LogsTooCompacted {
+                snapshot_index: self.snapshot_metadata.index,
+                first_index: self.first_index(),
+            }
+            .into());
+        }
+
+        // If first_index > self.last_index, then there is a snapshot and NO log entries
+        if self.first_index() <= self.last_index() {
+            let expected_log_length = self.last_index() - self.first_index() + 1;
+            let log_length = self.entries.len() as u64;
+
+            if expected_log_length != log_length {
+                return Err(RegistryStorageError::LogsMissing {
+                    expected: expected_log_length,
+                    actual: log_length,
+                }
+                .into());
+            }
         }
 
         Ok(())
@@ -452,6 +481,15 @@ impl RegistryStorage {
             .context("Failed to flush appended entries to journal")?;
 
         self.metrics.flushed_bytes.inc_by(flushed as u64);
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl RegistryStorage {
+    pub fn delete(&self, idx: u64) -> Result<()> {
+        self.entries.remove(serialize_u64(&idx).unwrap()).unwrap();
 
         Ok(())
     }
@@ -718,7 +756,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_fsck_log_gap() {
+    async fn test_fsck_snapshot_log_gap() {
         let store = get_test_storage().await;
 
         let entries = vec![
@@ -737,9 +775,69 @@ mod test {
         ];
         store.append(&entries).await.unwrap();
 
-        store.compact(2).unwrap();
+        store.delete(1).unwrap();
 
-        assert!(store.ensure_initialized().is_err());
+        match store.ensure_initialized() {
+            Ok(_) => {
+                panic!("Error condition was not detected");
+            }
+            Err(err) => {
+                let actual_err = err.downcast::<RegistryStorageError>().unwrap();
+                println!("{actual_err:?}");
+                assert!(matches!(
+                    actual_err,
+                    RegistryStorageError::LogsTooCompacted {
+                        snapshot_index: 0,
+                        first_index: 2
+                    }
+                ));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fsck_log_gap() {
+        let store = get_test_storage().await;
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 3,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries).await.unwrap();
+
+        store.delete(2).unwrap();
+
+        match store.ensure_initialized() {
+            Ok(_) => {
+                panic!("Error condition was not detected");
+            }
+            Err(err) => {
+                let actual_err = err.downcast::<RegistryStorageError>().unwrap();
+                assert!(matches!(
+                    actual_err,
+                    RegistryStorageError::LogsMissing {
+                        expected: 3,
+                        actual: 2
+                    }
+                ));
+            }
+        }
     }
 
     #[tokio::test]
