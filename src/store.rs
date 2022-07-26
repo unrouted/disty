@@ -223,6 +223,21 @@ impl RegistryStorage {
             .context("Could not initialize hard state")?;
         }
 
+        let expected_first_index = self.snapshot_metadata.index + 1;
+        if self.first_index() < expected_first_index {
+            warn!("Unexpected log entries: A previous compaction failed and left stale journal records (snapshot@{}, logs start@{})", self.snapshot_metadata.index, self.first_index());
+
+            while self.first_index() < expected_first_index {
+                self.entries
+                    .pop_min()
+                    .context("Failed to compact old log entry")?;
+            }
+        }
+
+        if expected_first_index < self.first_index() {
+            bail!("Storage may be corrupt; there are gaps between the snapshot and the logs (snapshot@{}, logs start@{})", self.snapshot_metadata.index, self.first_index());
+        }
+
         Ok(())
     }
 
@@ -700,5 +715,60 @@ mod test {
         assert_eq!(store.term(1), Ok(1));
         assert_eq!(store.term(2), Ok(1));
         assert_eq!(store.term(3), Err(Error::Store(StorageError::Unavailable)));
+    }
+
+    #[tokio::test]
+    async fn test_fsck_log_gap() {
+        let store = get_test_storage().await;
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries).await.unwrap();
+
+        store.compact(2).unwrap();
+
+        assert!(store.ensure_initialized().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_fsck_log_compaction() {
+        let mut store = get_test_storage().await;
+
+        let entries = vec![
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 1,
+                term: 1,
+                ..Default::default()
+            },
+            Entry {
+                entry_type: EntryType::EntryNormal,
+                index: 2,
+                term: 1,
+                ..Default::default()
+            },
+        ];
+        store.append(&entries).await.unwrap();
+
+        assert_eq!(store.first_index(), 1);
+
+        // Simulate a snapshot where compaction failed - so now there are extra log entries
+        // that are *before* the latest snapshot.
+        store.snapshot_metadata.index = 1;
+
+        assert!(store.ensure_initialized().is_ok());
+        assert_eq!(store.first_index(), 2);
     }
 }
