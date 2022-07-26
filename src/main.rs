@@ -31,6 +31,9 @@ mod webhook;
 
 pub type NodeId = u64;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
     if !path.exists() {
