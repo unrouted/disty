@@ -3,10 +3,11 @@
 //! distribd automatically scrubs data to detect and repair corrupt data.
 
 use std::io::ErrorKind;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
-use log::{info, warn};
+use log::{error, info, warn};
 use tokio::select;
 
 use crate::app::RegistryApp;
@@ -91,6 +92,56 @@ async fn do_scrub_pass(app: &Arc<RegistryApp>) {
     }
 }
 
+fn _cleanup_folder(path: &PathBuf) -> anyhow::Result<()> {
+    for child in path.read_dir()?.into_iter() {
+        let child = child?;
+        let file_type = child.file_type()?;
+        if file_type.is_dir() {
+            _cleanup_folder(&child.path())?;
+        }
+    }
+
+    let is_empty = path.read_dir()?.next().is_none();
+    if is_empty {
+        info!("Scrubber: {:?}: Deleting empty folder", path);
+        std::fs::remove_dir(path)?;
+    }
+
+    Ok(())
+}
+
+pub async fn do_scrub_empty_folders(app: &Arc<RegistryApp>) {
+    let path = PathBuf::from(&app.settings.storage);
+
+    let blob_directory = path.join("blobs");
+    let blob_handle = tokio::task::spawn_blocking(move || {
+        if let Err(err) = _cleanup_folder(&blob_directory) {
+            error!("Scrubber: Error removing empty blob folders: {:?}", err);
+        }
+    });
+
+    let manifest_directory = path.join("manifests");
+    let manifest_handle = tokio::task::spawn_blocking(move || {
+        if let Err(err) = _cleanup_folder(&manifest_directory) {
+            error!("Scrubber: Error removing empty manifest folders: {:?}", err);
+        }
+    });
+
+    if let Err(err) = blob_handle.await {
+        error!(
+            "Scrubber: Join error removing empty blob folders: {:?}",
+            err
+        );
+    }
+
+    if let Err(err) = manifest_handle.await {
+        error!(
+            "Scrubber: Join error removing empty manifest folders: {:?}",
+            err
+        );
+    }
+}
+
 pub async fn do_scrub(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     let mut lifecycle = app.subscribe_lifecycle();
 
@@ -99,6 +150,7 @@ pub async fn do_scrub(app: Arc<RegistryApp>) -> anyhow::Result<()> {
 
         if leader_id > 0 {
             do_scrub_pass(&app).await;
+            do_scrub_empty_folders(&app).await;
         } else {
             info!("Scrub: Skipped as leader not known");
         }
