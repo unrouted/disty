@@ -14,7 +14,7 @@ use std::io::ErrorKind;
 use thiserror::Error;
 
 use crate::config::Configuration;
-use crate::state::RegistryState;
+use crate::state::{RegistryState, RegistryStateMetrics};
 use crate::types::RegistryAction;
 
 const KEY_HARD_INDEX: &[u8; 8] = b"hs-index";
@@ -136,6 +136,7 @@ pub struct RegistryStorage {
     pub applied_index: u64,
     storage_path: PathBuf,
     metrics: StorageMetrics,
+    state_metrics: RegistryStateMetrics,
 }
 
 impl RegistryStorage {
@@ -202,6 +203,9 @@ impl RegistryStorage {
             },
         };
 
+        let state_metrics = RegistryStateMetrics::new(registry);
+        store.apply_state_metrics(&state_metrics);
+
         let metrics = StorageMetrics::new(registry);
         metrics.applied_index.set(applied_index);
         metrics.snapshot_index.set(snapshot_metadata.index);
@@ -217,6 +221,7 @@ impl RegistryStorage {
             applied_index,
             storage_path: storage_path.to_path_buf(),
             metrics,
+            state_metrics,
         };
 
         store.ensure_initialized()?;
@@ -343,7 +348,7 @@ impl RegistryStorage {
     }
 
     pub fn dispatch_actions(&mut self, actions: &Vec<RegistryAction>) {
-        self.store.dispatch_actions(actions);
+        self.store.dispatch_actions(actions, &self.state_metrics);
     }
 
     fn validate_snapshot(snapshot: &Snapshot) -> anyhow::Result<()> {
@@ -435,7 +440,7 @@ impl RegistryStorage {
         self.metrics.first_index.set(self.first_index());
         self.metrics.last_index.set(self.last_index());
 
-        self.store = serde_json::from_slice(&snapshot.data).unwrap();
+        self.apply_registry_state(serde_json::from_slice(&snapshot.data).unwrap());
 
         let mut hs = self.initial_state().unwrap().hard_state;
         hs.commit = index;
@@ -445,6 +450,11 @@ impl RegistryStorage {
         self.set_applied_index(index);
 
         Ok(())
+    }
+
+    fn apply_registry_state(&mut self, state: RegistryState) {
+        self.store = state;
+        self.store.apply_state_metrics(&self.state_metrics);
     }
 
     pub async fn append(&self, ents: &[Entry]) -> anyhow::Result<()> {
