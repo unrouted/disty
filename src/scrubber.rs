@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use chrono::Utc;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use tokio::select;
 
 use crate::app::RegistryApp;
@@ -157,18 +157,17 @@ pub async fn do_scrub(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     let mut lifecycle = app.subscribe_lifecycle();
 
     loop {
-        if !app.settings.scrubber.enabled {
-            info!("Scrubber: Disabled in config");
-            break;
-        }
+        if app.settings.scrubber.enabled {
+            let leader_id = app.group.read().await.raft.leader_id;
 
-        let leader_id = app.group.read().await.raft.leader_id;
-
-        if leader_id > 0 {
-            do_scrub_pass(&app).await;
-            do_scrub_empty_folders(&app).await;
+            if leader_id > 0 {
+                do_scrub_pass(&app).await;
+                do_scrub_empty_folders(&app).await;
+            } else {
+                info!("Scrub: Skipped as leader not known");
+            }
         } else {
-            info!("Scrub: Skipped as leader not known");
+            debug!("Scrubber: Disabled in config");
         }
 
         select! {
