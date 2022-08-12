@@ -120,6 +120,11 @@ pub struct WebhookConfig {
     pub matcher: Regex,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct ScrubberConfig {
+    pub enabled: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub identifier: String,
@@ -131,6 +136,7 @@ pub struct Configuration {
     pub storage: String,
     pub peers: Vec<PeerConfig>,
     pub webhooks: Vec<WebhookConfig>,
+    pub scrubber: ScrubberConfig,
 }
 
 impl Default for Configuration {
@@ -145,6 +151,7 @@ impl Default for Configuration {
             storage: "var".to_string(),
             peers: vec![],
             webhooks: vec![],
+            scrubber: ScrubberConfig::default(),
         }
     }
 }
