@@ -155,7 +155,7 @@ pub async fn do_scrub_empty_folders(app: &Arc<RegistryApp>) {
 
 pub async fn do_scrub(app: Arc<RegistryApp>) -> anyhow::Result<()> {
     if !app.settings.scrubber.enabled {
-        info(!{ "Scrubber: Disabled in config and will not be started" });
+        info!({ "Scrubber: Disabled in config and will not be started" });
         return Ok(());
     }
 
