@@ -20,10 +20,10 @@ use crate::{
 
 const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 
-async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
+async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) -> anyhow::Result<()> {
     if !app.is_leader().await {
         debug!("Garbage collection: Phase 1: Not leader");
-        return;
+        return Ok(());
     }
 
     debug!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
@@ -31,7 +31,7 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
     let minimum_age = chrono::Duration::seconds(MINIMUM_GARBAGE_AGE);
     let mut actions = vec![];
 
-    for entry in app.get_orphaned_manifests().await {
+    for entry in app.get_orphaned_manifests().await? {
         let age = Utc::now() - entry.manifest.created;
         if age < minimum_age {
             debug!(
@@ -50,7 +50,7 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
             })
         }
     }
-    for entry in app.get_orphaned_blobs().await {
+    for entry in app.get_orphaned_blobs().await? {
         let age = Utc::now() - entry.blob.created;
         if age < minimum_age {
             info!(
@@ -76,6 +76,8 @@ async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) {
         );
         app.submit(actions).await;
     }
+
+    Ok(())
 }
 
 async fn cleanup_object(path: &PathBuf) -> anyhow::Result<()> {
@@ -124,14 +126,14 @@ async fn cleanup_object(path: &PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
+async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()> {
     debug!("Garbage collection: Phase 2: Sweeping for unmounted objects that can be unstored");
 
     let images_directory = &app.settings.storage;
 
     let mut actions = vec![];
 
-    for entry in app.get_orphaned_manifests().await {
+    for entry in app.get_orphaned_manifests().await? {
         if !entry.manifest.locations.contains(&app.settings.identifier) {
             continue;
         }
@@ -154,7 +156,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         });
     }
 
-    for entry in app.get_orphaned_blobs().await {
+    for entry in app.get_orphaned_blobs().await? {
         if !entry.blob.locations.contains(&app.settings.identifier) {
             continue;
         }
@@ -184,6 +186,8 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) {
         );
         app.submit(actions).await;
     }
+
+    Ok(())
 }
 
 pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
@@ -193,8 +197,8 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
         let leader_id = app.group.read().await.raft.leader_id;
 
         if leader_id > 0 {
-            do_garbage_collect_phase1(&app).await;
-            do_garbage_collect_phase2(&app).await;
+            do_garbage_collect_phase1(&app).await?;
+            do_garbage_collect_phase2(&app).await?;
         } else {
             info!("Garbage collection: Skipped as leader not known");
         }

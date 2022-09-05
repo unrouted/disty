@@ -20,6 +20,7 @@ pub(crate) enum Responses {
         challenge: String,
     },
     AccessDenied {},
+    ServiceUnavailable {},
     BlobNotFound {},
     Ok {
         digest: Digest,
@@ -40,6 +41,9 @@ Content-Type: <media type of blob>
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
+            }
             Responses::MustAuthenticate { challenge } => {
                 let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
@@ -114,10 +118,13 @@ pub(crate) async fn get(
     }
 
     let blob = match app.get_blob(&repository, &digest).await {
-        Some(blob) => blob,
-        None => {
+        Ok(Some(blob)) => blob,
+        Ok(None) => {
             debug!("get_blob returned no blob found");
             return Responses::BlobNotFound {};
+        }
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
         }
     };
 

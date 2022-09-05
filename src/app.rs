@@ -15,7 +15,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
+use tokio::time::{timeout, Instant};
 
 use crate::config::Configuration;
 use crate::extractor::Extractor;
@@ -27,6 +27,8 @@ use crate::types::Manifest;
 use crate::types::ManifestEntry;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+
+const LOCK_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_millis(1000);
 
 #[derive(Clone, Debug)]
 pub enum Lifecycle {
@@ -297,77 +299,89 @@ impl RegistryApp {
         }
     }
 
-    pub async fn is_blob_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let group = self.group.read().await;
+    pub async fn is_blob_available(
+        &self,
+        repository: &RepositoryName,
+        hash: &Digest,
+    ) -> Result<bool> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.is_blob_available(repository, hash)
+        Ok(state.is_blob_available(repository, hash))
     }
 
-    pub async fn get_blob_directly(&self, hash: &Digest) -> Option<Blob> {
-        let group = self.group.read().await;
+    pub async fn get_blob_directly(&self, hash: &Digest) -> Result<Option<Blob>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_blob_directly(hash)
+        Ok(state.get_blob_directly(hash))
     }
 
-    pub async fn get_blob(&self, repository: &RepositoryName, hash: &Digest) -> Option<Blob> {
-        let group = self.group.read().await;
+    pub async fn get_blob(
+        &self,
+        repository: &RepositoryName,
+        hash: &Digest,
+    ) -> Result<Option<Blob>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_blob(repository, hash)
+        Ok(state.get_blob(repository, hash))
     }
 
-    pub async fn get_manifest_directly(&self, hash: &Digest) -> Option<Manifest> {
-        let group = self.group.read().await;
+    pub async fn get_manifest_directly(&self, hash: &Digest) -> Result<Option<Manifest>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_manifest_directly(hash)
+        Ok(state.get_manifest_directly(hash))
     }
     pub async fn get_manifest(
         &self,
         repository: &RepositoryName,
         hash: &Digest,
-    ) -> Option<Manifest> {
-        let group = self.group.read().await;
+    ) -> Result<Option<Manifest>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_manifest(repository, hash)
+        Ok(state.get_manifest(repository, hash))
     }
-    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
-        let group = self.group.read().await;
+    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Result<Option<Digest>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.raft.raft_log.store.store;
-        state.get_tag(repository, tag)
+        Ok(state.get_tag(repository, tag))
     }
 
-    pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
-        let group = self.group.read().await;
+    pub async fn get_tags(&self, repository: &RepositoryName) -> Result<Option<Vec<String>>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_tags(repository)
+        Ok(state.get_tags(repository))
     }
 
-    pub async fn is_manifest_available(&self, repository: &RepositoryName, hash: &Digest) -> bool {
-        let group = self.group.read().await;
+    pub async fn is_manifest_available(
+        &self,
+        repository: &RepositoryName,
+        hash: &Digest,
+    ) -> Result<bool> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.is_manifest_available(repository, hash)
+        Ok(state.is_manifest_available(repository, hash))
     }
 
-    pub async fn get_all_blobs(&self) -> Vec<Digest> {
-        let group = self.group.read().await;
+    pub async fn get_all_blobs(&self) -> Result<Vec<Digest>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_all_blobs()
+        Ok(state.get_all_blobs())
     }
 
-    pub async fn get_all_manifests(&self) -> Vec<Digest> {
-        let group = self.group.read().await;
+    pub async fn get_all_manifests(&self) -> Result<Vec<Digest>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_all_manifests()
+        Ok(state.get_all_manifests())
     }
-    pub async fn get_orphaned_blobs(&self) -> Vec<BlobEntry> {
-        let group = self.group.read().await;
+    pub async fn get_orphaned_blobs(&self) -> Result<Vec<BlobEntry>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_orphaned_blobs()
+        Ok(state.get_orphaned_blobs())
     }
 
-    pub async fn get_orphaned_manifests(&self) -> Vec<ManifestEntry> {
-        let group = self.group.read().await;
+    pub async fn get_orphaned_manifests(&self) -> Result<Vec<ManifestEntry>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
         let state = &group.store().store;
-        state.get_orphaned_manifests()
+        Ok(state.get_orphaned_manifests())
     }
 }
 

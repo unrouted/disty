@@ -16,6 +16,7 @@ pub(crate) enum Responses {
         challenge: String,
     },
     AccessDenied {},
+    ServiceUnavailable {},
     NoSuchRepository {},
     Ok {
         repository: RepositoryName,
@@ -50,6 +51,9 @@ impl<'r> Responder<'r, 'static> for Responses {
                     .sized_body(body.len(), Cursor::new(body))
                     .status(Status::Forbidden)
                     .ok()
+            }
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
             }
             Responses::NoSuchRepository {} => Response::build().status(Status::NotFound).ok(),
             Responses::Ok {
@@ -124,7 +128,8 @@ pub(crate) async fn get(
     }
 
     match app.get_tags(&repository).await {
-        Some(mut tags) => {
+        Err(_) => return Responses::ServiceUnavailable {},
+        Ok(Some(mut tags)) => {
             tags.sort();
 
             if let Some(last) = last {
@@ -148,6 +153,6 @@ pub(crate) async fn get(
                 tags,
             }
         }
-        None => Responses::NoSuchRepository {},
+        Ok(None) => Responses::NoSuchRepository {},
     }
 }

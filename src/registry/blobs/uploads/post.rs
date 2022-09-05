@@ -25,6 +25,7 @@ pub(crate) enum Responses {
     },
     AccessDenied {},
     UploadInvalid {},
+    ServiceUnavailable {},
     DigestInvalid {},
     UploadComplete {
         repository: RepositoryName,
@@ -40,6 +41,9 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
+            }
             Responses::MustAuthenticate { challenge } => {
                 let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
@@ -173,22 +177,28 @@ pub(crate) async fn post(
             return Responses::UploadInvalid {};
         }
 
-        if app.is_blob_available(&from, &mount).await {
-            let actions = vec![RegistryAction::BlobMounted {
-                timestamp: Utc::now(),
-                digest: mount.clone(),
-                repository: repository.clone(),
-                user: token.sub.clone(),
-            }];
-
-            if !app.submit(actions).await {
-                return Responses::UploadInvalid {};
+        match app.is_blob_available(&from, &mount).await {
+            Err(_) => {
+                return Responses::ServiceUnavailable {};
             }
+            Ok(false) => {}
+            Ok(true) => {
+                let actions = vec![RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    digest: mount.clone(),
+                    repository: repository.clone(),
+                    user: token.sub.clone(),
+                }];
 
-            return Responses::UploadComplete {
-                repository,
-                digest: mount,
-            };
+                if !app.submit(actions).await {
+                    return Responses::UploadInvalid {};
+                }
+
+                return Responses::UploadComplete {
+                    repository,
+                    digest: mount,
+                };
+            }
         }
     }
 

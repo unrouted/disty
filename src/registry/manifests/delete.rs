@@ -14,6 +14,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 pub(crate) enum Responses {
+    ServiceUnavailable {},
     MustAuthenticate { challenge: String },
     AccessDenied {},
     NotFound {},
@@ -24,6 +25,9 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
+            }
             Responses::MustAuthenticate { challenge } => {
                 let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
@@ -75,8 +79,14 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !app.is_manifest_available(&repository, &digest).await {
-        return Responses::NotFound {};
+    match app.is_manifest_available(&repository, &digest).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return Responses::NotFound {};
+        }
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
+        }
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
@@ -113,12 +123,15 @@ pub(crate) async fn delete_by_tag(
     }
 
     let digest = match app.get_tag(&repository, &tag).await {
-        Some(tag) => tag,
-        None => return Responses::NotFound {},
+        Ok(Some(tag)) => tag,
+        Ok(None) => return Responses::NotFound {},
+        Err(_) => return Responses::ServiceUnavailable {},
     };
 
-    if !app.is_manifest_available(&repository, &digest).await {
-        return Responses::NotFound {};
+    match app.is_manifest_available(&repository, &digest).await {
+        Ok(true) => {}
+        Ok(false) => return Responses::NotFound {},
+        Err(_) => return Responses::ServiceUnavailable {},
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {

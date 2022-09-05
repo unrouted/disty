@@ -68,7 +68,10 @@ async fn do_transfer(
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
         MirrorRequest::Blob { ref digest } => match app.get_blob_directly(digest).await {
-            Some(blob) => {
+            Err(_) => {
+                return MirrorResult::Retry { request: request };
+            }
+            Ok(Some(blob)) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
                     None => {
@@ -83,13 +86,16 @@ async fn do_transfer(
 
                 (digest, repository, blob.locations, "blobs")
             }
-            None => {
+            Ok(None) => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                 return MirrorResult::None;
             }
         },
         MirrorRequest::Manifest { ref digest } => match app.get_manifest_directly(digest).await {
-            Some(manifest) => {
+            Err(_) => {
+                return MirrorResult::Retry { request: request };
+            }
+            Ok(Some(manifest)) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),
                     None => {
@@ -104,7 +110,7 @@ async fn do_transfer(
 
                 (digest, repository, manifest.locations, "manifests")
             }
-            None => {
+            Ok(None) => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                 return MirrorResult::None;
             }

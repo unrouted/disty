@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
+    ServiceUnavailable {},
     AccessDenied {},
     NotFound {},
     Failed {},
@@ -26,6 +27,9 @@ pub(crate) enum Responses {
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
+            }
             Responses::MustAuthenticate { challenge } => {
                 let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
@@ -78,8 +82,14 @@ pub(crate) async fn delete(
         return Responses::AccessDenied {};
     }
 
-    if !app.is_blob_available(&repository, &digest).await {
-        return Responses::NotFound {};
+    match app.is_blob_available(&repository, &digest).await {
+        Ok(false) => {
+            return Responses::NotFound {};
+        }
+        Ok(true) => {}
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
+        }
     }
 
     let actions = vec![RegistryAction::BlobUnmounted {

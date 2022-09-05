@@ -236,7 +236,14 @@ impl Extractor {
                     continue;
                 }
 
-                match app.get_blob(repository, &extraction.digest).await {
+                let res = match app.get_blob(repository, &extraction.digest).await {
+                    Ok(res) => res,
+                    Err(_) => {
+                        return Err(ExtractError::UnknownError {});
+                    }
+                };
+
+                match res {
                     Some(blob) => {
                         if blob.content_type.is_some() {
                             // Was already analyzed, don't do it again!

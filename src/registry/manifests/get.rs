@@ -14,6 +14,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 pub(crate) enum Responses {
+    ServiceUnavailable {},
     MustAuthenticate {
         challenge: String,
     },
@@ -50,6 +51,9 @@ Content-Type: <media type of manifest>
 impl<'r> Responder<'r, 'static> for Responses {
     fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
         match self {
+            Responses::ServiceUnavailable {} => {
+                Response::build().status(Status::ServiceUnavailable).ok()
+            }
             Responses::MustAuthenticate { challenge } => {
                 let body = crate::registry::utils::simple_oci_error(
                     "UNAUTHORIZED",
@@ -120,18 +124,27 @@ pub(crate) async fn get(
         return Responses::AccessDenied {};
     }
 
-    if !app.is_manifest_available(&repository, &digest).await {
-        return Responses::ManifestNotFound {};
-    }
+    match app.is_manifest_available(&repository, &digest).await {
+        Ok(false) => {
+            return Responses::ManifestNotFound {};
+        }
+        Ok(true) => {}
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
+        }
+    };
 
     app.wait_for_manifest(&digest).await;
 
     let manifest = match app.get_manifest(&repository, &digest).await {
-        Some(manifest) => manifest,
-        _ => {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => {
             debug!("Failed to return manifest from graph for {digest} (via {repository}");
 
             return Responses::ManifestNotFound {};
+        }
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
         }
     };
 
@@ -182,26 +195,34 @@ pub(crate) async fn get_by_tag(
     }
 
     let digest = match app.get_tag(&repository, &tag).await {
-        Some(tag) => tag,
-        None => {
+        Ok(Some(tag)) => tag,
+        Ok(None) => {
             debug!("No such tag");
             return Responses::ManifestNotFound {};
         }
+        Err(_) => {
+            return Responses::ServiceUnavailable {};
+        }
     };
 
-    if !app.is_manifest_available(&repository, &digest).await {
-        debug!("Manifest not known to graph");
-        return Responses::ManifestNotFound {};
+    match app.is_manifest_available(&repository, &digest).await {
+        Ok(true) => {}
+        Ok(false) => {
+            debug!("Manifest not known to graph");
+            return Responses::ManifestNotFound {};
+        }
+        Err(_) => return Responses::ServiceUnavailable {},
     }
 
     app.wait_for_manifest(&digest).await;
 
     let manifest = match app.get_manifest(&repository, &digest).await {
-        Some(manifest) => manifest,
-        _ => {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => {
             debug!("Could not retrieve manifest info from graph");
             return Responses::ManifestNotFound {};
         }
+        Err(_) => return Responses::ServiceUnavailable {},
     };
 
     let content_type = match manifest.content_type {
