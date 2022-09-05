@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
@@ -29,6 +29,7 @@ use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 
 const LOCK_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_millis(1000);
+const LOCK_TIMEOUT_W: tokio::time::Duration = tokio::time::Duration::from_secs(30);
 
 #[derive(Clone, Debug)]
 pub enum Lifecycle {
@@ -136,22 +137,30 @@ impl RegistryApp {
         Ok(())
     }
 
+    pub async fn current_leader(&self) -> Result<Option<u64>> {
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await?;
+        if group.raft.leader_id > 0 {
+            return Ok(Some(group.raft.leader_id));
+        }
+        Ok(None)
+    }
+
     pub async fn is_leader(&self) -> bool {
-        let group = self.group.read().await;
-        group.raft.leader_id == group.raft.id
+        let group = timeout(LOCK_TIMEOUT, self.group.read()).await;
+        match group {
+            Ok(group) => group.raft.leader_id == group.raft.id,
+            Err(_) => false,
+        }
     }
 
     async fn wait_for_leader(&self) -> u64 {
         loop {
-            let group = self.group.read().await;
-            let leader_id = group.raft.leader_id;
-            drop(group);
-
-            if leader_id > 0 {
-                return leader_id;
+            match self.current_leader().await {
+                Ok(Some(leader_id)) => return leader_id,
+                Ok(None) | Err(_) => {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
             }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
 
@@ -170,7 +179,10 @@ impl RegistryApp {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
             .context("Failed to enqueue local proposal")?;
 
-        rx.await.context("Failed to wait for local proposal")
+        match timeout(LOCK_TIMEOUT_W, rx).await {
+            Ok(result) => result.context("Failed to wait for proposal"),
+            Err(_) => bail!("Timeout while waiting for proposal"),
+        }
     }
 
     pub async fn submit_remote(&self, actions: Vec<RegistryAction>, idx: u64) -> Result<u64> {
