@@ -69,7 +69,7 @@ async fn do_transfer(
     let (digest, repository, locations, object_type) = match request {
         MirrorRequest::Blob { ref digest } => match app.get_blob_directly(digest).await {
             Err(_) => {
-                return MirrorResult::Retry { request: request };
+                return MirrorResult::Retry { request };
             }
             Ok(Some(blob)) => {
                 let repository = match blob.repositories.iter().next() {
@@ -93,7 +93,7 @@ async fn do_transfer(
         },
         MirrorRequest::Manifest { ref digest } => match app.get_manifest_directly(digest).await {
             Err(_) => {
-                return MirrorResult::Retry { request: request };
+                return MirrorResult::Retry { request };
             }
             Ok(Some(manifest)) => {
                 let repository = match manifest.repositories.iter().next() {

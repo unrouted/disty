@@ -128,7 +128,7 @@ pub(crate) async fn get(
     }
 
     match app.get_tags(&repository).await {
-        Err(_) => return Responses::ServiceUnavailable {},
+        Err(_) => Responses::ServiceUnavailable {},
         Ok(Some(mut tags)) => {
             tags.sort();
 
