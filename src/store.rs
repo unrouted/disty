@@ -7,7 +7,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use raft::util::limit_size;
-use raft::{eraftpb::*, RaftState, Storage, GetEntriesContext};
+use raft::{eraftpb::*, GetEntriesContext, RaftState, Storage};
 use raft::{Error, Result, StorageError};
 use sled::IVec;
 use std::io::ErrorKind;
@@ -62,55 +62,51 @@ impl StorageMetrics {
         let registry = registry.sub_registry_with_prefix("distribd_storage");
 
         let hs_index = Gauge::default();
-        registry.register(
-            "commit_index",
-            "The most recently commit",
-            Box::new(hs_index.clone()),
-        );
+        registry.register("commit_index", "The most recently commit", hs_index.clone());
 
         let hs_term = Gauge::default();
-        registry.register("term", "The most recent term", Box::new(hs_term.clone()));
+        registry.register("term", "The most recent term", hs_term.clone());
 
         let applied_index = Gauge::default();
         registry.register(
             "applied_index",
             "The latest applied log entry in the journal",
-            Box::new(applied_index.clone()),
+            applied_index.clone(),
         );
 
         let first_index = Gauge::default();
         registry.register(
             "first_index",
             "The first log entry in the journal",
-            Box::new(first_index.clone()),
+            first_index.clone(),
         );
 
         let last_index = Gauge::default();
         registry.register(
             "last_index",
             "The last log entry in the journal",
-            Box::new(last_index.clone()),
+            last_index.clone(),
         );
 
         let snapshot_index = Gauge::default();
         registry.register(
             "snapshot_index",
             "The last log entry of the most recent snapshot",
-            Box::new(snapshot_index.clone()),
+            snapshot_index.clone(),
         );
 
         let snapshot_term = Gauge::default();
         registry.register(
             "snapshot_term",
             "The term of the most recent snapshot",
-            Box::new(snapshot_term.clone()),
+            snapshot_term.clone(),
         );
 
         let flushed_bytes = Counter::default();
         registry.register(
             "flushed_bytes",
             "Journal data flushed to disk",
-            Box::new(flushed_bytes.clone()),
+            flushed_bytes.clone(),
         );
 
         Self {
@@ -207,9 +203,13 @@ impl RegistryStorage {
         store.apply_state_metrics(&state_metrics);
 
         let metrics = StorageMetrics::new(registry);
-        metrics.applied_index.set(applied_index);
-        metrics.snapshot_index.set(snapshot_metadata.index);
-        metrics.snapshot_term.set(snapshot_metadata.term);
+        metrics.applied_index.set(applied_index.try_into().unwrap());
+        metrics
+            .snapshot_index
+            .set(snapshot_metadata.index.try_into().unwrap());
+        metrics
+            .snapshot_term
+            .set(snapshot_metadata.term.try_into().unwrap());
 
         let store = RegistryStorage {
             db,
@@ -232,7 +232,9 @@ impl RegistryStorage {
     #[inline(always)]
     pub fn set_applied_index(&mut self, applied_index: u64) {
         self.applied_index = applied_index;
-        self.metrics.applied_index.set(applied_index);
+        self.metrics
+            .applied_index
+            .set(applied_index.try_into().unwrap());
     }
 
     pub fn ensure_initialized(&self) -> anyhow::Result<()> {
@@ -312,8 +314,8 @@ impl RegistryStorage {
             })
             .context("Transaction failure")?;
 
-        self.metrics.hs_index.set(hs.commit);
-        self.metrics.hs_term.set(hs.term);
+        self.metrics.hs_index.set(hs.commit.try_into().unwrap());
+        self.metrics.hs_term.set(hs.term.try_into().unwrap());
 
         Ok(())
     }
@@ -323,7 +325,7 @@ impl RegistryStorage {
             .insert(KEY_HARD_INDEX, serialize_u64(&commit).unwrap())
             .unwrap();
 
-        self.metrics.hs_index.set(commit);
+        self.metrics.hs_index.set(commit.try_into().unwrap());
     }
 
     pub fn last_index(&self) -> u64 {
@@ -401,13 +403,17 @@ impl RegistryStorage {
         self.entries
             .clear()
             .context("Failed to flush log entries after taking snapshot")?;
-        self.metrics.first_index.set(self.first_index());
+        self.metrics
+            .first_index
+            .set(self.first_index().try_into().unwrap());
 
         self.snapshot_metadata = snapshot.get_metadata().clone();
         self.metrics
             .snapshot_index
-            .set(self.snapshot_metadata.index);
-        self.metrics.snapshot_term.set(self.snapshot_metadata.term);
+            .set(self.snapshot_metadata.index.try_into().unwrap());
+        self.metrics
+            .snapshot_term
+            .set(self.snapshot_metadata.term.try_into().unwrap());
 
         Ok(())
     }
@@ -431,14 +437,20 @@ impl RegistryStorage {
         self.snapshot_metadata = meta.clone();
         self.metrics
             .snapshot_index
-            .set(self.snapshot_metadata.index);
-        self.metrics.snapshot_term.set(self.snapshot_metadata.term);
+            .set(self.snapshot_metadata.index.try_into().unwrap());
+        self.metrics
+            .snapshot_term
+            .set(self.snapshot_metadata.term.try_into().unwrap());
 
         self.entries
             .clear()
             .context("Failed to clear entries journal")?;
-        self.metrics.first_index.set(self.first_index());
-        self.metrics.last_index.set(self.last_index());
+        self.metrics
+            .first_index
+            .set(self.first_index().try_into().unwrap());
+        self.metrics
+            .last_index
+            .set(self.last_index().try_into().unwrap());
 
         self.apply_registry_state(serde_json::from_slice(&snapshot.data).unwrap());
 
@@ -491,7 +503,9 @@ impl RegistryStorage {
                 .context("Failed to store log entry")?;
         }
 
-        self.metrics.last_index.set(self.last_index());
+        self.metrics
+            .last_index
+            .set(self.last_index().try_into().unwrap());
 
         let flushed = self
             .db
@@ -533,13 +547,23 @@ impl Storage for RegistryStorage {
             raft_state.hard_state.term = deserialize_u64(&term).unwrap();
         }
 
-        self.metrics.hs_index.set(raft_state.hard_state.commit);
-        self.metrics.hs_term.set(raft_state.hard_state.term);
+        self.metrics
+            .hs_index
+            .set(raft_state.hard_state.commit.try_into().unwrap());
+        self.metrics
+            .hs_term
+            .set(raft_state.hard_state.term.try_into().unwrap());
 
         Ok(raft_state)
     }
 
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>, _context: GetEntriesContext) -> Result<Vec<Entry>> {
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+        _context: GetEntriesContext,
+    ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
 
         if low < self.first_index() {
