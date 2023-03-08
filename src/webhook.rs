@@ -1,6 +1,6 @@
 use crate::config::WebhookConfig;
 use crate::types::{Digest, RepositoryName};
-use prometheus_client::encoding::{EncodeLabelSet};
+use prometheus_client::encoding::EncodeLabelSet;
 use prometheus_client::registry::Registry;
 
 use prometheus_client::metrics::counter::Counter;

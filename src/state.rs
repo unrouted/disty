@@ -445,10 +445,14 @@ impl RegistryState {
                 } => {
                     if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
                         if let Some(old_size) = manifest.size {
-                            metrics.manifest_disk_usage.dec_by(old_size.try_into().unwrap());
+                            metrics
+                                .manifest_disk_usage
+                                .dec_by(old_size.try_into().unwrap());
                         }
                         manifest.size = Some(*size);
-                        metrics.manifest_disk_usage.inc_by((*size).try_into().unwrap());
+                        metrics
+                            .manifest_disk_usage
+                            .inc_by((*size).try_into().unwrap());
                     }
                 }
                 RegistryAction::HashTagged {

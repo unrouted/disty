@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use prometheus_client::encoding::{EncodeLabelValue,EncodeLabelSet};
+use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
