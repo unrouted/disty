@@ -7,7 +7,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 use raft::util::limit_size;
-use raft::{eraftpb::*, RaftState, Storage};
+use raft::{eraftpb::*, RaftState, Storage, GetEntriesContext};
 use raft::{Error, Result, StorageError};
 use sled::IVec;
 use std::io::ErrorKind;
@@ -389,7 +389,7 @@ impl RegistryStorage {
 
     pub async fn store_snapshot(&mut self) -> anyhow::Result<()> {
         let snapshot = self
-            .snapshot(self.applied_index)
+            .snapshot(self.applied_index, 0)
             .context("Failed to generate a local snapshot")?;
 
         Self::validate_snapshot(&snapshot).context("Failed to validate local snapshot")?;
@@ -539,7 +539,7 @@ impl Storage for RegistryStorage {
         Ok(raft_state)
     }
 
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>, _context: GetEntriesContext) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
 
         if low < self.first_index() {
@@ -595,7 +595,7 @@ impl Storage for RegistryStorage {
         Ok(self.last_index())
     }
 
-    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+    fn snapshot(&self, request_index: u64, _to: u64) -> Result<Snapshot> {
         info!("Snapshot requested: {}", request_index);
 
         if request_index > self.applied_index {
