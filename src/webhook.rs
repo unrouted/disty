@@ -1,6 +1,6 @@
 use crate::config::WebhookConfig;
 use crate::types::{Digest, RepositoryName};
-use prometheus_client::encoding::text::Encode;
+use prometheus_client::encoding::{EncodeLabelSet};
 use prometheus_client::registry::Registry;
 
 use prometheus_client::metrics::counter::Counter;
@@ -15,7 +15,7 @@ pub struct Event {
     pub tag: String,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+#[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug)]
 struct WebhookMetricLabels {
     status: String,
 }
@@ -28,7 +28,7 @@ pub fn start_webhook_worker(
     registry.register(
         "distribd_webhooks_post",
         "Number of webhooks sent",
-        Box::new(webhooks_total.clone()),
+        webhooks_total.clone(),
     );
 
     let (tx, mut rx) = mpsc::channel::<Event>(100);

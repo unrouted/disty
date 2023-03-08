@@ -28,28 +28,28 @@ impl RegistryStateMetrics {
         registry.register(
             "blob_entries",
             "How many blobs are registered in the store",
-            Box::new(blob_entry.clone()),
+            blob_entry.clone(),
         );
 
         let blob_disk_usage = Gauge::default();
         registry.register(
             "blob_disk_usage",
             "How much disk space the full collection of blobs uses",
-            Box::new(blob_disk_usage.clone()),
+            blob_disk_usage.clone(),
         );
 
         let manifest_entry = Gauge::default();
         registry.register(
             "manifest_entries",
             "How many manifests are registered in the store",
-            Box::new(manifest_entry.clone()),
+            manifest_entry.clone(),
         );
 
         let manifest_disk_usage = Gauge::default();
         registry.register(
             "manifest_disk_usage",
             "How much disk space the full collection of manifests uses",
-            Box::new(manifest_disk_usage.clone()),
+            manifest_disk_usage.clone(),
         );
 
         Self {
@@ -274,7 +274,7 @@ impl RegistryState {
             if let Some(entry) = self.get_blob_directly(&blob) {
                 metrics.blob_entry.inc();
                 if let Some(size) = entry.size {
-                    metrics.blob_disk_usage.inc_by(size);
+                    metrics.blob_disk_usage.inc_by(size.try_into().unwrap());
                 }
             }
         }
@@ -285,7 +285,7 @@ impl RegistryState {
             if let Some(entry) = self.get_manifest_directly(&blob) {
                 metrics.manifest_entry.inc();
                 if let Some(size) = entry.size {
-                    metrics.manifest_disk_usage.inc_by(size);
+                    metrics.manifest_disk_usage.inc_by(size.try_into().unwrap());
                 }
             }
         }
@@ -324,7 +324,7 @@ impl RegistryState {
                         if blob.locations.is_empty() {
                             metrics.blob_entry.dec();
                             if let Some(size) = blob.size {
-                                metrics.blob_disk_usage.dec_by(size);
+                                metrics.blob_disk_usage.dec_by(size.try_into().unwrap());
                             }
                             self.blobs.remove(digest);
                         }
@@ -367,10 +367,10 @@ impl RegistryState {
                 } => {
                     if let Some(mut blob) = self.get_mut_blob(digest, *timestamp) {
                         if let Some(old_size) = blob.size {
-                            metrics.blob_disk_usage.dec_by(old_size);
+                            metrics.blob_disk_usage.dec_by(old_size.try_into().unwrap());
                         }
                         blob.size = Some(*size);
-                        metrics.blob_disk_usage.inc_by(*size);
+                        metrics.blob_disk_usage.inc_by((*size).try_into().unwrap());
                     }
                 }
                 RegistryAction::ManifestStored {
@@ -398,7 +398,7 @@ impl RegistryState {
                         if manifest.locations.is_empty() {
                             metrics.manifest_entry.dec();
                             if let Some(size) = manifest.size {
-                                metrics.manifest_disk_usage.dec_by(size);
+                                metrics.manifest_disk_usage.dec_by(size.try_into().unwrap());
                             }
                             self.manifests.remove(digest);
                         }
@@ -445,10 +445,10 @@ impl RegistryState {
                 } => {
                     if let Some(mut manifest) = self.get_mut_manifest(digest, *timestamp) {
                         if let Some(old_size) = manifest.size {
-                            metrics.manifest_disk_usage.dec_by(old_size);
+                            metrics.manifest_disk_usage.dec_by(old_size.try_into().unwrap());
                         }
                         manifest.size = Some(*size);
-                        metrics.manifest_disk_usage.inc_by(*size);
+                        metrics.manifest_disk_usage.inc_by((*size).try_into().unwrap());
                     }
                 }
                 RegistryAction::HashTagged {

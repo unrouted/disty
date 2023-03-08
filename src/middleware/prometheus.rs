@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use prometheus_client::encoding::text::Encode;
+use prometheus_client::encoding::{EncodeLabelValue,EncodeLabelSet};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
@@ -12,7 +12,7 @@ use rocket::{
     Data,
 };
 
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+#[derive(Clone, Hash, PartialEq, Eq, EncodeLabelValue, Debug)]
 enum HttpMethod {
     Get,
     Head,
@@ -25,14 +25,14 @@ enum HttpMethod {
     Connect,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+#[derive(Clone, Hash, PartialEq, Eq, EncodeLabelValue, Debug)]
 pub enum Port {
     Raft,
     Prometheus,
     Registry,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Encode)]
+#[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug)]
 struct HttpRequestLabels {
     port: Port,
     method: HttpMethod,
@@ -52,7 +52,7 @@ impl HttpMetrics {
         registry.register(
             "distribd_http_requests",
             "Number of HTTP requests",
-            Box::new(http_requests_total.clone()),
+            http_requests_total.clone(),
         );
 
         let http_requests_duration_seconds =
@@ -62,7 +62,7 @@ impl HttpMetrics {
         registry.register(
             "distribd_http_requests_duration_seconds",
             "Duration of HTTP requests",
-            Box::new(http_requests_total.clone()),
+            http_requests_total.clone(),
         );
 
         HttpMetrics {

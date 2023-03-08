@@ -29,11 +29,11 @@ impl<'r> Responder<'r, 'static> for Responses {
     status = 200,
     content_type = "application/openmetrics-text; version=1.0.0; charset=utf-8"
 )]
-struct Metrics(Vec<u8>);
+struct Metrics(String);
 
 #[get("/metrics")]
 async fn metrics(registry: &State<Arc<Mutex<Registry>>>) -> Metrics {
-    let mut encoded = Vec::new();
+    let mut encoded = String::new();
     encode(&mut encoded, &registry.lock().unwrap()).unwrap();
     Metrics(encoded)
 }
