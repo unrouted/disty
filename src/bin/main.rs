@@ -1,9 +1,9 @@
 use clap::Parser;
 use openraft::Raft;
-use raft_kv_rocksdb::network::raft_network_impl::ExampleNetwork;
-use raft_kv_rocksdb::start_example_raft_node;
-use raft_kv_rocksdb::store::ExampleStore;
-use raft_kv_rocksdb::ExampleTypeConfig;
+use raft_kv_memstore::network::raft_network_impl::ExampleNetwork;
+use raft_kv_memstore::start_example_raft_node;
+use raft_kv_memstore::store::ExampleStore;
+use raft_kv_memstore::ExampleTypeConfig;
 use tracing_subscriber::EnvFilter;
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, ExampleStore>;
@@ -16,12 +16,9 @@ pub struct Opt {
 
     #[clap(long)]
     pub http_addr: String,
-
-    #[clap(long)]
-    pub rpc_addr: String,
 }
 
-#[async_std::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
     tracing_subscriber::fmt()
@@ -35,11 +32,5 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(
-        options.id,
-        format!("{}.db", options.rpc_addr),
-        options.http_addr,
-        options.rpc_addr,
-    )
-    .await
+    start_example_raft_node(options.id, options.http_addr).await
 }

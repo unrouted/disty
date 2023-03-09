@@ -1,44 +1,38 @@
-use std::sync::Arc;
-
+use actix_web::post;
+use actix_web::web;
+use actix_web::web::Data;
+use actix_web::Responder;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotRequest;
-use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
-use openraft::raft::VoteResponse;
-use toy_rpc::macros::export_impl;
+use web::Json;
 
 use crate::app::ExampleApp;
+use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
 
 // --- Raft communication
 
-pub struct Raft {
-    app: Arc<ExampleApp>,
+#[post("/raft-vote")]
+pub async fn vote(app: Data<ExampleApp>, req: Json<VoteRequest<ExampleNodeId>>) -> actix_web::Result<impl Responder> {
+    let res = app.raft.vote(req.0).await;
+    Ok(Json(res))
 }
 
-#[export_impl]
-impl Raft {
-    pub fn new(app: Arc<ExampleApp>) -> Self {
-        Self { app }
-    }
-    #[export_method]
-    pub async fn vote(&self, vote: VoteRequest<u64>) -> Result<VoteResponse<u64>, toy_rpc::Error> {
-        self.app.raft.vote(vote).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
-    }
-    #[export_method]
-    pub async fn append(
-        &self,
-        req: AppendEntriesRequest<ExampleTypeConfig>,
-    ) -> Result<AppendEntriesResponse<u64>, toy_rpc::Error> {
-        tracing::debug!("handle append");
-        self.app.raft.append_entries(req).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
-    }
-    #[export_method]
-    pub async fn snapshot(
-        &self,
-        req: InstallSnapshotRequest<ExampleTypeConfig>,
-    ) -> Result<InstallSnapshotResponse<u64>, toy_rpc::Error> {
-        self.app.raft.install_snapshot(req).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
-    }
+#[post("/raft-append")]
+pub async fn append(
+    app: Data<ExampleApp>,
+    req: Json<AppendEntriesRequest<ExampleTypeConfig>>,
+) -> actix_web::Result<impl Responder> {
+    let res = app.raft.append_entries(req.0).await;
+    Ok(Json(res))
+}
+
+#[post("/raft-snapshot")]
+pub async fn snapshot(
+    app: Data<ExampleApp>,
+    req: Json<InstallSnapshotRequest<ExampleTypeConfig>>,
+) -> actix_web::Result<impl Responder> {
+    let res = app.raft.install_snapshot(req.0).await;
+    Ok(Json(res))
 }

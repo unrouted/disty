@@ -1,23 +1,17 @@
-use std::sync::Arc;
-
+use actix_web::post;
+use actix_web::web;
+use actix_web::web::Data;
+use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
-use tide::Body;
-use tide::Request;
-use tide::Response;
-use tide::StatusCode;
+use openraft::error::RaftError;
+use openraft::BasicNode;
+use web::Json;
 
 use crate::app::ExampleApp;
-use crate::ExampleNode;
+use crate::store::ExampleRequest;
 use crate::ExampleNodeId;
-use crate::Server;
 
-pub fn rest(app: &mut Server) {
-    let mut api = app.at("/api");
-    api.at("/write").post(write);
-    api.at("/read").post(read);
-    api.at("/consistent_read").post(consistent_read);
-}
 /**
  * Application API
  *
@@ -27,34 +21,36 @@ pub fn rest(app: &mut Server) {
  *  - `POST - /write` saves a value in a key and sync the nodes.
  *  - `POST - /read` attempt to find a value from a given key.
  */
-async fn write(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let body = req.body_json().await?;
-    let res = req.state().raft.client_write(body).await;
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+#[post("/write")]
+pub async fn write(app: Data<ExampleApp>, req: Json<ExampleRequest>) -> actix_web::Result<impl Responder> {
+    let response = app.raft.client_write(req.0).await;
+    Ok(Json(response))
 }
 
-async fn read(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let key: String = req.body_json().await?;
-    let state_machine = req.state().store.state_machine.read().await;
-    let value = state_machine.get(&key)?;
+#[post("/read")]
+pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+    let state_machine = app.store.state_machine.read().await;
+    let key = req.0;
+    let value = state_machine.data.get(&key).cloned();
 
     let res: Result<String, Infallible> = Ok(value.unwrap_or_default());
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+    Ok(Json(res))
 }
 
-async fn consistent_read(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let ret = req.state().raft.is_leader().await;
+#[post("/consistent_read")]
+pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+    let ret = app.raft.is_leader().await;
 
     match ret {
         Ok(_) => {
-            let key: String = req.body_json().await?;
-            let state_machine = req.state().store.state_machine.read().await;
+            let state_machine = app.store.state_machine.read().await;
+            let key = req.0;
+            let value = state_machine.data.get(&key).cloned();
 
-            let value = state_machine.get(&key)?;
-
-            let res: Result<String, CheckIsLeaderError<ExampleNodeId, ExampleNode>> = Ok(value.unwrap_or_default());
-            Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+            let res: Result<String, RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>> =
+                Ok(value.unwrap_or_default());
+            Ok(Json(res))
         }
-        e => Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&e)?).build()),
+        Err(e) => Ok(Json(Err(e))),
     }
 }

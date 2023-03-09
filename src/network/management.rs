@@ -1,65 +1,61 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
+use actix_web::get;
+use actix_web::post;
+use actix_web::web;
+use actix_web::web::Data;
+use actix_web::Responder;
 use openraft::error::Infallible;
+use openraft::BasicNode;
 use openraft::RaftMetrics;
-use tide::Body;
-use tide::Request;
-use tide::Response;
-use tide::StatusCode;
+use web::Json;
 
 use crate::app::ExampleApp;
-use crate::ExampleNode;
 use crate::ExampleNodeId;
-use crate::Server;
 
 // --- Cluster management
-
-pub fn rest(app: &mut Server) {
-    let mut cluster = app.at("/cluster");
-    cluster.at("/add-learner").post(add_learner);
-    cluster.at("/change-membership").post(change_membership);
-    cluster.at("/init").post(init);
-    cluster.at("/metrics").get(metrics);
-}
 
 /// Add a node as **Learner**.
 ///
 /// A Learner receives log replication from the leader but does not vote.
 /// This should be done before adding a node as a member into the cluster
 /// (by calling `change-membership`)
-async fn add_learner(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let (node_id, api_addr, rpc_addr): (ExampleNodeId, String, String) = req.body_json().await?;
-    let node = ExampleNode { rpc_addr, api_addr };
-    let res = req.state().raft.add_learner(node_id, node, true).await;
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+#[post("/add-learner")]
+pub async fn add_learner(
+    app: Data<ExampleApp>,
+    req: Json<(ExampleNodeId, String)>,
+) -> actix_web::Result<impl Responder> {
+    let node_id = req.0 .0;
+    let node = BasicNode { addr: req.0 .1.clone() };
+    let res = app.raft.add_learner(node_id, node, true).await;
+    Ok(Json(res))
 }
 
 /// Changes specified learners to members, or remove members.
-async fn change_membership(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let body: BTreeSet<ExampleNodeId> = req.body_json().await?;
-    let res = req.state().raft.change_membership(body, false).await;
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+#[post("/change-membership")]
+pub async fn change_membership(
+    app: Data<ExampleApp>,
+    req: Json<BTreeSet<ExampleNodeId>>,
+) -> actix_web::Result<impl Responder> {
+    let res = app.raft.change_membership(req.0, false).await;
+    Ok(Json(res))
 }
 
 /// Initialize a single-node cluster.
-async fn init(req: Request<Arc<ExampleApp>>) -> tide::Result {
+#[post("/init")]
+pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeMap::new();
-    let node = ExampleNode {
-        api_addr: req.state().api_addr.clone(),
-        rpc_addr: req.state().rcp_addr.clone(),
-    };
-
-    nodes.insert(req.state().id, node);
-    let res = req.state().raft.initialize(nodes).await;
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+    nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
+    let res = app.raft.initialize(nodes).await;
+    Ok(Json(res))
 }
 
 /// Get the latest metrics of the cluster
-async fn metrics(req: Request<Arc<ExampleApp>>) -> tide::Result {
-    let metrics = req.state().raft.metrics().borrow().clone();
+#[get("/metrics")]
+pub async fn metrics(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
+    let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<ExampleNodeId, ExampleNode>, Infallible> = Ok(metrics);
-    Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
+    let res: Result<RaftMetrics<ExampleNodeId, BasicNode>, Infallible> = Ok(metrics);
+    Ok(Json(res))
 }

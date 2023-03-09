@@ -1,17 +1,20 @@
 #![allow(clippy::uninlined_format_args)]
 
-use std::fmt::Display;
-use std::path::Path;
 use std::sync::Arc;
 
-use async_std::net::TcpListener;
-use async_std::task;
+use actix_web::middleware;
+use actix_web::middleware::Logger;
+use actix_web::web::Data;
+use actix_web::App;
+use actix_web::HttpServer;
+use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
 
 use crate::app::ExampleApp;
 use crate::network::api;
 use crate::network::management;
+use crate::network::raft;
 use crate::network::raft_network_impl::ExampleNetwork;
 use crate::store::ExampleRequest;
 use crate::store::ExampleResponse;
@@ -24,49 +27,44 @@ pub mod store;
 
 pub type ExampleNodeId = u64;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
-pub struct ExampleNode {
-    pub rpc_addr: String,
-    pub api_addr: String,
-}
-
-impl Display for ExampleNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ExampleNode {{ rpc_addr: {}, api_addr: {} }}",
-            self.rpc_addr, self.api_addr
-        )
-    }
-}
-
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = ExampleNode
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode
 );
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
-type Server = tide::Server<Arc<ExampleApp>>;
-pub async fn start_example_raft_node<P>(
-    node_id: ExampleNodeId,
-    dir: P,
-    http_addr: String,
-    rcp_addr: String,
-) -> std::io::Result<()>
-where
-    P: AsRef<Path>,
-{
+
+pub mod typ {
+    use openraft::BasicNode;
+
+    use crate::ExampleNodeId;
+    use crate::ExampleTypeConfig;
+
+    pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<ExampleNodeId, E>;
+    pub type RPCError<E = openraft::error::Infallible> =
+        openraft::error::RPCError<ExampleNodeId, BasicNode, RaftError<E>>;
+
+    pub type ClientWriteError = openraft::error::ClientWriteError<ExampleNodeId, BasicNode>;
+    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<ExampleNodeId, BasicNode>;
+    pub type ForwardToLeader = openraft::error::ForwardToLeader<ExampleNodeId, BasicNode>;
+    pub type InitializeError = openraft::error::InitializeError<ExampleNodeId, BasicNode>;
+
+    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
+}
+
+pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
     let config = Config {
-        heartbeat_interval: 250,
-        election_timeout_min: 299,
+        heartbeat_interval: 500,
+        election_timeout_min: 1500,
+        election_timeout_max: 3000,
         ..Default::default()
     };
 
     let config = Arc::new(config.validate().unwrap());
 
     // Create a instance of where the Raft data will be stored.
-    let store = ExampleStore::new(&dir).await;
+    let store = Arc::new(ExampleStore::default());
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
@@ -75,32 +73,39 @@ where
     // Create a local raft instance.
     let raft = Raft::new(node_id, config.clone(), network, store.clone()).await.unwrap();
 
-    let app = Arc::new(ExampleApp {
+    // Create an application that will store all the instances created above, this will
+    // be later used on the actix-web services.
+    let app = Data::new(ExampleApp {
         id: node_id,
-        api_addr: http_addr.clone(),
-        rcp_addr: rcp_addr.clone(),
+        addr: http_addr.clone(),
         raft,
         store,
         config,
     });
 
-    let echo_service = Arc::new(crate::network::raft::Raft::new(app.clone()));
-
-    let server = toy_rpc::Server::builder().register(echo_service).build();
-
-    let listener = TcpListener::bind(rcp_addr).await.unwrap();
-    let handle = task::spawn(async move {
-        server.accept_websocket(listener).await.unwrap();
+    // Start the actix-web server.
+    let server = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(middleware::Compress::default())
+            .app_data(app.clone())
+            // raft internal RPC
+            .service(raft::append)
+            .service(raft::snapshot)
+            .service(raft::vote)
+            // admin API
+            .service(management::init)
+            .service(management::add_learner)
+            .service(management::change_membership)
+            .service(management::metrics)
+            // application API
+            .service(api::write)
+            .service(api::read)
+            .service(api::consistent_read)
     });
 
-    // Create an application that will store all the instances created above, this will
-    // be later used on the actix-web services.
-    let mut app: Server = tide::Server::with_state(app);
+    let x = server.bind(http_addr)?;
 
-    management::rest(&mut app);
-    api::rest(&mut app);
-
-    app.listen(http_addr).await?;
-    handle.await;
-    Ok(())
+    x.run().await
 }

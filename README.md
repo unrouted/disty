@@ -1,43 +1,128 @@
-# distribd
+# Example distributed key-value store built upon openraft.
 
-[![codecov](https://codecov.io/gh/distribd/distribd/branch/main/graph/badge.svg?token=8AIAEN68AO)](https://codecov.io/gh/distribd/distribd)
+It is an example of how to build a real-world key-value store with `openraft`.
+Includes:
+- An in-memory `RaftStorage` implementation [store](./src/store/store.rs).
 
-A simple clustered replicated container image registry. `distribd` is as simple and easy to deploy as [distribution](https://github.com/docker/distribution/) running in local file system mode, but nodes form a cluster and replicate images amongst themselves. A cluster of nodes can tolerate outages as long as there is a quorum.
+- A server is based on [actix-web](https://docs.rs/actix-web/4.0.0-rc.2).  
+  Includes:
+  - raft-internal network APIs for replication and voting.
+  - Admin APIs to add nodes, change-membership etc.
+  - Application APIs to write a value by key or read a value by key.
 
-:exclamation: `distribd` is currently still in Beta. Bug fixes welcome!. :exclamation:
+- Client and `RaftNetwork`([rpc](./src/network/raft_network_impl)) are built upon [reqwest](https://docs.rs/reqwest).
 
-## Is it for me?
+  [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
+  - It includes application API `write()` and `read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
+  - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
 
-There are a very specific set of circumstances where you might like a container image registry like this:
+## Run it
 
-* You need to self-host, you can't use a cloud image registry and you can't use your hosts image registry (or it doesn't offer one)
-* You need to run everything in-cluster (dedicated Quay or Harbor machines means less machines for Kubernetes)
-* You need some level of fault tolerance
+There is a example in bash script and an example in rust:
 
-distribd is straightforward to deploy on a Kubernetes cluster and doesn't need you to supply fault tolerant storage or database layers.
+- [test-cluster.sh](./test-cluster.sh) shows a simulation of 3 nodes running and sharing data,
+  It only uses `curl` and shows the communication between a client and the cluster in plain HTTP messages.
+  You can run the cluster demo with:
 
-## How does it work?
+  ```shell
+  ./test-cluster.sh
+  ```
 
-Artifacts are stored on local disk like with distribution. We use raft to replicate a metadata journal about the registry contents between cluster members. The jorunal contains:
+- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in rust
+  with the `ExampleClient`.
 
-* Hashes of blobs and manifests and where they are stored in the cluster
-* Hashes of blobs and manifests and the repository that owned them. This is used so that you can't access blobs unless they belong to a repository you have access to.
-* Tag/Hash pairs, by repository. This is for looking up all tags within a repository and for finding the hash to retrieve from a tag.
+  Run it with `cargo test`.
 
-Each member of the cluster tries to maintain a full copy of all blobs and manifests. When it sees a new hash in the raft log it tries to retrieve it from the server that announced it. When a node has acquired a copy of the blob it records in the cluster that it has a copy of that blob.
 
-Objects that are no longer reachable from a tag are automatically garbage collected and deleted from all cluster nodes.
+if you want to compile the application, run:
 
-## Setting up token auth
-
-This works much like distribution. For more information about the basic flow see [here](https://docs.docker.com/registry/spec/auth/token/).
-
-First of all you need to generate some keys:
-
-```bash
-openssl ecparam -genkey -name prime256v1 -noout -out token.key
-openssl ec -in token.key -pubout -out token.pub
-openssl req -x509 -new -key token.key -out token.crt -subj "/CN=unused"
+```shell
+cargo build
 ```
 
-If no token is present in a request, distribd redirects a client to a token server to get a token. The distribd registry then uses `token.pub` to verify tokens produced by a token server.
+(If you append `--release` to make it compile in production, but we don't recommend to use
+this project in production yet.)
+
+## What the test script does
+
+To run it, get the binary `raft-key-value` inside `target/debug` and run:
+
+```shell
+./raft-key-value --id 1 --http-addr 127.0.0.1:21001
+```
+
+It will start a node.
+
+To start the following nodes:
+
+```shell
+./raft-key-value --id 2 --http-addr 127.0.0.1:21002
+```
+
+You can continue replicating the nodes by changing the `id` and `http-addr`.
+
+After that, call the first node created:
+
+```
+POST - 127.0.0.1:21001/init
+```
+
+It will define the first node created as the leader.
+
+Then you need to inform to the leader that these nodes are learners:
+
+```
+POST - 127.0.0.1:21001/add-learner '[2, "127.0.0.1:21002"]'
+POST - 127.0.0.1:21001/add-learner '[3, "127.0.0.1:21003"]'
+```
+
+Now you need to tell the leader to add all learners as members of the cluster:
+
+```
+POST - 127.0.0.1:21001/change-membership  "[1, 2, 3]"
+```
+
+Write some data in any of the nodes:
+
+```
+POST - 127.0.0.1:21001/write  "{"Set":{"key":"foo","value":"bar"}}"
+```
+
+Read the data from any node:
+
+```
+POST - 127.0.0.1:21002/read  "foo"
+```
+
+You should be able to read that on the another instance even if you did not sync any data!
+
+
+## How it's structured.
+
+The application is separated in 4 modules:
+
+ - `bin`: You can find the `main()` function in [main](./src/bin/main.rs) the file where the setup for the server happens.
+ - `network`: You can find the [api](./src/network/api.rs) that implements the endpoints used by the public API and [rpc](./src/network/raft_network_impl) where all the raft communication from the node happens. [management](./src/network/management.rs) is where all the administration endpoints are present, those are used to add orremove nodes, promote and more. [raft](./src/network/raft.rs) is where all the communication are received from other nodes.
+ - `store`: You can find the file [store](./src/store/mod.rs) where all the key-value implementation is done. Here is where your data application will be managed.
+
+## Where is my data?
+
+The data is store inside state machines, each state machine represents a point of data and
+raft enforces that all nodes have the same data in synchronization. You can have a look of
+the struct [ExampleStateMachine](./src/store/mod.rs)
+
+## Cluster management
+
+The raft itself does not store node addresses.
+But in a real-world application, the implementation of `RaftNetwork` needs to know the addresses.
+
+Thus, in this example application:
+
+- The storage layer has to store nodes' information.
+- The network layer keeps a reference to the store so that it is able to get the address of a target node to send RPC to.
+
+To add a node to a cluster, it includes 3 steps:
+
+- Write a `node` through raft protocol to the storage.
+- Add the node as a `Learner` to let it start receiving replication data from the leader.
+- Invoke `change-membership` to change the learner node to a member.
