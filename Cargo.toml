@@ -1,28 +1,24 @@
 [package]
-name = "raft-kv-rocksdb"
+name = "distribd"
 version = "0.1.0"
 readme = "README.md"
 
 edition = "2021"
 authors = [
-    "drdr xp <drdr.xp@gmail.com>",
-    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
-    "The Tremor Team",
+    "John Carr <john.carr@unrouted.co.uk>",
 ]
-categories = ["algorithms", "asynchronous", "data-structures"]
-description = "An example distributed key-value store built upon `openraft`."
-homepage = "https://github.com/datafuselabs/openraft"
+description = "A simple clustered container image repository"
+homepage = "https://github.com/distribd/distribd"
 keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
-repository = "https://github.com/datafuselabs/openraft"
+license = "Apache-2.0"
+repository = "https://github.com/distribd/distribd"
 
 [[bin]]
-name = "raft-key-value-rocks"
+name = "distribd"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft = { path = "../../openraft", features = ["serde"] }
-
+openraft = "0.8"
 async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 async-trait = "0.1.36"
 byteorder = "1.4.3"
