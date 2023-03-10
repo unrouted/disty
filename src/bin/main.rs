@@ -1,9 +1,9 @@
 use clap::Parser;
 use openraft::Raft;
-use raft_kv_memstore::network::raft_network_impl::ExampleNetwork;
-use raft_kv_memstore::start_example_raft_node;
-use raft_kv_memstore::store::RegistryStore;
-use raft_kv_memstore::ExampleTypeConfig;
+use distribd::network::raft_network_impl::ExampleNetwork;
+use distribd::start_example_raft_node;
+use distribd::store::RegistryStore;
+use distribd::ExampleTypeConfig;
 use tracing_subscriber::EnvFilter;
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, RegistryStore>;
