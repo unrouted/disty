@@ -6,7 +6,7 @@ use distribd::store::RegistryStore;
 use distribd::ExampleTypeConfig;
 use tracing_subscriber::EnvFilter;
 
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, RegistryStore>;
+pub type RegistryRaft = Raft<ExampleTypeConfig, ExampleNetwork, RegistryStore>;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]

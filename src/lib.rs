@@ -32,7 +32,7 @@ openraft::declare_raft_types!(
     pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
 );
 
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegistryStore>>;
+pub type RegistryRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegistryStore>>;
 
 pub mod typ {
     use openraft::BasicNode;

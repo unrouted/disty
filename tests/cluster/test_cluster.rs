@@ -7,9 +7,9 @@ use std::time::Duration;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
-use raft_kv_memstore::client::ExampleClient;
-use raft_kv_memstore::start_example_raft_node;
-use raft_kv_memstore::store::ExampleRequest;
+use distribd::client::ExampleClient;
+use distribd::start_example_raft_node;
+use distribd::store::ExampleRequest;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 

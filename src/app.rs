@@ -3,7 +3,7 @@ use std::sync::Arc;
 use openraft::Config;
 
 use crate::RegistryNodeId;
-use crate::ExampleRaft;
+use crate::RegistryRaft;
 use crate::RegistryStore;
 
 // Representation of an application state. This struct can be shared around to share
@@ -11,7 +11,7 @@ use crate::RegistryStore;
 pub struct ExampleApp {
     pub id: RegistryNodeId,
     pub addr: String,
-    pub raft: ExampleRaft,
+    pub raft: RegistryRaft,
     pub store: Arc<RegistryStore>,
     pub config: Arc<Config>,
 }
