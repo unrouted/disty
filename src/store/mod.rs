@@ -34,6 +34,7 @@ use serde::Serialize;
 use sled::Transactional;
 
 use crate::RegistryTypeConfig;
+use crate::types::RegistryAction;
 
 pub type RegistryNodeId = u64;
 
@@ -46,6 +47,7 @@ pub type RegistryNodeId = u64;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RegistryRequest {
     Set { key: String, value: String },
+    Transaction { actions: Vec<RegistryAction> },
 }
 
 /**
@@ -578,6 +580,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             res.push(RegistryResponse {
                                 value: Some(value.clone()),
                             })
+                        },
+                        RegistryRequest::Transaction { .. } => {
+                            todo!()
                         }
                     },
                     EntryPayload::Membership(ref mem) => {
