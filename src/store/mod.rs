@@ -1,10 +1,16 @@
+#[cfg(test)] mod test;
+
 use std::collections::BTreeMap;
+use std::error::Error;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
-use std::sync::Mutex;
 
+use tokio::sync::RwLock;
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
+use byteorder::ReadBytesExt;
 use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
@@ -25,14 +31,15 @@ use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::RwLock;
+use sled::Transactional;
 
-use crate::RegistryNodeId;
 use crate::RegistryTypeConfig;
+
+pub type RegistryNodeId = u64;
 
 /**
  * Here you will set the types of request that will interact with the raft nodes.
- * For example the `Set` will be used to write data (key and value) to the raft database.
+ * For Registry the `Set` will be used to write data (key and value) to the raft database.
  * The `AddNode` will append a new node to the current existing shared list of nodes.
  * You will want to add any request that can write data in all nodes here.
  */
@@ -43,7 +50,7 @@ pub enum RegistryRequest {
 
 /**
  * Here you will defined what type of answer you expect from reading the data of a node.
- * In this example it will return a optional value from a given key in
+ * In this Registry it will return a optional value from a given key in
  * the `RegistryRequest.Set`.
  *
  * TODO: Should we explain how to create multiple `AppDataResponse`?
@@ -54,7 +61,7 @@ pub struct RegistryResponse {
     pub value: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RegistrySnapshot {
     pub meta: SnapshotMeta<RegistryNodeId, BasicNode>,
 
@@ -69,7 +76,7 @@ pub struct RegistrySnapshot {
  * value as String, but you could set any type of value that has the serialization impl.
  */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct RegistryStateMachine {
+pub struct SerializableRegistryStateMachine {
     pub last_applied_log: Option<LogId<RegistryNodeId>>,
 
     pub last_membership: StoredMembership<RegistryNodeId, BasicNode>,
@@ -78,55 +85,341 @@ pub struct RegistryStateMachine {
     pub data: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Default)]
-pub struct RegistryStore {
-    last_purged_log_id: RwLock<Option<LogId<RegistryNodeId>>>,
+#[derive(Debug, Clone)]
+pub struct RegistryStateMachine {
+    /// Application data.
+    pub db: Arc<sled::Db>,
+}
 
-    /// The Raft log.
-    log: RwLock<BTreeMap<u64, Entry<RegistryTypeConfig>>>,
+impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
+    fn from(state: &RegistryStateMachine) -> Self {
+        let mut data_tree = BTreeMap::new();
+        for entry_res in data(&state.db).iter() {
+            let entry = entry_res.expect("read db failed");
+
+            let key: &[u8] = &entry.0;
+            let value: &[u8] = &entry.1;
+            data_tree.insert(
+                String::from_utf8(key.to_vec()).expect("invalid key"),
+                String::from_utf8(value.to_vec()).expect("invalid data"),
+            );
+        }
+        Self {
+            last_applied_log: state.get_last_applied_log().expect("last_applied_log"),
+            last_membership: state.get_last_membership().expect("last_membership"),
+            data: data_tree,
+        }
+    }
+}
+
+fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)).into()
+}
+fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+fn s_r_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+}
+fn s_w_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+fn v_r_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Read, AnyError::new(&e)).into()
+}
+fn v_w_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+fn l_r_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)).into()
+}
+fn l_w_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+fn m_r_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+}
+fn m_w_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+fn t_err<E: Error + 'static>(e: E) -> StorageError<RegistryNodeId> {
+    StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+}
+
+fn ct_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactionError<AnyError> {
+    sled::transaction::ConflictableTransactionError::Abort(AnyError::new(&e))
+}
+
+impl RegistryStateMachine {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<RegistryNodeId, BasicNode>> {
+        let state_machine = state_machine(&self.db);
+        state_machine.get(b"last_membership").map_err(m_r_err).and_then(|value| {
+            value
+                .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
+                .unwrap_or_else(|| Ok(StoredMembership::default()))
+        })
+    }
+    async fn set_last_membership(&self, membership: StoredMembership<RegistryNodeId, BasicNode>) -> StorageResult<()> {
+        let value = serde_json::to_vec(&membership).map_err(sm_w_err)?;
+        let state_machine = state_machine(&self.db);
+        state_machine.insert(b"last_membership", value).map_err(m_w_err)?;
+
+        state_machine.flush_async().await.map_err(m_w_err).map(|_| ())
+    }
+    fn set_last_membership_tx(
+        &self,
+        tx_state_machine: &sled::transaction::TransactionalTree,
+        membership: StoredMembership<RegistryNodeId, BasicNode>,
+    ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
+        let value = serde_json::to_vec(&membership).map_err(ct_err)?;
+        tx_state_machine.insert(b"last_membership", value).map_err(ct_err)?;
+        Ok(())
+    }
+    fn get_last_applied_log(&self) -> StorageResult<Option<LogId<RegistryNodeId>>> {
+        let state_machine = state_machine(&self.db);
+        state_machine
+            .get(b"last_applied_log")
+            .map_err(l_r_err)
+            .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
+    }
+    async fn set_last_applied_log(&self, log_id: LogId<RegistryNodeId>) -> StorageResult<()> {
+        let value = serde_json::to_vec(&log_id).map_err(sm_w_err)?;
+        let state_machine = state_machine(&self.db);
+        state_machine.insert(b"last_applied_log", value).map_err(l_r_err)?;
+
+        state_machine.flush_async().await.map_err(l_r_err).map(|_| ())
+    }
+    fn set_last_applied_log_tx(
+        &self,
+        tx_state_machine: &sled::transaction::TransactionalTree,
+        log_id: LogId<RegistryNodeId>,
+    ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
+        let value = serde_json::to_vec(&log_id).map_err(ct_err)?;
+        tx_state_machine.insert(b"last_applied_log", value).map_err(ct_err)?;
+        Ok(())
+    }
+    async fn from_serializable(sm: SerializableRegistryStateMachine, db: Arc<sled::Db>) -> StorageResult<Self> {
+        let data_tree = data(&db);
+        let mut batch = sled::Batch::default();
+        for (key, value) in sm.data {
+            batch.insert(key.as_bytes(), value.as_bytes())
+        }
+        data_tree.apply_batch(batch).map_err(sm_w_err)?;
+        data_tree.flush_async().await.map_err(s_w_err)?;
+
+        let r = Self { db };
+        if let Some(log_id) = sm.last_applied_log {
+            r.set_last_applied_log(log_id).await?;
+        }
+        r.set_last_membership(sm.last_membership).await?;
+
+        Ok(r)
+    }
+
+    fn new(db: Arc<sled::Db>) -> RegistryStateMachine {
+        Self { db }
+    }
+    fn insert_tx(
+        &self,
+        tx_data_tree: &sled::transaction::TransactionalTree,
+        key: String,
+        value: String,
+    ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
+        tx_data_tree.insert(key.as_bytes(), value.as_bytes()).map_err(ct_err)?;
+        Ok(())
+    }
+    pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
+        let key = key.as_bytes();
+        let data_tree = data(&self.db);
+        data_tree
+            .get(key)
+            .map(|value| value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data")))
+            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
+    }
+    pub fn get_all(&self) -> StorageResult<Vec<String>> {
+        let data_tree = data(&self.db);
+
+        let data = data_tree
+            .iter()
+            .filter_map(|entry_res| {
+                if let Ok(el) = entry_res {
+                    Some(String::from_utf8(el.1.to_vec()).expect("invalid data"))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        Ok(data)
+    }
+}
+
+#[derive(Debug)]
+pub struct RegistryStore {
+    db: Arc<sled::Db>,
 
     /// The Raft state machine.
     pub state_machine: RwLock<RegistryStateMachine>,
+}
 
-    /// The current granted vote.
-    vote: RwLock<Option<Vote<RegistryNodeId>>>,
+type StorageResult<T> = Result<T, StorageError<RegistryNodeId>>;
 
-    snapshot_idx: Arc<Mutex<u64>>,
+/// converts an id to a byte vector for storing in the database.
+/// Note that we're using big endian encoding to ensure correct sorting of keys
+/// with notes form: https://github.com/spacejam/sled#a-note-on-lexicographic-ordering-and-endianness
+fn id_to_bin(id: u64) -> [u8; 8] {
+    let mut buf: [u8; 8] = [0; 8];
+    BigEndian::write_u64(&mut buf, id);
+    buf
+}
 
-    current_snapshot: RwLock<Option<RegistrySnapshot>>,
+fn bin_to_id(buf: &[u8]) -> u64 {
+    (&buf[0..8]).read_u64::<BigEndian>().unwrap()
+}
+
+impl RegistryStore {
+    fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
+        let store_tree = store(&self.db);
+        let val = store_tree
+            .get(b"last_purged_log_id")
+            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
+            .and_then(|v| serde_json::from_slice(&v).ok());
+
+        Ok(val)
+    }
+
+    async fn set_last_purged_(&self, log_id: LogId<u64>) -> StorageResult<()> {
+        let store_tree = store(&self.db);
+        let val = serde_json::to_vec(&log_id).unwrap();
+        store_tree.insert(b"last_purged_log_id", val.as_slice()).map_err(s_w_err)?;
+
+        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+    }
+
+    fn get_snapshot_index_(&self) -> StorageResult<u64> {
+        let store_tree = store(&self.db);
+        let val = store_tree
+            .get(b"snapshot_index")
+            .map_err(s_r_err)?
+            .and_then(|v| serde_json::from_slice(&v).ok())
+            .unwrap_or(0);
+
+        Ok(val)
+    }
+
+    async fn set_snapshot_index_(&self, snapshot_index: u64) -> StorageResult<()> {
+        let store_tree = store(&self.db);
+        let val = serde_json::to_vec(&snapshot_index).unwrap();
+        store_tree.insert(b"snapshot_index", val.as_slice()).map_err(s_w_err)?;
+
+        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+    }
+
+    async fn set_vote_(&self, vote: &Vote<RegistryNodeId>) -> StorageResult<()> {
+        let store_tree = store(&self.db);
+        let val = serde_json::to_vec(vote).unwrap();
+        store_tree.insert(b"vote", val).map_err(v_w_err).map(|_| ())?;
+
+        store_tree.flush_async().await.map_err(v_w_err).map(|_| ())
+    }
+
+    fn get_vote_(&self) -> StorageResult<Option<Vote<RegistryNodeId>>> {
+        let store_tree = store(&self.db);
+        let val = store_tree.get(b"vote").map_err(v_r_err)?.and_then(|v| serde_json::from_slice(&v).ok());
+
+        Ok(val)
+    }
+
+    fn get_current_snapshot_(&self) -> StorageResult<Option<RegistrySnapshot>> {
+        let store_tree = store(&self.db);
+        let val = store_tree.get(b"snapshot").map_err(s_r_err)?.and_then(|v| serde_json::from_slice(&v).ok());
+
+        Ok(val)
+    }
+
+    async fn set_current_snapshot_(&self, snap: RegistrySnapshot) -> StorageResult<()> {
+        let store_tree = store(&self.db);
+        let val = serde_json::to_vec(&snap).unwrap();
+        let meta = snap.meta.clone();
+        store_tree.insert(b"snapshot", val.as_slice()).map_err(|e| StorageError::IO {
+            source: StorageIOError::new(
+                ErrorSubject::Snapshot(snap.meta.signature()),
+                ErrorVerb::Write,
+                AnyError::new(&e),
+            ),
+        })?;
+
+        store_tree
+            .flush_async()
+            .await
+            .map_err(|e| {
+                StorageIOError::new(
+                    ErrorSubject::Snapshot(meta.signature()),
+                    ErrorVerb::Write,
+                    AnyError::new(&e),
+                )
+                .into()
+            })
+            .map(|_| ())
+    }
 }
 
 #[async_trait]
 impl RaftLogReader<RegistryTypeConfig> for Arc<RegistryStore> {
-    async fn get_log_state(
-        &mut self,
-    ) -> Result<LogState<RegistryTypeConfig>, StorageError<RegistryNodeId>> {
-        let log = self.log.read().await;
-        let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
+    async fn get_log_state(&mut self) -> StorageResult<LogState<RegistryTypeConfig>> {
+        let last_purged_log_id = self.get_last_purged_()?;
 
-        let last_purged = *self.last_purged_log_id.read().await;
+        let logs_tree = logs(&self.db);
+        let last_res = logs_tree.last();
+        if last_res.is_err() {
+            return Ok(LogState {
+                last_purged_log_id,
+                last_log_id: last_purged_log_id,
+            });
+        }
 
-        let last = match last {
-            None => last_purged,
+        let last = last_res
+            .unwrap()
+            .and_then(|(_, ent)| Some(serde_json::from_slice::<Entry<RegistryTypeConfig>>(&ent).ok()?.log_id));
+
+        let last_log_id = match last {
+            None => last_purged_log_id,
             Some(x) => Some(x),
         };
-
         Ok(LogState {
-            last_purged_log_id: last_purged,
-            last_log_id: last,
+            last_purged_log_id,
+            last_log_id,
         })
     }
 
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<RegistryTypeConfig>>, StorageError<RegistryNodeId>> {
-        let log = self.log.read().await;
-        let response = log
-            .range(range.clone())
-            .map(|(_, val)| val.clone())
-            .collect::<Vec<_>>();
-        Ok(response)
+    ) -> StorageResult<Vec<Entry<RegistryTypeConfig>>> {
+        let start_bound = range.start_bound();
+        let start = match start_bound {
+            std::ops::Bound::Included(x) => id_to_bin(*x),
+            std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
+            std::ops::Bound::Unbounded => id_to_bin(0),
+        };
+        let logs_tree = logs(&self.db);
+        let logs = logs_tree
+            .range::<&[u8], _>(start.as_slice()..)
+            .map(|el_res| {
+                let el = el_res.expect("Failed read log entry");
+                let id = el.0;
+                let val = el.1;
+                let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
+                    source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
+                });
+                let id = bin_to_id(&id);
+
+                assert_eq!(Ok(id), entry.as_ref().map(|e| e.log_id.index));
+                (id, entry)
+            })
+            .take_while(|(id, _)| range.contains(id))
+            .map(|x| x.1)
+            .collect();
+        logs
     }
 }
 
@@ -135,32 +428,24 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<RegistryNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RegistryNodeId>>
-    {
+    ) -> Result<Snapshot<RegistryNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RegistryNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
 
         {
             // Serialize the data of the state machine.
-            let state_machine = self.state_machine.read().await;
-            data = serde_json::to_vec(&*state_machine).map_err(|e| {
-                StorageIOError::new(
-                    ErrorSubject::StateMachine,
-                    ErrorVerb::Read,
-                    AnyError::new(&e),
-                )
-            })?;
+            let state_machine = SerializableRegistryStateMachine::from(&*self.state_machine.read().await);
+            data = serde_json::to_vec(&state_machine)
+                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
             last_applied_log = state_machine.last_applied_log;
-            last_membership = state_machine.last_membership.clone();
+            last_membership = state_machine.last_membership;
         }
 
-        let snapshot_idx = {
-            let mut l = self.snapshot_idx.lock().unwrap();
-            *l += 1;
-            *l
-        };
+        // TODO: we probably want this to be atomic.
+        let snapshot_idx: u64 = self.get_snapshot_index_()? + 1;
+        self.set_snapshot_index_(snapshot_idx).await?;
 
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
@@ -179,10 +464,7 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
             data: data.clone(),
         };
 
-        {
-            let mut current_snapshot = self.current_snapshot.write().await;
-            *current_snapshot = Some(snapshot);
-        }
+        self.set_current_snapshot_(snapshot).await?;
 
         Ok(Snapshot {
             meta,
@@ -198,93 +480,77 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     type SnapshotBuilder = Self;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(
-        &mut self,
-        vote: &Vote<RegistryNodeId>,
-    ) -> Result<(), StorageError<RegistryNodeId>> {
-        let mut v = self.vote.write().await;
-        *v = Some(*vote);
-        Ok(())
+    async fn save_vote(&mut self, vote: &Vote<RegistryNodeId>) -> Result<(), StorageError<RegistryNodeId>> {
+        self.set_vote_(vote).await
     }
 
-    async fn read_vote(
-        &mut self,
-    ) -> Result<Option<Vote<RegistryNodeId>>, StorageError<RegistryNodeId>> {
-        Ok(*self.vote.read().await)
+    async fn read_vote(&mut self) -> Result<Option<Vote<RegistryNodeId>>, StorageError<RegistryNodeId>> {
+        self.get_vote_()
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(
-        &mut self,
-        entries: &[&Entry<RegistryTypeConfig>],
-    ) -> Result<(), StorageError<RegistryNodeId>> {
-        let mut log = self.log.write().await;
+    async fn append_to_log(&mut self, entries: &[&Entry<RegistryTypeConfig>]) -> StorageResult<()> {
+        let logs_tree = logs(&self.db);
+        let mut batch = sled::Batch::default();
         for entry in entries {
-            log.insert(entry.log_id.index, (*entry).clone());
+            let id = id_to_bin(entry.log_id.index);
+            assert_eq!(bin_to_id(&id), entry.log_id.index);
+            let value = serde_json::to_vec(entry).map_err(l_w_err)?;
+            batch.insert(id.as_slice(), value);
         }
-        Ok(())
+        logs_tree.apply_batch(batch).map_err(l_w_err)?;
+
+        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(
-        &mut self,
-        log_id: LogId<RegistryNodeId>,
-    ) -> Result<(), StorageError<RegistryNodeId>> {
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<RegistryNodeId>) -> StorageResult<()> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
-        let mut log = self.log.write().await;
-        let keys = log
-            .range(log_id.index..)
-            .map(|(k, _v)| *k)
-            .collect::<Vec<_>>();
-        for key in keys {
-            log.remove(&key);
+        let from = id_to_bin(log_id.index);
+        let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
+        let logs_tree = logs(&self.db);
+        let entries = logs_tree.range::<&[u8], _>(from.as_slice()..to.as_slice());
+        let mut batch_del = sled::Batch::default();
+        for entry_res in entries {
+            let entry = entry_res.expect("Read db entry failed");
+            batch_del.remove(entry.0);
         }
-
-        Ok(())
+        logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
+        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(
-        &mut self,
-        log_id: LogId<RegistryNodeId>,
-    ) -> Result<(), StorageError<RegistryNodeId>> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+    async fn purge_logs_upto(&mut self, log_id: LogId<RegistryNodeId>) -> Result<(), StorageError<RegistryNodeId>> {
+        tracing::debug!("delete_log: [0, {:?}]", log_id);
 
-        {
-            let mut ld = self.last_purged_log_id.write().await;
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
+        self.set_last_purged_(log_id).await?;
+        let from = id_to_bin(0);
+        let to = id_to_bin(log_id.index);
+        let logs_tree = logs(&self.db);
+        let entries = logs_tree.range::<&[u8], _>(from.as_slice()..=to.as_slice());
+        let mut batch_del = sled::Batch::default();
+        for entry_res in entries {
+            let entry = entry_res.expect("Read db entry failed");
+            batch_del.remove(entry.0);
         }
+        logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
 
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log
-                .range(..=log_id.index)
-                .map(|(k, _v)| *k)
-                .collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
+        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
     }
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<
-        (
-            Option<LogId<RegistryNodeId>>,
-            StoredMembership<RegistryNodeId, BasicNode>,
-        ),
-        StorageError<RegistryNodeId>,
-    > {
+    ) -> Result<(Option<LogId<RegistryNodeId>>, StoredMembership<RegistryNodeId, BasicNode>), StorageError<RegistryNodeId>>
+    {
         let state_machine = self.state_machine.read().await;
         Ok((
-            state_machine.last_applied_log,
-            state_machine.last_membership.clone(),
+            state_machine.get_last_applied_log()?,
+            state_machine.get_last_membership()?,
         ))
     }
 
@@ -293,38 +559,51 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         &mut self,
         entries: &[&Entry<RegistryTypeConfig>],
     ) -> Result<Vec<RegistryResponse>, StorageError<RegistryNodeId>> {
-        let mut res = Vec::with_capacity(entries.len());
+        let sm = self.state_machine.write().await;
+        let state_machine = state_machine(&self.db);
+        let data_tree = data(&self.db);
+        let trans_res = (&state_machine, &data_tree).transaction(|(tx_state_machine, tx_data_tree)| {
+            let mut res = Vec::with_capacity(entries.len());
 
-        let mut sm = self.state_machine.write().await;
+            for entry in entries {
+                tracing::debug!(%entry.log_id, "replicate to sm");
 
-        for entry in entries {
-            tracing::debug!(%entry.log_id, "replicate to sm");
+                sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
 
-            sm.last_applied_log = Some(entry.log_id);
-
-            match entry.payload {
-                EntryPayload::Blank => res.push(RegistryResponse { value: None }),
-                EntryPayload::Normal(ref req) => match req {
-                    RegistryRequest::Set { key, value } => {
-                        sm.data.insert(key.clone(), value.clone());
-                        res.push(RegistryResponse {
-                            value: Some(value.clone()),
-                        })
+                match entry.payload {
+                    EntryPayload::Blank => res.push(RegistryResponse { value: None }),
+                    EntryPayload::Normal(ref req) => match req {
+                        RegistryRequest::Set { key, value } => {
+                            sm.insert_tx(tx_data_tree, key.clone(), value.clone())?;
+                            res.push(RegistryResponse {
+                                value: Some(value.clone()),
+                            })
+                        }
+                    },
+                    EntryPayload::Membership(ref mem) => {
+                        let membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+                        sm.set_last_membership_tx(tx_state_machine, membership)?;
+                        res.push(RegistryResponse { value: None })
                     }
-                },
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(RegistryResponse { value: None })
-                }
-            };
-        }
-        Ok(res)
+                };
+            }
+            Ok(res)
+        });
+        let result_vec = trans_res.map_err(t_err)?;
+
+        self.db
+            .flush_async()
+            .await
+            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+        Ok(result_vec)
+    }
+
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+        self.clone()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(
-        &mut self,
-    ) -> Result<Box<Self::SnapshotData>, StorageError<RegistryNodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<RegistryNodeId>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -346,8 +625,8 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
 
         // Update the state machine.
         {
-            let updated_state_machine: RegistryStateMachine =
-                serde_json::from_slice(&new_snapshot.data).map_err(|e| {
+            let updated_state_machine: SerializableRegistryStateMachine = serde_json::from_slice(&new_snapshot.data)
+                .map_err(|e| {
                     StorageIOError::new(
                         ErrorSubject::Snapshot(new_snapshot.meta.signature()),
                         ErrorVerb::Read,
@@ -355,39 +634,50 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                     )
                 })?;
             let mut state_machine = self.state_machine.write().await;
-            *state_machine = updated_state_machine;
+            *state_machine = RegistryStateMachine::from_serializable(updated_state_machine, self.db.clone()).await?;
         }
 
-        // Update current snapshot.
-        let mut current_snapshot = self.current_snapshot.write().await;
-        *current_snapshot = Some(new_snapshot);
+        self.set_current_snapshot_(new_snapshot).await?;
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<
-        Option<Snapshot<RegistryNodeId, BasicNode, Self::SnapshotData>>,
-        StorageError<RegistryNodeId>,
-    > {
-        match &*self.current_snapshot.read().await {
+    ) -> Result<Option<Snapshot<RegistryNodeId, BasicNode, Self::SnapshotData>>, StorageError<RegistryNodeId>> {
+        match RegistryStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
-                    meta: snapshot.meta.clone(),
+                    meta: snapshot.meta,
                     snapshot: Box::new(Cursor::new(data)),
                 }))
             }
             None => Ok(None),
         }
     }
+}
+impl RegistryStore {
+    pub async fn new(db: Arc<sled::Db>) -> Arc<RegistryStore> {
+        let _store = store(&db);
+        let _state_machine = state_machine(&db);
+        let _data = data(&db);
+        let _logs = logs(&db);
 
-    async fn get_log_reader(&mut self) -> Self::LogReader {
-        self.clone()
+        let state_machine = RwLock::new(RegistryStateMachine::new(db.clone()));
+        Arc::new(RegistryStore { db, state_machine })
     }
+}
 
-    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
-        self.clone()
-    }
+fn store(db: &sled::Db) -> sled::Tree {
+    db.open_tree("store").expect("store open failed")
+}
+fn logs(db: &sled::Db) -> sled::Tree {
+    db.open_tree("logs").expect("logs open failed")
+}
+fn data(db: &sled::Db) -> sled::Tree {
+    db.open_tree("data").expect("data open failed")
+}
+fn state_machine(db: &sled::Db) -> sled::Tree {
+    db.open_tree("state_machine").expect("state_machine open failed")
 }

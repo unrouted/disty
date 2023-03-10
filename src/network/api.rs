@@ -34,7 +34,7 @@ pub async fn write(
 pub async fn read(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let state_machine = app.store.state_machine.read().await;
     let key = req.0;
-    let value = state_machine.data.get(&key).cloned();
+    let value = (*state_machine).get(&key).unwrap();
 
     let res: Result<String, Infallible> = Ok(value.unwrap_or_default());
     Ok(Json(res))
@@ -51,7 +51,7 @@ pub async fn consistent_read(
         Ok(_) => {
             let state_machine = app.store.state_machine.read().await;
             let key = req.0;
-            let value = state_machine.data.get(&key).cloned();
+            let value = (*state_machine).get(&key).unwrap();
 
             let res: Result<
                 String,

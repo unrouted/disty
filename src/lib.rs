@@ -67,8 +67,14 @@ pub async fn start_raft_node(
 
     let config = Arc::new(config.validate().unwrap());
 
+    let db_path = format!("tmp{node_id}");
+
+    let db: sled::Db = sled::open(&db_path).unwrap_or_else(|_| panic!("could not open: {:?}", db_path));
+
     // Create a instance of where the Raft data will be stored.
-    let store = Arc::new(RegistryStore::default());
+    let store = RegistryStore::new(
+        Arc::new(db)
+    ).await;
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.

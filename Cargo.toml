@@ -28,10 +28,13 @@ tokio = { version = "1.0", default-features = false, features = ["sync"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+sled = "0.34.7"
+byteorder = "1.4.3"
 
 [dev-dependencies]
 anyhow = "1.0.63"
 maplit = "1.0.2"
+tempfile = { version = "3.4.0" }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
