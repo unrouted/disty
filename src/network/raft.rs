@@ -8,7 +8,7 @@ use openraft::raft::VoteRequest;
 use web::Json;
 
 use crate::app::ExampleApp;
-use crate::ExampleNodeId;
+use crate::RegistryNodeId;
 use crate::ExampleTypeConfig;
 
 // --- Raft communication
@@ -16,7 +16,7 @@ use crate::ExampleTypeConfig;
 #[post("/raft-vote")]
 pub async fn vote(
     app: Data<ExampleApp>,
-    req: Json<VoteRequest<ExampleNodeId>>,
+    req: Json<VoteRequest<RegistryNodeId>>,
 ) -> actix_web::Result<impl Responder> {
     let res = app.raft.vote(req.0).await;
     Ok(Json(res))

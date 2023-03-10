@@ -10,7 +10,7 @@ use web::Json;
 
 use crate::app::ExampleApp;
 use crate::store::ExampleRequest;
-use crate::ExampleNodeId;
+use crate::RegistryNodeId;
 
 /**
  * Application API
@@ -55,7 +55,7 @@ pub async fn consistent_read(
 
             let res: Result<
                 String,
-                RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>,
+                RaftError<RegistryNodeId, CheckIsLeaderError<RegistryNodeId, BasicNode>>,
             > = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }

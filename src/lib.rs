@@ -25,11 +25,11 @@ pub mod client;
 pub mod network;
 pub mod store;
 
-pub type ExampleNodeId = u64;
+pub type RegistryNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
 );
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
@@ -37,24 +37,24 @@ pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>
 pub mod typ {
     use openraft::BasicNode;
 
-    use crate::ExampleNodeId;
+    use crate::RegistryNodeId;
     use crate::ExampleTypeConfig;
 
     pub type RaftError<E = openraft::error::Infallible> =
-        openraft::error::RaftError<ExampleNodeId, E>;
+        openraft::error::RaftError<RegistryNodeId, E>;
     pub type RPCError<E = openraft::error::Infallible> =
-        openraft::error::RPCError<ExampleNodeId, BasicNode, RaftError<E>>;
+        openraft::error::RPCError<RegistryNodeId, BasicNode, RaftError<E>>;
 
-    pub type ClientWriteError = openraft::error::ClientWriteError<ExampleNodeId, BasicNode>;
-    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<ExampleNodeId, BasicNode>;
-    pub type ForwardToLeader = openraft::error::ForwardToLeader<ExampleNodeId, BasicNode>;
-    pub type InitializeError = openraft::error::InitializeError<ExampleNodeId, BasicNode>;
+    pub type ClientWriteError = openraft::error::ClientWriteError<RegistryNodeId, BasicNode>;
+    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<RegistryNodeId, BasicNode>;
+    pub type ForwardToLeader = openraft::error::ForwardToLeader<RegistryNodeId, BasicNode>;
+    pub type InitializeError = openraft::error::InitializeError<RegistryNodeId, BasicNode>;
 
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
 }
 
 pub async fn start_example_raft_node(
-    node_id: ExampleNodeId,
+    node_id: RegistryNodeId,
     http_addr: String,
 ) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
