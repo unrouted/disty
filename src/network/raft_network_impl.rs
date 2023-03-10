@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::RegistryNodeId;
-use crate::ExampleTypeConfig;
+use crate::RegistryTypeConfig;
 
 pub struct ExampleNetwork {}
 
@@ -65,7 +65,7 @@ impl ExampleNetwork {
 // NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented
 // directly.
 #[async_trait]
-impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
+impl RaftNetworkFactory<RegistryTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
 
     async fn new_client(&mut self, target: RegistryNodeId, node: &BasicNode) -> Self::Network {
@@ -84,10 +84,10 @@ pub struct ExampleNetworkConnection {
 }
 
 #[async_trait]
-impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
+impl RaftNetwork<RegistryTypeConfig> for ExampleNetworkConnection {
     async fn send_append_entries(
         &mut self,
-        req: AppendEntriesRequest<ExampleTypeConfig>,
+        req: AppendEntriesRequest<RegistryTypeConfig>,
     ) -> Result<
         AppendEntriesResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
@@ -99,7 +99,7 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
 
     async fn send_install_snapshot(
         &mut self,
-        req: InstallSnapshotRequest<ExampleTypeConfig>,
+        req: InstallSnapshotRequest<RegistryTypeConfig>,
     ) -> Result<
         InstallSnapshotResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId, InstallSnapshotError>>,

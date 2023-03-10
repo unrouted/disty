@@ -29,16 +29,16 @@ pub type RegistryNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
+    pub RegistryTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
 );
 
-pub type RegistryRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegistryStore>>;
+pub type RegistryRaft = Raft<RegistryTypeConfig, ExampleNetwork, Arc<RegistryStore>>;
 
 pub mod typ {
     use openraft::BasicNode;
 
     use crate::RegistryNodeId;
-    use crate::ExampleTypeConfig;
+    use crate::RegistryTypeConfig;
 
     pub type RaftError<E = openraft::error::Infallible> =
         openraft::error::RaftError<RegistryNodeId, E>;
@@ -50,7 +50,7 @@ pub mod typ {
     pub type ForwardToLeader = openraft::error::ForwardToLeader<RegistryNodeId, BasicNode>;
     pub type InitializeError = openraft::error::InitializeError<RegistryNodeId, BasicNode>;
 
-    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
+    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }
 
 pub async fn start_example_raft_node(

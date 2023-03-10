@@ -3,10 +3,10 @@ use openraft::Raft;
 use distribd::network::raft_network_impl::ExampleNetwork;
 use distribd::start_example_raft_node;
 use distribd::store::RegistryStore;
-use distribd::ExampleTypeConfig;
+use distribd::RegistryTypeConfig;
 use tracing_subscriber::EnvFilter;
 
-pub type RegistryRaft = Raft<ExampleTypeConfig, ExampleNetwork, RegistryStore>;
+pub type RegistryRaft = Raft<RegistryTypeConfig, ExampleNetwork, RegistryStore>;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]
