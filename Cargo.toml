@@ -5,14 +5,12 @@ readme = "README.md"
 
 edition = "2021"
 authors = [
-    "drdr xp <drdr.xp@gmail.com>",
-    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
+    "John Carr <john.carr@unrouted.co.uk>",
 ]
-categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An example distributed key-value store built upon `openraft`."
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
+license = "Apache-2.0"
 repository = "https://github.com/datafuselabs/openraft"
 
 [[bin]]
