@@ -20,7 +20,7 @@ name = "raft-key-value"
 path = "src/bin/main.rs"
 
 [dependencies]
-openraft="0.8"
+openraft= { version="0.8", features=["serde"]}
 actix-web = "4.0.0-rc.2"
 async-trait = "0.1.36"
 clap = { version = "3.0.13", features = ["derive", "env"] }

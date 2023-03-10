@@ -1036,6 +1036,7 @@ dependencies = [
  "maplit",
  "pin-utils",
  "rand",
+ "serde",
  "thiserror",
  "tokio",
  "tracing",
