@@ -55,7 +55,7 @@ pub struct RegistryResponse {
 }
 
 #[derive(Debug)]
-pub struct ExampleSnapshot {
+pub struct RegistrySnapshot {
     pub meta: SnapshotMeta<RegistryNodeId, BasicNode>,
 
     /// The data of the state machine at the time of this snapshot.
@@ -93,7 +93,7 @@ pub struct RegistryStore {
 
     snapshot_idx: Arc<Mutex<u64>>,
 
-    current_snapshot: RwLock<Option<ExampleSnapshot>>,
+    current_snapshot: RwLock<Option<RegistrySnapshot>>,
 }
 
 #[async_trait]
@@ -174,7 +174,7 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
             snapshot_id,
         };
 
-        let snapshot = ExampleSnapshot {
+        let snapshot = RegistrySnapshot {
             meta: meta.clone(),
             data: data.clone(),
         };
@@ -339,7 +339,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             "decoding snapshot for installation"
         );
 
-        let new_snapshot = ExampleSnapshot {
+        let new_snapshot = RegistrySnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),
         };
