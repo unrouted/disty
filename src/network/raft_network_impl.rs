@@ -66,10 +66,10 @@ impl ExampleNetwork {
 // directly.
 #[async_trait]
 impl RaftNetworkFactory<RegistryTypeConfig> for ExampleNetwork {
-    type Network = ExampleNetworkConnection;
+    type Network = RegistryNetworkConnection;
 
     async fn new_client(&mut self, target: RegistryNodeId, node: &BasicNode) -> Self::Network {
-        ExampleNetworkConnection {
+        RegistryNetworkConnection {
             owner: ExampleNetwork {},
             target,
             target_node: node.clone(),
@@ -77,14 +77,14 @@ impl RaftNetworkFactory<RegistryTypeConfig> for ExampleNetwork {
     }
 }
 
-pub struct ExampleNetworkConnection {
+pub struct RegistryNetworkConnection {
     owner: ExampleNetwork,
     target: RegistryNodeId,
     target_node: BasicNode,
 }
 
 #[async_trait]
-impl RaftNetwork<RegistryTypeConfig> for ExampleNetworkConnection {
+impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<RegistryTypeConfig>,
