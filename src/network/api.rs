@@ -8,7 +8,7 @@ use openraft::error::RaftError;
 use openraft::BasicNode;
 use web::Json;
 
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::store::ExampleRequest;
 use crate::RegistryNodeId;
 
@@ -23,7 +23,7 @@ use crate::RegistryNodeId;
  */
 #[post("/write")]
 pub async fn write(
-    app: Data<ExampleApp>,
+    app: Data<RegistryApp>,
     req: Json<ExampleRequest>,
 ) -> actix_web::Result<impl Responder> {
     let response = app.raft.client_write(req.0).await;
@@ -31,7 +31,7 @@ pub async fn write(
 }
 
 #[post("/read")]
-pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+pub async fn read(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let state_machine = app.store.state_machine.read().await;
     let key = req.0;
     let value = state_machine.data.get(&key).cloned();
@@ -42,7 +42,7 @@ pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result
 
 #[post("/consistent_read")]
 pub async fn consistent_read(
-    app: Data<ExampleApp>,
+    app: Data<RegistryApp>,
     req: Json<String>,
 ) -> actix_web::Result<impl Responder> {
     let ret = app.raft.is_leader().await;

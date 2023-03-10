@@ -11,7 +11,7 @@ use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
 
-use crate::app::ExampleApp;
+use crate::app::RegistryApp;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
@@ -81,7 +81,7 @@ pub async fn start_example_raft_node(
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
-    let app = Data::new(ExampleApp {
+    let app = Data::new(RegistryApp {
         id: node_id,
         addr: http_addr.clone(),
         raft,

@@ -8,7 +8,7 @@ use crate::RegistryStore;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
-pub struct ExampleApp {
+pub struct RegistryApp {
     pub id: RegistryNodeId,
     pub addr: String,
     pub raft: RegistryRaft,
