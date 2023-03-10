@@ -4,12 +4,12 @@ use std::panic::PanicInfo;
 use std::thread;
 use std::time::Duration;
 
-use maplit::btreemap;
-use maplit::btreeset;
-use openraft::BasicNode;
 use distribd::client::RegistryClient;
 use distribd::start_raft_node;
 use distribd::store::RegistryRequest;
+use maplit::btreemap;
+use maplit::btreeset;
+use openraft::BasicNode;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -87,28 +87,19 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x =
-            rt.block_on(
-                async move { start_raft_node(1, "127.0.0.1:21001".to_string()).await },
-            );
+        let x = rt.block_on(async move { start_raft_node(1, "127.0.0.1:21001".to_string()).await });
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x =
-            rt.block_on(
-                async move { start_raft_node(2, "127.0.0.1:21002".to_string()).await },
-            );
+        let x = rt.block_on(async move { start_raft_node(2, "127.0.0.1:21002".to_string()).await });
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x =
-            rt.block_on(
-                async move { start_raft_node(3, "127.0.0.1:21003".to_string()).await },
-            );
+        let x = rt.block_on(async move { start_raft_node(3, "127.0.0.1:21003".to_string()).await });
         println!("x: {:?}", x);
     });
 

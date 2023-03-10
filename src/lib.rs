@@ -54,10 +54,7 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }
 
-pub async fn start_raft_node(
-    node_id: RegistryNodeId,
-    http_addr: String,
-) -> std::io::Result<()> {
+pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,
@@ -70,12 +67,11 @@ pub async fn start_raft_node(
 
     let db_path = format!("tmp{node_id}");
 
-    let db: sled::Db = sled::open(&db_path).unwrap_or_else(|_| panic!("could not open: {:?}", db_path));
+    let db: sled::Db =
+        sled::open(&db_path).unwrap_or_else(|_| panic!("could not open: {:?}", db_path));
 
     // Create a instance of where the Raft data will be stored.
-    let store = RegistryStore::new(
-        Arc::new(db)
-    ).await;
+    let store = RegistryStore::new(Arc::new(db)).await;
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.

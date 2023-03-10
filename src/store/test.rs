@@ -9,8 +9,8 @@ use openraft::testing::Suite;
 use openraft::StorageError;
 
 use crate::RegistryNodeId;
-use crate::RegistryTypeConfig;
 use crate::RegistryStore;
+use crate::RegistryTypeConfig;
 
 static GLOBAL_TEST_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -37,10 +37,12 @@ impl StoreBuilder<RegistryTypeConfig, Arc<RegistryStore>> for SledBuilder {
 
             let db_dir = std::path::Path::new(&db_dir_str);
             if !db_dir.exists() {
-                std::fs::create_dir_all(db_dir).unwrap_or_else(|_| panic!("could not create: {:?}", db_dir.to_str()));
+                std::fs::create_dir_all(db_dir)
+                    .unwrap_or_else(|_| panic!("could not create: {:?}", db_dir.to_str()));
             }
 
-            let db: sled::Db = sled::open(db_dir).unwrap_or_else(|_| panic!("could not open: {:?}", db_dir.to_str()));
+            let db: sled::Db = sled::open(db_dir)
+                .unwrap_or_else(|_| panic!("could not open: {:?}", db_dir.to_str()));
 
             let store = RegistryStore::new(Arc::new(db)).await;
             let test_res = t(store).await;

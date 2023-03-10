@@ -1,9 +1,9 @@
 use clap::Parser;
-use openraft::Raft;
 use distribd::network::raft_network_impl::RegistryNetwork;
 use distribd::start_raft_node;
 use distribd::store::RegistryStore;
 use distribd::RegistryTypeConfig;
+use openraft::Raft;
 use tracing_subscriber::EnvFilter;
 
 pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>;
