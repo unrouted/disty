@@ -7,7 +7,7 @@ use std::time::Duration;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
-use distribd::client::ExampleClient;
+use distribd::client::RegistryClient;
 use distribd::start_example_raft_node;
 use distribd::store::RegistryRequest;
 use tokio::runtime::Runtime;
@@ -117,7 +117,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
-    let client = ExampleClient::new(1, get_addr(1)?);
+    let client = RegistryClient::new(1, get_addr(1)?);
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
@@ -207,12 +207,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = ExampleClient::new(2, get_addr(2)?);
+    let client2 = RegistryClient::new(2, get_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = ExampleClient::new(3, get_addr(3)?);
+    let client3 = RegistryClient::new(3, get_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("bar", x);
 
@@ -235,12 +235,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 2");
-    let client2 = ExampleClient::new(2, get_addr(2)?);
+    let client2 = RegistryClient::new(2, get_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
     println!("=== read `foo` on node 3");
-    let client3 = ExampleClient::new(3, get_addr(3)?);
+    let client3 = RegistryClient::new(3, get_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 

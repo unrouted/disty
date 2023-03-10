@@ -23,7 +23,7 @@ use crate::RegistryRequest;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
 
-pub struct ExampleClient {
+pub struct RegistryClient {
     /// The leader node to send request to.
     ///
     /// All traffic should be sent to the leader in a cluster.
@@ -32,7 +32,7 @@ pub struct ExampleClient {
     pub inner: Client,
 }
 
-impl ExampleClient {
+impl RegistryClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
     pub fn new(leader_id: RegistryNodeId, leader_addr: String) -> Self {
         Self {
