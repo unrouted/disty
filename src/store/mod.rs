@@ -79,7 +79,7 @@ pub struct ExampleStateMachine {
 }
 
 #[derive(Debug, Default)]
-pub struct ExampleStore {
+pub struct RegistryStore {
     last_purged_log_id: RwLock<Option<LogId<RegistryNodeId>>>,
 
     /// The Raft log.
@@ -97,7 +97,7 @@ pub struct ExampleStore {
 }
 
 #[async_trait]
-impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
+impl RaftLogReader<ExampleTypeConfig> for Arc<RegistryStore> {
     async fn get_log_state(
         &mut self,
     ) -> Result<LogState<ExampleTypeConfig>, StorageError<RegistryNodeId>> {
@@ -131,7 +131,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStore> {
+impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
@@ -192,7 +192,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
 }
 
 #[async_trait]
-impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
+impl RaftStorage<ExampleTypeConfig> for Arc<RegistryStore> {
     type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;

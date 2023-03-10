@@ -18,7 +18,7 @@ use crate::network::raft;
 use crate::network::raft_network_impl::ExampleNetwork;
 use crate::store::ExampleRequest;
 use crate::store::ExampleResponse;
-use crate::store::ExampleStore;
+use crate::store::RegistryStore;
 
 pub mod app;
 pub mod client;
@@ -32,7 +32,7 @@ openraft::declare_raft_types!(
     pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
 );
 
-pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
+pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<RegistryStore>>;
 
 pub mod typ {
     use openraft::BasicNode;
@@ -68,7 +68,7 @@ pub async fn start_example_raft_node(
     let config = Arc::new(config.validate().unwrap());
 
     // Create a instance of where the Raft data will be stored.
-    let store = Arc::new(ExampleStore::default());
+    let store = Arc::new(RegistryStore::default());
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
