@@ -69,7 +69,7 @@ pub struct RegistrySnapshot {
  * value as String, but you could set any type of value that has the serialization impl.
  */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct ExampleStateMachine {
+pub struct RegistryStateMachine {
     pub last_applied_log: Option<LogId<RegistryNodeId>>,
 
     pub last_membership: StoredMembership<RegistryNodeId, BasicNode>,
@@ -86,7 +86,7 @@ pub struct RegistryStore {
     log: RwLock<BTreeMap<u64, Entry<RegistryTypeConfig>>>,
 
     /// The Raft state machine.
-    pub state_machine: RwLock<ExampleStateMachine>,
+    pub state_machine: RwLock<RegistryStateMachine>,
 
     /// The current granted vote.
     vote: RwLock<Option<Vote<RegistryNodeId>>>,
@@ -346,7 +346,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
 
         // Update the state machine.
         {
-            let updated_state_machine: ExampleStateMachine =
+            let updated_state_machine: RegistryStateMachine =
                 serde_json::from_slice(&new_snapshot.data).map_err(|e| {
                     StorageIOError::new(
                         ErrorSubject::Snapshot(new_snapshot.meta.signature()),
