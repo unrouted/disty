@@ -22,7 +22,10 @@ use crate::ExampleNodeId;
  *  - `POST - /read` attempt to find a value from a given key.
  */
 #[post("/write")]
-pub async fn write(app: Data<ExampleApp>, req: Json<ExampleRequest>) -> actix_web::Result<impl Responder> {
+pub async fn write(
+    app: Data<ExampleApp>,
+    req: Json<ExampleRequest>,
+) -> actix_web::Result<impl Responder> {
     let response = app.raft.client_write(req.0).await;
     Ok(Json(response))
 }
@@ -38,7 +41,10 @@ pub async fn read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result
 }
 
 #[post("/consistent_read")]
-pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
+pub async fn consistent_read(
+    app: Data<ExampleApp>,
+    req: Json<String>,
+) -> actix_web::Result<impl Responder> {
     let ret = app.raft.is_leader().await;
 
     match ret {
@@ -47,8 +53,10 @@ pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>> =
-                Ok(value.unwrap_or_default());
+            let res: Result<
+                String,
+                RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>,
+            > = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),

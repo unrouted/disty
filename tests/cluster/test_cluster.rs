@@ -37,7 +37,12 @@ pub fn log_panic(panic: &PanicInfo) {
             panic.line = location.line(),
             panic.column = location.column(),
         );
-        eprintln!("{}:{}:{}", location.file(), location.line(), location.column());
+        eprintln!(
+            "{}:{}:{}",
+            location.file(),
+            location.line(),
+            location.column()
+        );
     } else {
         tracing::error!(message = %panic, backtrace = %backtrace);
     }
@@ -82,19 +87,28 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(1, "127.0.0.1:21001".to_string()).await });
+        let x =
+            rt.block_on(
+                async move { start_example_raft_node(1, "127.0.0.1:21001".to_string()).await },
+            );
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(2, "127.0.0.1:21002".to_string()).await });
+        let x =
+            rt.block_on(
+                async move { start_example_raft_node(2, "127.0.0.1:21002".to_string()).await },
+            );
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(3, "127.0.0.1:21003".to_string()).await });
+        let x =
+            rt.block_on(
+                async move { start_example_raft_node(3, "127.0.0.1:21003".to_string()).await },
+            );
         println!("x: {:?}", x);
     });
 
@@ -126,10 +140,16 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== metrics after add-learner");
     let x = client.metrics().await?;
 
-    assert_eq!(&vec![btreeset![1]], x.membership_config.membership().get_joint_config());
+    assert_eq!(
+        &vec![btreeset![1]],
+        x.membership_config.membership().get_joint_config()
+    );
 
-    let nodes_in_cluster =
-        x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
+    let nodes_in_cluster = x
+        .membership_config
+        .nodes()
+        .map(|(nid, node)| (*nid, node.clone()))
+        .collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
             1 => BasicNode::new("127.0.0.1:21001"),
@@ -249,7 +269,10 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== metrics after change-membership to {{3}}");
     let x = client.metrics().await?;
-    assert_eq!(&vec![btreeset![3]], x.membership_config.membership().get_joint_config());
+    assert_eq!(
+        &vec![btreeset![3]],
+        x.membership_config.membership().get_joint_config()
+    );
 
     println!("=== write `foo=zoo` to node-3");
     let _x = client3

@@ -27,7 +27,9 @@ pub async fn add_learner(
     req: Json<(ExampleNodeId, String)>,
 ) -> actix_web::Result<impl Responder> {
     let node_id = req.0 .0;
-    let node = BasicNode { addr: req.0 .1.clone() };
+    let node = BasicNode {
+        addr: req.0 .1.clone(),
+    };
     let res = app.raft.add_learner(node_id, node, true).await;
     Ok(Json(res))
 }
@@ -46,7 +48,12 @@ pub async fn change_membership(
 #[post("/init")]
 pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeMap::new();
-    nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
+    nodes.insert(
+        app.id,
+        BasicNode {
+            addr: app.addr.clone(),
+        },
+    );
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
 }

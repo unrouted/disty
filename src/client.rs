@@ -66,8 +66,12 @@ impl ExampleClient {
     /// Consistent Read value by key, in an inconsistent mode.
     ///
     /// This method MUST return consistent value or CheckIsLeaderError.
-    pub async fn consistent_read(&self, req: &String) -> Result<String, typ::RPCError<typ::CheckIsLeaderError>> {
-        self.do_send_rpc_to_leader("consistent_read", Some(req)).await
+    pub async fn consistent_read(
+        &self,
+        req: &String,
+    ) -> Result<String, typ::RPCError<typ::CheckIsLeaderError>> {
+        self.do_send_rpc_to_leader("consistent_read", Some(req))
+            .await
     }
 
     // --- Cluster management API
@@ -100,7 +104,8 @@ impl ExampleClient {
         &self,
         req: &BTreeSet<ExampleNodeId>,
     ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
-        self.send_rpc_to_leader("change-membership", Some(req)).await
+        self.send_rpc_to_leader("change-membership", Some(req))
+            .await
     }
 
     /// Get the metrics about the cluster.
@@ -157,8 +162,10 @@ impl ExampleClient {
             }
         };
 
-        let res: Result<Resp, typ::RaftError<Err>> =
-            resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let res: Result<Resp, typ::RaftError<Err>> = resp
+            .json()
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
         tracing::debug!(
             "<<< client recv reply from {}: {}",
             url,
@@ -172,11 +179,19 @@ impl ExampleClient {
     ///
     /// If the target node is not a leader, a `ForwardToLeader` error will be
     /// returned and this client will retry at most 3 times to contact the updated leader.
-    async fn send_rpc_to_leader<Req, Resp, Err>(&self, uri: &str, req: Option<&Req>) -> Result<Resp, typ::RPCError<Err>>
+    async fn send_rpc_to_leader<Req, Resp, Err>(
+        &self,
+        uri: &str,
+        req: Option<&Req>,
+    ) -> Result<Resp, typ::RPCError<Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
-        Err: std::error::Error + Serialize + DeserializeOwned + TryAsRef<typ::ForwardToLeader> + Clone,
+        Err: std::error::Error
+            + Serialize
+            + DeserializeOwned
+            + TryAsRef<typ::ForwardToLeader>
+            + Clone,
     {
         // Retry at most 3 times to find a valid leader.
         let mut n_retry = 3;

@@ -44,11 +44,19 @@ impl ExampleNetwork {
 
         tracing::debug!("client is created for: {}", url);
 
-        let resp = client.post(url).json(&req).send().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let resp = client
+            .post(url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 
         tracing::debug!("client.post() is sent");
 
-        let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let res: Result<Resp, Err> = resp
+            .json()
+            .await
+            .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 
         res.map_err(|e| RPCError::RemoteError(RemoteError::new(target, e)))
     }
@@ -80,9 +88,13 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<ExampleTypeConfig>,
-    ) -> Result<AppendEntriesResponse<ExampleNodeId>, RPCError<ExampleNodeId, BasicNode, RaftError<ExampleNodeId>>>
-    {
-        self.owner.send_rpc(self.target, &self.target_node, "raft-append", req).await
+    ) -> Result<
+        AppendEntriesResponse<ExampleNodeId>,
+        RPCError<ExampleNodeId, BasicNode, RaftError<ExampleNodeId>>,
+    > {
+        self.owner
+            .send_rpc(self.target, &self.target_node, "raft-append", req)
+            .await
     }
 
     async fn send_install_snapshot(
@@ -92,13 +104,20 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
         InstallSnapshotResponse<ExampleNodeId>,
         RPCError<ExampleNodeId, BasicNode, RaftError<ExampleNodeId, InstallSnapshotError>>,
     > {
-        self.owner.send_rpc(self.target, &self.target_node, "raft-snapshot", req).await
+        self.owner
+            .send_rpc(self.target, &self.target_node, "raft-snapshot", req)
+            .await
     }
 
     async fn send_vote(
         &mut self,
         req: VoteRequest<ExampleNodeId>,
-    ) -> Result<VoteResponse<ExampleNodeId>, RPCError<ExampleNodeId, BasicNode, RaftError<ExampleNodeId>>> {
-        self.owner.send_rpc(self.target, &self.target_node, "raft-vote", req).await
+    ) -> Result<
+        VoteResponse<ExampleNodeId>,
+        RPCError<ExampleNodeId, BasicNode, RaftError<ExampleNodeId>>,
+    > {
+        self.owner
+            .send_rpc(self.target, &self.target_node, "raft-vote", req)
+            .await
     }
 }

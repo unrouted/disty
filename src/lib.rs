@@ -40,7 +40,8 @@ pub mod typ {
     use crate::ExampleNodeId;
     use crate::ExampleTypeConfig;
 
-    pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<ExampleNodeId, E>;
+    pub type RaftError<E = openraft::error::Infallible> =
+        openraft::error::RaftError<ExampleNodeId, E>;
     pub type RPCError<E = openraft::error::Infallible> =
         openraft::error::RPCError<ExampleNodeId, BasicNode, RaftError<E>>;
 
@@ -52,7 +53,10 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
 }
 
-pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) -> std::io::Result<()> {
+pub async fn start_example_raft_node(
+    node_id: ExampleNodeId,
+    http_addr: String,
+) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,
@@ -71,7 +75,9 @@ pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) 
     let network = ExampleNetwork {};
 
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone()).await.unwrap();
+    let raft = Raft::new(node_id, config.clone(), network, store.clone())
+        .await
+        .unwrap();
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
