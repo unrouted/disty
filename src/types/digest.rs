@@ -5,8 +5,6 @@ use std::str::FromStr;
 
 use data_encoding::HEXLOWER;
 use ring::digest;
-use rocket::form::{FromFormField, ValueField};
-use rocket::request::FromParam;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -29,35 +27,6 @@ impl Digest {
             .join(&self.hash[2..4])
             .join(&self.hash[4..6])
             .join(&self.hash[6..])
-    }
-}
-
-impl<'r> FromParam<'r> for Digest {
-    type Error = &'r str;
-
-    fn from_param(param: &'r str) -> Result<Self, Self::Error> {
-        if !param.starts_with("sha256:") {
-            return Err(param);
-        }
-
-        match param.to_string().split_once(':') {
-            Some((algo, digest)) => Ok(Digest {
-                algo: algo.to_string(),
-                hash: digest.to_string(),
-            }),
-            _ => Err(param),
-        }
-    }
-}
-
-impl<'v> FromFormField<'v> for Digest {
-    fn from_value(field: ValueField<'v>) -> rocket::form::Result<'v, Self> {
-        match field.value.parse() {
-            Ok(value) => Ok(value),
-            _ => std::result::Result::Err(
-                rocket::form::Error::validation("Invalid digest value").into(),
-            ),
-        }
     }
 }
 

@@ -24,6 +24,7 @@ pub mod app;
 pub mod client;
 pub mod network;
 pub mod store;
+pub mod types;
 
 pub type RegistryNodeId = u64;
 
