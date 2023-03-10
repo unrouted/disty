@@ -18,7 +18,7 @@ use tokio::time::timeout;
 
 use crate::typ;
 use crate::RegistryNodeId;
-use crate::ExampleRequest;
+use crate::RegistryRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -51,7 +51,7 @@ impl ExampleClient {
     /// The result of applying the request will be returned.
     pub async fn write(
         &self,
-        req: &ExampleRequest,
+        req: &RegistryRequest,
     ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("write", Some(req)).await
     }
@@ -88,7 +88,7 @@ impl ExampleClient {
 
     /// Add a node as learner.
     ///
-    /// The node to add has to exist, i.e., being added with `write(ExampleRequest::AddNode{})`
+    /// The node to add has to exist, i.e., being added with `write(RegistryRequest::AddNode{})`
     pub async fn add_learner(
         &self,
         req: (RegistryNodeId, String),

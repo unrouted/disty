@@ -9,7 +9,7 @@ use maplit::btreeset;
 use openraft::BasicNode;
 use distribd::client::ExampleClient;
 use distribd::start_example_raft_node;
-use distribd::store::ExampleRequest;
+use distribd::store::RegistryRequest;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -190,7 +190,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== write `foo=bar`");
     let _x = client
-        .write(&ExampleRequest::Set {
+        .write(&RegistryRequest::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
@@ -220,7 +220,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== read `foo` on node 2");
     let _x = client2
-        .write(&ExampleRequest::Set {
+        .write(&RegistryRequest::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
@@ -276,7 +276,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== write `foo=zoo` to node-3");
     let _x = client3
-        .write(&ExampleRequest::Set {
+        .write(&RegistryRequest::Set {
             key: "foo".to_string(),
             value: "zoo".to_string(),
         })

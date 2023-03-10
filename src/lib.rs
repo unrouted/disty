@@ -16,8 +16,8 @@ use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
 use crate::network::raft_network_impl::RegistryNetwork;
-use crate::store::ExampleRequest;
-use crate::store::ExampleResponse;
+use crate::store::RegistryRequest;
+use crate::store::RegistryResponse;
 use crate::store::RegistryStore;
 
 pub mod app;
@@ -29,7 +29,7 @@ pub type RegistryNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub RegistryTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = RegistryNodeId, Node = BasicNode
+    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = RegistryNodeId, Node = BasicNode
 );
 
 pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, Arc<RegistryStore>>;

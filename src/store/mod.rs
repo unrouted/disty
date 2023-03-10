@@ -37,20 +37,20 @@ use crate::RegistryTypeConfig;
  * You will want to add any request that can write data in all nodes here.
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ExampleRequest {
+pub enum RegistryRequest {
     Set { key: String, value: String },
 }
 
 /**
  * Here you will defined what type of answer you expect from reading the data of a node.
  * In this example it will return a optional value from a given key in
- * the `ExampleRequest.Set`.
+ * the `RegistryRequest.Set`.
  *
  * TODO: Should we explain how to create multiple `AppDataResponse`?
  *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ExampleResponse {
+pub struct RegistryResponse {
     pub value: Option<String>,
 }
 
@@ -292,7 +292,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     async fn apply_to_state_machine(
         &mut self,
         entries: &[&Entry<RegistryTypeConfig>],
-    ) -> Result<Vec<ExampleResponse>, StorageError<RegistryNodeId>> {
+    ) -> Result<Vec<RegistryResponse>, StorageError<RegistryNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 
         let mut sm = self.state_machine.write().await;
@@ -303,18 +303,18 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             sm.last_applied_log = Some(entry.log_id);
 
             match entry.payload {
-                EntryPayload::Blank => res.push(ExampleResponse { value: None }),
+                EntryPayload::Blank => res.push(RegistryResponse { value: None }),
                 EntryPayload::Normal(ref req) => match req {
-                    ExampleRequest::Set { key, value } => {
+                    RegistryRequest::Set { key, value } => {
                         sm.data.insert(key.clone(), value.clone());
-                        res.push(ExampleResponse {
+                        res.push(RegistryResponse {
                             value: Some(value.clone()),
                         })
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                    res.push(ExampleResponse { value: None })
+                    res.push(RegistryResponse { value: None })
                 }
             };
         }

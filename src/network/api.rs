@@ -9,7 +9,7 @@ use openraft::BasicNode;
 use web::Json;
 
 use crate::app::RegistryApp;
-use crate::store::ExampleRequest;
+use crate::store::RegistryRequest;
 use crate::RegistryNodeId;
 
 /**
@@ -24,7 +24,7 @@ use crate::RegistryNodeId;
 #[post("/write")]
 pub async fn write(
     app: Data<RegistryApp>,
-    req: Json<ExampleRequest>,
+    req: Json<RegistryRequest>,
 ) -> actix_web::Result<impl Responder> {
     let response = app.raft.client_write(req.0).await;
     Ok(Json(response))
