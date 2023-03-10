@@ -8,7 +8,7 @@ use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
 use distribd::client::RegistryClient;
-use distribd::start_example_raft_node;
+use distribd::start_raft_node;
 use distribd::store::RegistryRequest;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
@@ -89,7 +89,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         let rt = Runtime::new().unwrap();
         let x =
             rt.block_on(
-                async move { start_example_raft_node(1, "127.0.0.1:21001".to_string()).await },
+                async move { start_raft_node(1, "127.0.0.1:21001".to_string()).await },
             );
         println!("x: {:?}", x);
     });
@@ -98,7 +98,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         let rt = Runtime::new().unwrap();
         let x =
             rt.block_on(
-                async move { start_example_raft_node(2, "127.0.0.1:21002".to_string()).await },
+                async move { start_raft_node(2, "127.0.0.1:21002".to_string()).await },
             );
         println!("x: {:?}", x);
     });
@@ -107,7 +107,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         let rt = Runtime::new().unwrap();
         let x =
             rt.block_on(
-                async move { start_example_raft_node(3, "127.0.0.1:21003".to_string()).await },
+                async move { start_raft_node(3, "127.0.0.1:21003".to_string()).await },
             );
         println!("x: {:?}", x);
     });

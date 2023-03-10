@@ -53,7 +53,7 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }
 
-pub async fn start_example_raft_node(
+pub async fn start_raft_node(
     node_id: RegistryNodeId,
     http_addr: String,
 ) -> std::io::Result<()> {

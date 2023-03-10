@@ -1,7 +1,7 @@
 use clap::Parser;
 use openraft::Raft;
 use distribd::network::raft_network_impl::RegistryNetwork;
-use distribd::start_example_raft_node;
+use distribd::start_raft_node;
 use distribd::store::RegistryStore;
 use distribd::RegistryTypeConfig;
 use tracing_subscriber::EnvFilter;
@@ -32,5 +32,5 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_example_raft_node(options.id, options.http_addr).await
+    start_raft_node(options.id, options.http_addr).await
 }
