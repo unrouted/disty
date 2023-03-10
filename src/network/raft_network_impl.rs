@@ -19,9 +19,9 @@ use serde::Serialize;
 use crate::RegistryNodeId;
 use crate::RegistryTypeConfig;
 
-pub struct ExampleNetwork {}
+pub struct RegistryNetwork {}
 
-impl ExampleNetwork {
+impl RegistryNetwork {
     pub async fn send_rpc<Req, Resp, Err>(
         &self,
         target: RegistryNodeId,
@@ -62,15 +62,15 @@ impl ExampleNetwork {
     }
 }
 
-// NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented
+// NOTE: This could be implemented also on `Arc<RegistryNetwork>`, but since it's empty, implemented
 // directly.
 #[async_trait]
-impl RaftNetworkFactory<RegistryTypeConfig> for ExampleNetwork {
+impl RaftNetworkFactory<RegistryTypeConfig> for RegistryNetwork {
     type Network = RegistryNetworkConnection;
 
     async fn new_client(&mut self, target: RegistryNodeId, node: &BasicNode) -> Self::Network {
         RegistryNetworkConnection {
-            owner: ExampleNetwork {},
+            owner: RegistryNetwork {},
             target,
             target_node: node.clone(),
         }
@@ -78,7 +78,7 @@ impl RaftNetworkFactory<RegistryTypeConfig> for ExampleNetwork {
 }
 
 pub struct RegistryNetworkConnection {
-    owner: ExampleNetwork,
+    owner: RegistryNetwork,
     target: RegistryNodeId,
     target_node: BasicNode,
 }

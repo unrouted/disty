@@ -1,12 +1,12 @@
 use clap::Parser;
 use openraft::Raft;
-use distribd::network::raft_network_impl::ExampleNetwork;
+use distribd::network::raft_network_impl::RegistryNetwork;
 use distribd::start_example_raft_node;
 use distribd::store::RegistryStore;
 use distribd::RegistryTypeConfig;
 use tracing_subscriber::EnvFilter;
 
-pub type RegistryRaft = Raft<RegistryTypeConfig, ExampleNetwork, RegistryStore>;
+pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]
