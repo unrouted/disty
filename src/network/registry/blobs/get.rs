@@ -132,18 +132,19 @@ pub(crate) async fn get(
         }
     };
 
-    let path = app.get_blob_path(&path.digest);
-    if !path.is_file() {
+    let blob_path = app.get_blob_path(&path.digest);
+    if !blob_path.is_file() {
         tracing::info!("Blob was not present on disk");
         return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
     }
 
-    let blob = NamedFile::open_async(path)
+    let blob = NamedFile::open_async(blob_path)
         .await
         .unwrap()
         .into_response(&req);
 
     HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
+        .append_header(("Docker-Content-Digest", path.digest.to_string()))
         .body(blob.into_body())
 }
