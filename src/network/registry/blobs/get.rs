@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
-    image: RepositoryName,
+    repository: RepositoryName,
     digest: Digest,
 }
 
@@ -105,19 +105,19 @@ pub(crate) async fn get(
         debug!("Token does not have access to perform this action");
         return Responses::AccessDenied {};
     }
+    */
 
-    let blob = match app.get_blob(&repository, &digest).await {
-        Ok(Some(blob)) => blob,
-        Ok(None) => {
-            debug!("get_blob returned no blob found");
-            return Responses::BlobNotFound {};
-        }
-        Err(_) => {
-            return Responses::ServiceUnavailable {};
-        }
+    let blob = match app.get_blob(&path.digest).await {
+        Some(blob) => blob,
+        None => return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish(),
     };
 
-    app.wait_for_blob(&digest).await;
+    if !blob.repositories.contains(&path.repository) {
+        tracing::debug!("Blob exists but not in repostitory: {}", path.repository);
+        return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+    }
+
+    // app.wait_for_blob(&digest).await;
 
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
@@ -127,11 +127,10 @@ pub(crate) async fn get(
     let content_length = match blob.size {
         Some(content_length) => content_length,
         _ => {
-            debug!("Blob was present but size not available");
-            return Responses::BlobNotFound {};
+            tracing::debug!("Blob was present but size not available");
+            return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
         }
     };
-    */
 
     let path = app.get_blob_path(&path.digest);
     if !path.is_file() {
@@ -139,8 +138,12 @@ pub(crate) async fn get(
         return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
     }
 
-    NamedFile::open_async(path)
+    let blob = NamedFile::open_async(path)
         .await
         .unwrap()
-        .into_response(&req)
+        .into_response(&req);
+
+    HttpResponseBuilder::new(StatusCode::OK)
+        .content_type(content_type)
+        .body(blob.into_body())
 }

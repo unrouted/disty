@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use openraft::Config;
 
+use crate::types::Blob;
 use crate::types::Digest;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
@@ -18,6 +19,11 @@ pub struct RegistryApp {
 }
 
 impl RegistryApp {
+    pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {
+        let sm = self.store.state_machine.read().await;
+        sm.get_blob(&digest).unwrap()
+    }
+
     pub fn get_blob_path(&self, digest: &Digest) -> std::path::PathBuf {
         // FIXME: Hookup to settings
         let images_directory = "tmp".to_string();

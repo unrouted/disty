@@ -34,6 +34,8 @@ use serde::Serialize;
 use sled::Transactional;
 use tokio::sync::RwLock;
 
+use crate::types::Blob;
+use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::RegistryTypeConfig;
 
@@ -271,6 +273,16 @@ impl RegistryStateMachine {
             .insert(key.as_bytes(), value.as_bytes())
             .map_err(ct_err)?;
         Ok(())
+    }
+    pub fn get_blob(&self, key: &Digest) -> StorageResult<Option<Blob>> {
+        let key = key.hash.as_bytes();
+        let blob_tree = blobs(&self.db);
+        blob_tree
+            .get(key)
+            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
     }
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
@@ -769,6 +781,9 @@ impl RegistryStore {
         let _store = store(&db);
         let _state_machine = state_machine(&db);
         let _data = data(&db);
+        let _blobs = blobs(&db);
+        let _manifests = manifests(&db);
+        let _tags = tags(&db);
         let _logs = logs(&db);
 
         let state_machine = RwLock::new(RegistryStateMachine::new(db.clone()));
@@ -783,6 +798,15 @@ fn logs(db: &sled::Db) -> sled::Tree {
     db.open_tree("logs").expect("logs open failed")
 }
 fn data(db: &sled::Db) -> sled::Tree {
+    db.open_tree("data").expect("data open failed")
+}
+fn blobs(db: &sled::Db) -> sled::Tree {
+    db.open_tree("data").expect("data open failed")
+}
+fn manifests(db: &sled::Db) -> sled::Tree {
+    db.open_tree("data").expect("data open failed")
+}
+fn tags(db: &sled::Db) -> sled::Tree {
     db.open_tree("data").expect("data open failed")
 }
 fn state_machine(db: &sled::Db) -> sled::Tree {
