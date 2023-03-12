@@ -1,15 +1,14 @@
 use crate::app::RegistryApp;
-use crate::headers::Token;
 use crate::types::RepositoryName;
-use crate::utils::get_upload_path;
-use rocket::get;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use actix_web::http::StatusCode;
+use actix_web::{
+    get,
+    web::{Data, Path},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
+};
+use serde::Deserialize;
+
+/*
 
 pub(crate) enum Responses {
     MustAuthenticate {
@@ -103,14 +102,21 @@ impl<'r> Responder<'r, 'static> for Responses {
         }
     }
 }
+ */
 
-#[get("/<repository>/blobs/uploads/<upload_id>")]
-pub(crate) async fn get(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-) -> Responses {
+}
+
+#[get("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn get(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+) -> HttpResponse {
+    /*
     let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
@@ -140,4 +146,7 @@ pub(crate) async fn get(
         upload_id,
         size,
     }
+     */
+
+    HttpResponseBuilder::new(StatusCode::OK).finish()
 }

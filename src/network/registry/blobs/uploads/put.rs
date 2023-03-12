@@ -1,21 +1,15 @@
-use crate::headers::Token;
-use crate::types::Digest;
-use crate::types::RegistryAction;
 use crate::types::RepositoryName;
-use crate::utils::get_blob_path;
-use crate::utils::get_upload_path;
 use crate::RegistryApp;
-use chrono::prelude::*;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::put;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use actix_web::http::StatusCode;
+use actix_web::put;
+use actix_web::web::Data;
+use actix_web::web::Path;
+use actix_web::HttpRequest;
+use actix_web::HttpResponse;
+use actix_web::HttpResponseBuilder;
+use serde::Deserialize;
 
+/*
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -38,11 +32,11 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "authentication required",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .header(Header::new("Www-Authenticate", challenge))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::Unauthorized)
+                .ok()
             }
             Responses::AccessDenied {} => {
                 let body = crate::registry::utils::simple_oci_error(
@@ -50,10 +44,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "requested access to the resource is denied",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::Forbidden)
+                .ok()
             }
             Responses::DigestInvalid {} => {
                 let body = crate::registry::utils::simple_oci_error(
@@ -61,10 +55,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "provided digest did not match uploaded content",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::BadRequest)
+                .ok()
             }
             Responses::UploadInvalid {} => {
                 let body = crate::registry::utils::simple_oci_error(
@@ -72,10 +66,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "the upload was invalid",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::BadRequest)
+                .ok()
             }
             Responses::Ok { repository, digest } => {
                 /*
@@ -87,30 +81,35 @@ impl<'r> Responder<'r, 'static> for Responses {
                 */
 
                 Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/{digest}"),
-                    ))
-                    .header(Header::new("Range", "0-0"))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Docker-Content-Digest", digest.to_string()))
-                    .status(Status::Created)
-                    .ok()
+                .header(Header::new(
+                    "Location",
+                    format!("/v2/{repository}/blobs/{digest}"),
+                ))
+                .header(Header::new("Range", "0-0"))
+                .header(Header::new("Content-Length", "0"))
+                .header(Header::new("Docker-Content-Digest", digest.to_string()))
+                .status(Status::Created)
+                .ok()
             }
         }
     }
 }
+*/
 
-#[put("/<repository>/blobs/uploads/<upload_id>?<digest>", data = "<body>")]
-pub(crate) async fn put(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
-    digest: Digest,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &Arc<RegistryApp> = app.inner();
+}
+
+// #[put("/<repository>/blobs/uploads/<upload_id>?<digest>", data = "<body>")]
+#[put("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn put(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+) -> HttpResponse {
+    /*
 
     if !token.validated_token {
         return Responses::MustAuthenticate {
@@ -175,11 +174,14 @@ pub(crate) async fn put(
             location: app.settings.identifier.clone(),
             user: token.sub.clone(),
         },
-    ];
+        ];
 
-    if !app.submit(actions).await {
-        return Responses::UploadInvalid {};
-    }
+        if !app.submit(actions).await {
+            return Responses::UploadInvalid {};
+        }
 
-    Responses::Ok { repository, digest }
+        Responses::Ok { repository, digest }
+        */
+
+    HttpResponseBuilder::new(StatusCode::ACCEPTED).finish()
 }

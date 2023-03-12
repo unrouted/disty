@@ -1,19 +1,14 @@
 use crate::app::RegistryApp;
-use crate::headers::ContentRange;
-use crate::headers::Token;
-
 use crate::types::RepositoryName;
-use crate::utils::get_upload_path;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::patch;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use actix_web::http::StatusCode;
+use actix_web::{
+    patch,
+    web::{Data, Path},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
+};
+use serde::Deserialize;
 
+/*
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -41,11 +36,11 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "authentication required",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .header(Header::new("Www-Authenticate", challenge))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::Unauthorized)
+                .ok()
             }
             Responses::AccessDenied {} => {
                 let body = crate::registry::utils::simple_oci_error(
@@ -53,10 +48,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "requested access to the resource is denied",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::Forbidden)
+                .ok()
             }
             Responses::UploadInvalid {} => {
                 let body = crate::registry::utils::simple_oci_error(
@@ -64,10 +59,10 @@ impl<'r> Responder<'r, 'static> for Responses {
                     "the upload was invalid",
                 );
                 Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
+                .header(Header::new("Content-Length", body.len().to_string()))
+                .sized_body(body.len(), Cursor::new(body))
+                .status(Status::BadRequest)
+                .ok()
             }
             Responses::RangeNotSatisfiable {
                 repository,
@@ -85,16 +80,16 @@ impl<'r> Responder<'r, 'static> for Responses {
                 let range_end = if size > 0 { size - 1 } else { 0 };
 
                 Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/uploads/{upload_id}"),
-                    ))
-                    .header(Header::new("Range", format!("0-{range_end}")))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
-                    .header(Header::new("Docker-Upload-UUID", upload_id))
-                    .status(Status::RangeNotSatisfiable)
-                    .ok()
+                .header(Header::new(
+                    "Location",
+                    format!("/v2/{repository}/blobs/uploads/{upload_id}"),
+                ))
+                .header(Header::new("Range", format!("0-{range_end}")))
+                .header(Header::new("Content-Length", "0"))
+                .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
+                .header(Header::new("Docker-Upload-UUID", upload_id))
+                .status(Status::RangeNotSatisfiable)
+                .ok()
             }
             Responses::Ok {
                 repository,
@@ -112,32 +107,36 @@ impl<'r> Responder<'r, 'static> for Responses {
                 let range_end = size - 1;
 
                 Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/uploads/{upload_id}"),
-                    ))
-                    .header(Header::new("Range", format!("0-{range_end}")))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
-                    .header(Header::new("Docker-Upload-UUID", upload_id))
-                    .status(Status::Accepted)
-                    .ok()
+                .header(Header::new(
+                    "Location",
+                    format!("/v2/{repository}/blobs/uploads/{upload_id}"),
+                ))
+                .header(Header::new("Range", format!("0-{range_end}")))
+                .header(Header::new("Content-Length", "0"))
+                .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
+                .header(Header::new("Docker-Upload-UUID", upload_id))
+                .status(Status::Accepted)
+                .ok()
             }
         }
     }
 }
+*/
 
-#[patch("/<repository>/blobs/uploads/<upload_id>", data = "<body>")]
-pub(crate) async fn patch(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
-    range: Option<ContentRange>,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &RegistryApp = app.inner();
+}
 
+#[patch("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn patch(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+) -> HttpResponse {
+    /*
+    let app: &RegistryApp = app.inner();
     if !token.validated_token {
         return Responses::MustAuthenticate {
             challenge: token.get_push_challenge(repository),
@@ -147,9 +146,11 @@ pub(crate) async fn patch(
     if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
+    */
 
-    let filename = get_upload_path(&app.settings.storage, &upload_id);
+    let filename = app.get_upload_path(&path.upload_id);
 
+    /*
     if !filename.is_file() {
         return Responses::UploadInvalid {};
     }
@@ -193,4 +194,7 @@ pub(crate) async fn patch(
         upload_id,
         size,
     }
+    */
+
+    HttpResponseBuilder::new(StatusCode::OK).finish()
 }

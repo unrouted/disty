@@ -1,17 +1,13 @@
-use crate::app::RegistryApp;
-use crate::headers::Token;
-use crate::types::RepositoryName;
-use crate::utils::get_upload_path;
-use log::warn;
-use rocket::delete;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use crate::{app::RegistryApp, types::RepositoryName};
+use actix_web::http::StatusCode;
+use actix_web::{
+    delete,
+    web::{Data, Path},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
+};
+use serde::Deserialize;
 
+/*
 pub(crate) enum Responses {
     MustAuthenticate { challenge: String },
     AccessDenied {},
@@ -59,14 +55,21 @@ impl<'r> Responder<'r, 'static> for Responses {
         }
     }
 }
+*/
 
-#[delete("/<repository>/blobs/uploads/<upload_id>")]
-pub(crate) async fn delete(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-) -> Responses {
+}
+
+#[delete("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn delete(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+) -> HttpResponse {
+    /*
     let app: &RegistryApp = app.inner();
 
     if !token.validated_token {
@@ -91,4 +94,7 @@ pub(crate) async fn delete(
     }
 
     Responses::Ok {}
+    */
+
+    HttpResponseBuilder::new(StatusCode::ACCEPTED).finish()
 }

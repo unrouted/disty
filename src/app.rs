@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use openraft::Config;
@@ -58,6 +59,17 @@ impl RegistryApp {
         std::fs::create_dir_all(path.clone()).unwrap();
 
         path.push(&digest_string[6..]);
+
+        path
+    }
+
+    pub fn get_upload_path(&self, upload_id: &str) -> std::path::PathBuf {
+        // FIXME: Hookup to settings
+        let images_directory = "tmp".to_string();
+
+        let mut path = Path::new(&images_directory).to_path_buf();
+        path.push("uploads");
+        path.push(format!("blob-{upload_id}"));
 
         path
     }

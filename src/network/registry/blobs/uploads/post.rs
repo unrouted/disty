@@ -1,24 +1,12 @@
-use crate::app::RegistryApp;
-use crate::headers::Access;
-use crate::headers::Token;
-use crate::types::Digest;
-use crate::types::RegistryAction;
-use crate::types::RepositoryName;
-use crate::utils::get_blob_path;
-use crate::utils::get_upload_path;
-use chrono::prelude::*;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::post;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::collections::HashSet;
-use std::io::Cursor;
-use std::sync::Arc;
-use uuid::Uuid;
+use crate::{app::RegistryApp, types::RepositoryName};
+use actix_web::http::StatusCode;
+use actix_web::{
+    web::{Data, Path},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
+};
+use serde::Deserialize;
 
+/*
 pub(crate) enum Responses {
     MustAuthenticate {
         challenge: String,
@@ -133,19 +121,21 @@ impl<'r> Responder<'r, 'static> for Responses {
         }
     }
 }
+*/
 
-#[post("/<repository>/blobs/uploads?<mount>&<from>&<digest>", data = "<body>")]
-pub(crate) async fn post(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
-    mount: Option<Digest>,
-    from: Option<RepositoryName>,
-    digest: Option<Digest>,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &Arc<RegistryApp> = app.inner();
+    upload_id: String,
+}
 
+// #[post("/<repository>/blobs/uploads?<mount>&<from>&<digest>", data = "<body>")]
+pub(crate) async fn post(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+) -> HttpResponse {
+    /*
     if !token.validated_token {
         let mut access = vec![Access {
             repository,
@@ -251,33 +241,36 @@ pub(crate) async fn post(
                     location: app.settings.identifier.clone(),
                     user: token.sub.clone(),
                 },
-            ];
+                ];
 
-            if !app.submit(actions).await {
-                return Responses::UploadInvalid {};
+                if !app.submit(actions).await {
+                    return Responses::UploadInvalid {};
+                }
+
+                return Responses::UploadComplete { repository, digest };
             }
+            _ => {
+                // Nothing was uploaded, but a session was started...
+                let filename = get_upload_path(&app.settings.storage, &upload_id);
 
-            return Responses::UploadComplete { repository, digest };
-        }
-        _ => {
-            // Nothing was uploaded, but a session was started...
-            let filename = get_upload_path(&app.settings.storage, &upload_id);
-
-            match tokio::fs::OpenOptions::new()
+                match tokio::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&filename)
                 .await
-            {
-                Ok(file) => drop(file),
-                _ => return Responses::UploadInvalid {},
+                {
+                    Ok(file) => drop(file),
+                    _ => return Responses::UploadInvalid {},
+                }
             }
         }
-    }
 
-    Responses::Ok {
-        repository,
-        uuid: upload_id,
-        size: 0,
-    }
+        Responses::Ok {
+            repository,
+            uuid: upload_id,
+            size: 0,
+        }
+        */
+
+    HttpResponseBuilder::new(StatusCode::OK).finish()
 }
