@@ -1,13 +1,15 @@
+use crate::app::RegistryApp;
 use crate::types::Digest;
 use crate::types::RepositoryName;
-use crate::utils::get_blob_path;
 use actix_files::NamedFile;
 use actix_web::get;
 use actix_web::http::StatusCode;
+use actix_web::web::Data;
 use actix_web::web::Path;
 use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
@@ -85,7 +87,11 @@ impl<'r> Responder<'r, 'static> for Responses {
 */
 
 #[get("/{repository:[^{}]+}/blobs/{digest}")]
-pub(crate) async fn get(req: HttpRequest, path: Path<BlobRequest>) -> HttpResponse {
+pub(crate) async fn get(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobRequest>,
+) -> HttpResponse {
     /*
     let app: &Arc<RegistryApp> = app.inner();
 
@@ -127,7 +133,7 @@ pub(crate) async fn get(req: HttpRequest, path: Path<BlobRequest>) -> HttpRespon
     };
     */
 
-    let path = get_blob_path(&app.settings.storage, &path.digest);
+    let path = app.get_blob_path(&path.digest);
     if !path.is_file() {
         tracing::info!("Blob was not present on disk");
         return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
@@ -136,5 +142,5 @@ pub(crate) async fn get(req: HttpRequest, path: Path<BlobRequest>) -> HttpRespon
     NamedFile::open_async(path)
         .await
         .unwrap()
-        .into_response(req)
+        .into_response(&req)
 }
