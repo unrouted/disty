@@ -3,8 +3,10 @@ use std::sync::Arc;
 
 use openraft::Config;
 
+use crate::store::RegistryRequest;
 use crate::types::Blob;
 use crate::types::Digest;
+use crate::types::RegistryAction;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
 use crate::RegistryStore;
@@ -20,6 +22,13 @@ pub struct RegistryApp {
 }
 
 impl RegistryApp {
+    pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
+        let req = RegistryRequest::Transaction { actions: actions };
+        let _response = self.raft.client_write(req).await;
+
+        true
+    }
+
     pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {
         let sm = self.store.state_machine.read().await;
         sm.get_blob(&digest).unwrap()

@@ -1,12 +1,19 @@
+use crate::network::registry::utils::upload_part;
+use crate::network::registry::utils::validate_hash;
+use crate::types::Digest;
+use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::RegistryApp;
 use actix_web::http::StatusCode;
 use actix_web::put;
 use actix_web::web::Data;
 use actix_web::web::Path;
+use actix_web::web::Payload;
+use actix_web::web::Query;
 use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
+use chrono::Utc;
 use serde::Deserialize;
 
 /*
@@ -102,15 +109,20 @@ pub struct BlobUploadRequest {
     upload_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadPutQuery {
+    digest: Digest,
+}
+
 // #[put("/<repository>/blobs/uploads/<upload_id>?<digest>", data = "<body>")]
 #[put("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
 pub(crate) async fn put(
     app: Data<RegistryApp>,
-    req: HttpRequest,
     path: Path<BlobUploadRequest>,
+    query: Query<BlobUploadPutQuery>,
+    body: Payload,
 ) -> HttpResponse {
     /*
-
     if !token.validated_token {
         return Responses::MustAuthenticate {
             challenge: token.get_push_challenge(repository),
@@ -120,68 +132,66 @@ pub(crate) async fn put(
     if !token.has_permission(&repository, "push") {
         return Responses::AccessDenied {};
     }
+    */
 
-    if digest.algo != "sha256" {
-        return Responses::UploadInvalid {};
+    if query.digest.algo != "sha256" {
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
     }
 
-    let filename = get_upload_path(&app.settings.storage, &upload_id);
+    let filename = app.get_upload_path(&path.upload_id);
 
     if !filename.is_file() {
-        return Responses::UploadInvalid {};
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
     }
 
-    if !crate::registry::utils::upload_part(&filename, body).await {
-        return Responses::UploadInvalid {};
+    if !upload_part(&filename, body).await {
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
     }
 
     // Validate upload
-    if !crate::registry::utils::validate_hash(&filename, &digest).await {
-        return Responses::DigestInvalid {};
+    if !validate_hash(&filename, &query.digest).await {
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
     }
 
-    let dest = get_blob_path(&app.settings.storage, &digest);
+    let dest = app.get_blob_path(&query.digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,
         Err(_) => {
-            return Responses::UploadInvalid {};
+            return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
         }
     };
 
     match std::fs::rename(filename.clone(), dest.clone()) {
         Ok(_) => {}
         Err(_e) => {
-            return Responses::UploadInvalid {};
+            return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
         }
     }
 
     let actions = vec![
         RegistryAction::BlobMounted {
             timestamp: Utc::now(),
-            digest: digest.clone(),
-            repository: repository.clone(),
-            user: token.sub.clone(),
+            digest: query.digest.clone(),
+            repository: path.repository.clone(),
+            user: "nobody".to_string(),
         },
         RegistryAction::BlobStat {
             timestamp: Utc::now(),
-            digest: digest.clone(),
+            digest: query.digest.clone(),
             size: stat.len(),
         },
         RegistryAction::BlobStored {
             timestamp: Utc::now(),
-            digest: digest.clone(),
-            location: app.settings.identifier.clone(),
-            user: token.sub.clone(),
+            digest: query.digest.clone(),
+            location: "location".to_string(),
+            user: "nobody".to_string(),
         },
-        ];
+    ];
 
-        if !app.submit(actions).await {
-            return Responses::UploadInvalid {};
-        }
-
-        Responses::Ok { repository, digest }
-        */
+    if !app.submit(actions).await {
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
+    }
 
     HttpResponseBuilder::new(StatusCode::ACCEPTED).finish()
 }
