@@ -5,10 +5,10 @@ use crate::{
 };
 use chrono::prelude::*;
 use jsonschema::JSONSchema;
-use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
@@ -236,18 +236,15 @@ impl Extractor {
                     continue;
                 }
 
-                let res = match app.get_blob(repository, &extraction.digest).await {
-                    Ok(res) => res,
-                    Err(_) => {
-                        return Err(ExtractError::UnknownError {});
-                    }
-                };
-
-                match res {
+                match app.get_blob(&extraction.digest).await {
                     Some(blob) => {
                         if blob.content_type.is_some() {
                             // Was already analyzed, don't do it again!
                             continue;
+                        }
+
+                        if !blob.repositories.contains(&repository) {
+                            return Err(ExtractError::UnknownError {});
                         }
                     }
                     _ => {
@@ -270,11 +267,7 @@ impl Extractor {
                 }
 
                 // Lookup extraction.digest in blob store
-                let data = tokio::fs::read_to_string(crate::utils::get_blob_path(
-                    &self.config.storage,
-                    &extraction.digest,
-                ))
-                .await;
+                let data = tokio::fs::read_to_string(app.get_blob_path(&extraction.digest)).await;
 
                 match data {
                     Ok(data) => {

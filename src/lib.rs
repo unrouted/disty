@@ -24,6 +24,7 @@ use crate::store::RegistryStore;
 pub mod app;
 pub mod client;
 pub mod config;
+pub mod extractor;
 pub mod extractors;
 pub mod network;
 pub mod store;
