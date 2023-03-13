@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openraft::Config;
+use uuid::Uuid;
 
 use crate::store::RegistryRequest;
 use crate::types::Blob;
@@ -79,6 +80,19 @@ impl RegistryApp {
         let mut path = Path::new(&images_directory).to_path_buf();
         path.push("uploads");
         path.push(format!("blob-{upload_id}"));
+
+        path
+    }
+
+    pub fn get_temp_path(&self) -> std::path::PathBuf {
+        // FIXME: Hookup to settings
+        let images_directory = "tmp".to_string();
+
+        let upload_id = Uuid::new_v4().as_hyphenated().to_string();
+
+        let mut path = Path::new(&images_directory).to_path_buf();
+        path.push("uploads");
+        path.push(format!("manifest-{upload_id}"));
 
         path
     }
