@@ -1,3 +1,3 @@
-mod blobs;
+pub mod blobs;
 mod errors;
 mod utils;

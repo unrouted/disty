@@ -16,6 +16,7 @@ use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
 use crate::network::raft_network_impl::RegistryNetwork;
+use crate::network::registry;
 use crate::store::RegistryRequest;
 use crate::store::RegistryResponse;
 use crate::store::RegistryStore;
@@ -114,6 +115,15 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .service(api::write)
             .service(api::read)
             .service(api::consistent_read)
+            // registry
+            //   blob upload
+            .service(registry::blobs::uploads::delete::delete)
+            .service(registry::blobs::uploads::get::get)
+            .service(registry::blobs::uploads::patch::patch)
+            .service(registry::blobs::uploads::post::post)
+            .service(registry::blobs::uploads::put::put)
+            // blobs
+            .service(registry::blobs::get::get)
     });
 
     let x = server.bind(http_addr)?;
