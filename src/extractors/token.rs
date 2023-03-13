@@ -63,9 +63,9 @@ impl Token {
         }])
     }
 
-    pub fn get_push_challenge(&self, repository: RepositoryName) -> String {
+    pub fn get_push_challenge(&self, repository: &RepositoryName) -> String {
         self.get_challenge(vec![Access {
-            repository,
+            repository: repository.clone(),
             permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
         }])
     }
