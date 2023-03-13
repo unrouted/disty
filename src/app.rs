@@ -4,6 +4,7 @@ use std::sync::Arc;
 use openraft::Config;
 use uuid::Uuid;
 
+use crate::extractor::Extractor;
 use crate::store::RegistryRequest;
 use crate::types::Blob;
 use crate::types::Digest;
@@ -20,6 +21,7 @@ pub struct RegistryApp {
     pub raft: RegistryRaft,
     pub store: Arc<RegistryStore>,
     pub config: Arc<Config>,
+    pub extractor: Arc<Extractor>,
 }
 
 impl RegistryApp {

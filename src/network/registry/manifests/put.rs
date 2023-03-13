@@ -62,7 +62,7 @@ pub(crate) async fn put(
 
     let extracted = extractor
         .extract(
-            app,
+            &app,
             &path.repository,
             &digest,
             &content_type.content_type,
