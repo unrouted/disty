@@ -40,6 +40,7 @@ jwt-simple = "*"
 serde_regex="*"
 regex = "*"
 platform-dirs = "*"
+uuid = { version = "1.2.2", features=["v4"] }
 
 [dev-dependencies]
 anyhow = "1.0.63"

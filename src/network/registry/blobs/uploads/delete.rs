@@ -6,7 +6,7 @@ use actix_web::Responder;
 use actix_web::{
     delete,
     web::{Data, Path},
-    HttpRequest, HttpResponse, HttpResponseBuilder,
+    HttpResponseBuilder,
 };
 use serde::Deserialize;
 
@@ -19,7 +19,6 @@ pub struct BlobUploadRequest {
 #[delete("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
 pub(crate) async fn delete(
     app: Data<RegistryApp>,
-    req: HttpRequest,
     path: Path<BlobUploadRequest>,
     token: Token,
 ) -> Result<impl Responder, RegistryError> {
