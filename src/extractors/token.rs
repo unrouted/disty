@@ -56,9 +56,9 @@ impl Token {
         format!("Bearer realm=\"{realm}\",service=\"{service}\",scope=\"{scope}\"")
     }
 
-    pub fn get_pull_challenge(&self, repository: RepositoryName) -> String {
+    pub fn get_pull_challenge(&self, repository: &RepositoryName) -> String {
         self.get_challenge(vec![Access {
-            repository,
+            repository: repository.clone(),
             permissions: HashSet::from(["pull".to_string()]),
         }])
     }

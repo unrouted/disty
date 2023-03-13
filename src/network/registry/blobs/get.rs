@@ -1,4 +1,6 @@
 use crate::app::RegistryApp;
+use crate::extractors::Token;
+use crate::network::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RepositoryName;
 use actix_files::NamedFile;
@@ -7,9 +9,10 @@ use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
 use actix_web::HttpRequest;
-use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
+use actix_web::Responder;
 use serde::Deserialize;
+use tracing::debug;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
@@ -91,30 +94,27 @@ pub(crate) async fn get(
     app: Data<RegistryApp>,
     req: HttpRequest,
     path: Path<BlobRequest>,
-) -> HttpResponse {
-    /*
-    let app: &Arc<RegistryApp> = app.inner();
-
+    token: Token,
+) -> Result<impl Responder, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_pull_challenge(repository),
-        };
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_pull_challenge(&path.repository),
+        });
     }
 
-    if !token.has_permission(&repository, "pull") {
+    if !token.has_permission(&path.repository, "pull") {
         debug!("Token does not have access to perform this action");
-        return Responses::AccessDenied {};
+        return Err(RegistryError::AccessDenied {});
     }
-    */
 
     let blob = match app.get_blob(&path.digest).await {
         Some(blob) => blob,
-        None => return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish(),
+        None => return Err(RegistryError::BlobNotFound {}),
     };
 
     if !blob.repositories.contains(&path.repository) {
         tracing::debug!("Blob exists but not in repostitory: {}", path.repository);
-        return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+        return Err(RegistryError::BlobNotFound {});
     }
 
     // app.wait_for_blob(&digest).await;
@@ -128,14 +128,14 @@ pub(crate) async fn get(
         Some(content_length) => content_length,
         _ => {
             tracing::debug!("Blob was present but size not available");
-            return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+            return Err(RegistryError::BlobNotFound {});
         }
     };
 
     let blob_path = app.get_blob_path(&path.digest);
     if !blob_path.is_file() {
         tracing::info!("Blob was not present on disk");
-        return HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish();
+        return Err(RegistryError::BlobNotFound {});
     }
 
     let blob = NamedFile::open_async(blob_path)
@@ -143,8 +143,8 @@ pub(crate) async fn get(
         .unwrap()
         .into_response(&req);
 
-    HttpResponseBuilder::new(StatusCode::OK)
+    Ok(HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
         .append_header(("Docker-Content-Digest", path.digest.to_string()))
-        .body(blob.into_body())
+        .body(blob.into_body()))
 }
