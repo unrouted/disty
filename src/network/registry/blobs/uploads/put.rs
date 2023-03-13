@@ -1,3 +1,4 @@
+use crate::extractors::Token;
 use crate::network::registry::utils::upload_part;
 use crate::network::registry::utils::validate_hash;
 use crate::types::Digest;
@@ -10,7 +11,6 @@ use actix_web::web::Data;
 use actix_web::web::Path;
 use actix_web::web::Payload;
 use actix_web::web::Query;
-use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
 use chrono::Utc;
@@ -121,18 +121,19 @@ pub(crate) async fn put(
     path: Path<BlobUploadRequest>,
     query: Query<BlobUploadPutQuery>,
     body: Payload,
+    token: Token,
 ) -> HttpResponse {
-    /*
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
-        };
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
+        //return Responses::MustAuthenticate {
+        //    challenge: token.get_push_challenge(repository),
+        //};
     }
 
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
+    if !token.has_permission(&path.repository, "push") {
+        return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
+        // return Responses::AccessDenied {};
     }
-    */
 
     if query.digest.algo != "sha256" {
         return HttpResponseBuilder::new(StatusCode::NOT_IMPLEMENTED).finish();
