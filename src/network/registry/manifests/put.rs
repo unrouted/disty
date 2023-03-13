@@ -4,6 +4,7 @@ use crate::network::registry::errors::RegistryError;
 use crate::registry::utils::get_hash;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use actix_web::HttpRequest;
 // use crate::webhook::Event;
 use actix_web::http::StatusCode;
 use actix_web::put;
@@ -24,6 +25,7 @@ pub struct ManifestPutRequest {
 #[put("/{repository:[^{}]+}/manifests/{tag}")]
 pub(crate) async fn put(
     app: Data<RegistryApp>,
+    req: HttpRequest,
     path: Path<ManifestPutRequest>,
     body: Payload,
     token: Token,
@@ -60,14 +62,10 @@ pub(crate) async fn put(
         }
     };
 
+    let content_type = req.headers().get("content-type").unwrap().to_str().unwrap();
+
     let extracted = extractor
-        .extract(
-            &app,
-            &path.repository,
-            &digest,
-            &content_type.content_type,
-            &upload_path,
-        )
+        .extract(&app, &path.repository, &digest, &content_type, &upload_path)
         .await;
 
     let mut actions = vec![

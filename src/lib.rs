@@ -98,7 +98,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         raft,
         store,
         config,
-        extractor
+        extractor,
     });
 
     // Start the actix-web server.
