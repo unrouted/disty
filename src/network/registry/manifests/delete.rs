@@ -81,8 +81,8 @@ pub(crate) async fn delete_by_tag(
     }
 
     let digest = match app.get_tag(&path.repository, &path.tag).await {
-        Ok(Some(tag)) => tag,
-        Ok(None) => return Err(RegistryError::ManifestNotFound {}),
+        Some(tag) => tag,
+        None => return Err(RegistryError::ManifestNotFound {}),
     };
 
     if let Some(manifest) = app.get_manifest(&digest).await {
@@ -96,7 +96,7 @@ pub(crate) async fn delete_by_tag(
     let actions = vec![RegistryAction::ManifestUnmounted {
         timestamp: Utc::now(),
         digest,
-        repository: path.repository,
+        repository: path.repository.clone(),
         user: token.sub.clone(),
     }];
 

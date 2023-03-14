@@ -38,6 +38,8 @@ use crate::types::Blob;
 use crate::types::Digest;
 use crate::types::Manifest;
 use crate::types::RegistryAction;
+use crate::types::RepositoryName;
+use crate::types::TagKey;
 use crate::RegistryTypeConfig;
 
 pub type RegistryNodeId = u64;
@@ -289,6 +291,24 @@ impl RegistryStateMachine {
         let key = key.hash.as_bytes();
         let manifest_tree = manifests(&self.db);
         manifest_tree
+            .get(key)
+            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+    pub fn get_tag(
+        &self,
+        repository: &RepositoryName,
+        tag: &String,
+    ) -> StorageResult<Option<Digest>> {
+        let key = bincode::serialize(&TagKey {
+            repository: repository.clone(),
+            tag: tag.clone(),
+        })
+        .unwrap();
+        let tag_tree = tags(&self.db);
+        tag_tree
             .get(key)
             .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
             .map_err(|e| {

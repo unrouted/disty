@@ -126,8 +126,8 @@ pub(crate) async fn get_by_tag(
     }
 
     let digest = match app.get_tag(&path.repository, &path.tag).await {
-        Ok(Some(tag)) => tag,
-        Ok(None) => {
+        Some(tag) => tag,
+        None => {
             debug!("No such tag");
             return Err(RegistryError::ManifestNotFound {});
         }

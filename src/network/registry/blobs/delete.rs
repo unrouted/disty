@@ -24,7 +24,6 @@ pub struct BlobRequest {
 #[delete("/{repository:[^{}]+}/blobs/{digest}")]
 pub(crate) async fn delete(
     app: Data<RegistryApp>,
-    req: HttpRequest,
     path: Path<BlobRequest>,
     token: Token,
 ) -> Result<HttpResponse, RegistryError> {
