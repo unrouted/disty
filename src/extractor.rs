@@ -310,8 +310,7 @@ mod tests {
 
     #[test]
     fn wrong_schema() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/json".to_string();
         let data = r#"
@@ -338,8 +337,7 @@ mod tests {
 
     #[test]
     fn empty_string() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -351,8 +349,7 @@ mod tests {
 
     #[test]
     fn partial() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -389,8 +386,7 @@ mod tests {
 
     #[test]
     fn manifest_list_v2() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
         let data = r#"
@@ -429,8 +425,7 @@ mod tests {
 
     #[test]
     fn manifestv2() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.v2+json".to_string();
         let data = r#"
@@ -467,8 +462,7 @@ mod tests {
 
     #[test]
     fn signed_v2_1_manifest() {
-        let config = Configuration::default();
-        let extractor = Extractor::new(config);
+        let extractor = Extractor::new();
 
         let content_type = "application/vnd.docker.distribution.manifest.v1+prettyjws".to_string();
         let data = r#"
