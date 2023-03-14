@@ -35,17 +35,12 @@ pub(crate) async fn delete(
         return Err(RegistryError::AccessDenied {});
     }
 
-    match app
-        .is_manifest_available(&path.repository, &path.digest)
-        .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            return Err(RegistryError::NotFound {});
+    if let Some(manifest) = app.get_manifest(&path.digest).await {
+        if !manifest.repositories.contains(&path.repository) {
+            return Err(RegistryError::ManifestNotFound {});
         }
-        Err(_) => {
-            return Err(RegistryError::ServiceUnavailable {});
-        }
+    } else {
+        return Err(RegistryError::ManifestNotFound {});
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
@@ -56,7 +51,8 @@ pub(crate) async fn delete(
     }];
 
     if !app.submit(actions).await {
-        return Err(RegistryError::Failed {});
+        // FIXME
+        return Err(RegistryError::ManifestInvalid {});
     }
 
     Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED).finish())
@@ -86,14 +82,15 @@ pub(crate) async fn delete_by_tag(
 
     let digest = match app.get_tag(&path.repository, &path.tag).await {
         Ok(Some(tag)) => tag,
-        Ok(None) => return Err(RegistryError::NotFound {}),
-        Err(_) => return Err(RegistryError::ServiceUnavailable {}),
+        Ok(None) => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    match app.is_manifest_available(&path.repository, &digest).await {
-        Ok(true) => {}
-        Ok(false) => return Err(RegistryError::NotFound {}),
-        Err(_) => return Err(RegistryError::ServiceUnavailable {}),
+    if let Some(manifest) = app.get_manifest(&digest).await {
+        if !manifest.repositories.contains(&path.repository) {
+            return Err(RegistryError::ManifestNotFound {});
+        }
+    } else {
+        return Err(RegistryError::ManifestNotFound {});
     }
 
     let actions = vec![RegistryAction::ManifestUnmounted {
@@ -104,7 +101,8 @@ pub(crate) async fn delete_by_tag(
     }];
 
     if !app.submit(actions).await {
-        return Err(RegistryError::Failed {});
+        // FIXME
+        return Err(RegistryError::ManifestInvalid {});
     }
 
     Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED).finish())

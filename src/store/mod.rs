@@ -36,6 +36,7 @@ use tokio::sync::RwLock;
 
 use crate::types::Blob;
 use crate::types::Digest;
+use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::RegistryTypeConfig;
 
@@ -278,6 +279,16 @@ impl RegistryStateMachine {
         let key = key.hash.as_bytes();
         let blob_tree = blobs(&self.db);
         blob_tree
+            .get(key)
+            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+    pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
+        let key = key.hash.as_bytes();
+        let manifest_tree = manifests(&self.db);
+        manifest_tree
             .get(key)
             .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
             .map_err(|e| {

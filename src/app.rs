@@ -8,6 +8,7 @@ use crate::extractor::Extractor;
 use crate::store::RegistryRequest;
 use crate::types::Blob;
 use crate::types::Digest;
+use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
@@ -35,6 +36,11 @@ impl RegistryApp {
     pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {
         let sm = self.store.state_machine.read().await;
         sm.get_blob(&digest).unwrap()
+    }
+
+    pub async fn get_manifest(&self, digest: &Digest) -> Option<Manifest> {
+        let sm = self.store.state_machine.read().await;
+        sm.get_manifest(&digest).unwrap()
     }
 
     pub fn get_blob_path(&self, digest: &Digest) -> std::path::PathBuf {
