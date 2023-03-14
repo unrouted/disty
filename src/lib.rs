@@ -7,10 +7,12 @@ use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use config::Configuration;
 use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
+use webhook::start_webhook_worker;
 
 use crate::app::RegistryApp;
 use crate::network::api;
@@ -61,6 +63,8 @@ pub mod typ {
 }
 
 pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std::io::Result<()> {
+    let mut registry = <prometheus_client::registry::Registry>::default();
+
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,
@@ -89,6 +93,9 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         .unwrap();
 
     let extractor = Arc::new(Extractor::new());
+
+    let conf = Configuration::default();
+    let webhook_queue = start_webhook_worker(conf.webhooks, &mut registry);
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
