@@ -863,13 +863,13 @@ fn data(db: &sled::Db) -> sled::Tree {
     db.open_tree("data").expect("data open failed")
 }
 fn blobs(db: &sled::Db) -> sled::Tree {
-    db.open_tree("data").expect("data open failed")
+    db.open_tree("blobs").expect("blobs open failed")
 }
 fn manifests(db: &sled::Db) -> sled::Tree {
-    db.open_tree("data").expect("data open failed")
+    db.open_tree("manifests").expect("manifests open failed")
 }
 fn tags(db: &sled::Db) -> sled::Tree {
-    db.open_tree("data").expect("data open failed")
+    db.open_tree("tags").expect("tags open failed")
 }
 fn state_machine(db: &sled::Db) -> sled::Tree {
     db.open_tree("state_machine")
