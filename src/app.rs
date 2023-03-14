@@ -44,7 +44,7 @@ impl RegistryApp {
         sm.get_manifest(digest).unwrap()
     }
 
-    pub async fn get_tag(&self, repository: &RepositoryName, tag: &String) -> Option<Digest> {
+    pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         let sm = self.store.state_machine.read().await;
         sm.get_tag(repository, tag).unwrap()
     }
