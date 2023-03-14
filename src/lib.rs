@@ -30,6 +30,7 @@ pub mod extractors;
 pub mod network;
 pub mod store;
 pub mod types;
+pub mod webhook;
 
 pub type RegistryNodeId = u64;
 
