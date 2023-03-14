@@ -333,7 +333,7 @@ impl RegistryStateMachine {
         let mut digests = vec![];
 
         for row in r {
-            if let Ok((key, value)) = row {
+            if let Ok((key, _value)) = row {
                 let key = opts.deserialize::<TagKey>(&key).unwrap();
                 if &key.repository != repository {
                     break;

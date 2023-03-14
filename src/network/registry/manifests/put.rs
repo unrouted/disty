@@ -65,7 +65,7 @@ pub(crate) async fn put(
     let content_type = req.headers().get("content-type").unwrap().to_str().unwrap();
 
     let extracted = extractor
-        .extract(&app, &path.repository, &digest, &content_type, &upload_path)
+        .extract(&app, &path.repository, &digest, content_type, &upload_path)
         .await;
 
     let mut actions = vec![

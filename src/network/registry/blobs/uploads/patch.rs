@@ -34,9 +34,9 @@ fn get_http_range(req: &HttpRequest) -> Option<(u64, u64)> {
                 };
                 Some((start, stop))
             }
-            _ => return None,
+            _ => None,
         },
-        None => return None,
+        None => None,
     }
 }
 

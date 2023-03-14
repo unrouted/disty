@@ -243,7 +243,7 @@ impl Extractor {
                             continue;
                         }
 
-                        if !blob.repositories.contains(&repository) {
+                        if !blob.repositories.contains(repository) {
                             return Err(ExtractError::UnknownError {});
                         }
                     }

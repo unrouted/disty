@@ -63,12 +63,12 @@ pub(crate) async fn post(
             return Err(RegistryError::UploadInvalid {});
         }
 
-        if !token.has_permission(&from, "pull") {
+        if !token.has_permission(from, "pull") {
             return Err(RegistryError::UploadInvalid {});
         }
 
-        if let Some(blob) = app.get_blob(&mount).await {
-            if blob.repositories.contains(&from) {
+        if let Some(blob) = app.get_blob(mount).await {
+            if blob.repositories.contains(from) {
                 let actions = vec![RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     digest: mount.clone(),
@@ -110,11 +110,11 @@ pub(crate) async fn post(
             }
 
             // Validate upload
-            if !validate_hash(&filename, &digest).await {
+            if !validate_hash(&filename, digest).await {
                 return Err(RegistryError::DigestInvalid {});
             }
 
-            let dest = app.get_blob_path(&digest);
+            let dest = app.get_blob_path(digest);
 
             let stat = match tokio::fs::metadata(&filename).await {
                 Ok(result) => result,

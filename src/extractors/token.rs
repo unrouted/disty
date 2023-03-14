@@ -128,7 +128,7 @@ impl FromRequest for Token {
         //FIXME
         let config = Configuration::default();
 
-        let app = req.app_data::<RegistryApp>().unwrap();
+        let _app = req.app_data::<RegistryApp>().unwrap();
 
         let config = match &config.token_server {
             None => {

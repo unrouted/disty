@@ -77,7 +77,7 @@ pub(crate) async fn get(
         }
     };
 
-    let content_length = match manifest.size {
+    let _content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");
@@ -153,7 +153,7 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let content_length = match manifest.size {
+    let _content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");

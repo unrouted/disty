@@ -22,7 +22,7 @@ pub struct TagQuery {
 #[get("/{repository:[^{}]+}/tags/list")]
 pub(crate) async fn get(
     app: Data<RegistryApp>,
-    req: HttpRequest,
+    _req: HttpRequest,
     path: Path<TagRequest>,
     query: actix_web::web::Query<TagQuery>,
     token: Token,

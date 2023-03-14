@@ -55,7 +55,7 @@ pub(crate) async fn get(
         _ => "application/octet-steam".to_string(),
     };
 
-    let content_length = match blob.size {
+    let _content_length = match blob.size {
         Some(content_length) => content_length,
         _ => {
             tracing::debug!("Blob was present but size not available");

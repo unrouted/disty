@@ -43,5 +43,5 @@ pub(crate) async fn delete(
         return Err(RegistryError::UploadInvalid {});
     }
 
-    return Ok(HttpResponseBuilder::new(StatusCode::NO_CONTENT).finish());
+    Ok(HttpResponseBuilder::new(StatusCode::NO_CONTENT).finish())
 }

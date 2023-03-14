@@ -152,6 +152,6 @@ impl Default for Configuration {
     }
 }
 
-pub fn config(config: Option<PathBuf>) -> Configuration {
+pub fn config(_config: Option<PathBuf>) -> Configuration {
     Configuration::default()
 }

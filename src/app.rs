@@ -28,7 +28,7 @@ pub struct RegistryApp {
 
 impl RegistryApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
-        let req = RegistryRequest::Transaction { actions: actions };
+        let req = RegistryRequest::Transaction { actions };
         let _response = self.raft.client_write(req).await;
 
         true
@@ -36,12 +36,12 @@ impl RegistryApp {
 
     pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {
         let sm = self.store.state_machine.read().await;
-        sm.get_blob(&digest).unwrap()
+        sm.get_blob(digest).unwrap()
     }
 
     pub async fn get_manifest(&self, digest: &Digest) -> Option<Manifest> {
         let sm = self.store.state_machine.read().await;
-        sm.get_manifest(&digest).unwrap()
+        sm.get_manifest(digest).unwrap()
     }
 
     pub async fn get_tag(&self, repository: &RepositoryName, tag: &String) -> Option<Digest> {
