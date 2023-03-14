@@ -106,6 +106,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         store,
         config,
         extractor,
+        webhooks: Arc::new(webhook_queue),
     });
 
     // Start the actix-web server.

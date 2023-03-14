@@ -4,8 +4,8 @@ use crate::network::registry::errors::RegistryError;
 use crate::registry::utils::get_hash;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use crate::webhook::Event;
 use actix_web::HttpRequest;
-// use crate::webhook::Event;
 use actix_web::http::StatusCode;
 use actix_web::put;
 use actix_web::web::Data;
@@ -116,21 +116,19 @@ pub(crate) async fn put(
         return Err(RegistryError::ManifestInvalid {});
     }
 
-    /*
-    let webhook_queue: &Sender<Event> = webhook_queue.inner();
-    let resp = webhook_queue
-    .send(Event {
-        repository: repository.clone(),
-        digest: digest.clone(),
-        tag,
-        content_type: content_type.content_type,
-    })
-    .await;
+    let resp = app
+        .webhooks
+        .send(Event {
+            repository: path.repository.clone(),
+            digest: digest.clone(),
+            tag: path.tag.to_owned(),
+            content_type: content_type.to_owned(),
+        })
+        .await;
 
     if let Err(err) = resp {
         tracing::error!("Error queueing webhook: {err}");
     }
-    */
 
     /*
     201 Created

@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openraft::Config;
+use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use crate::extractor::Extractor;
@@ -11,6 +12,7 @@ use crate::types::Digest;
 use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use crate::webhook::Event;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
 use crate::RegistryStore;
@@ -24,6 +26,7 @@ pub struct RegistryApp {
     pub store: Arc<RegistryStore>,
     pub config: Arc<Config>,
     pub extractor: Arc<Extractor>,
+    pub webhooks: Arc<Sender<Event>>,
 }
 
 impl RegistryApp {
