@@ -1,6 +1,5 @@
 use crate::{
     app::RegistryApp,
-    config::Configuration,
     types::{Digest, RegistryAction, RepositoryName},
 };
 use chrono::prelude::*;
@@ -53,7 +52,6 @@ enum Manifest {
 
 #[derive(Clone)]
 pub struct Extractor {
-    config: Configuration,
     schemas: HashMap<String, Value>,
 }
 
@@ -70,7 +68,7 @@ struct Extraction {
 }
 
 impl Extractor {
-    pub fn new(config: Configuration) -> Self {
+    pub fn new() -> Self {
         let mut schemas: HashMap<String, Value> = HashMap::new();
 
         // Load all schemas into a hashmap
@@ -120,7 +118,7 @@ impl Extractor {
                 .unwrap(),
         );
 
-        Extractor { config, schemas }
+        Extractor { schemas }
     }
 
     fn validate(&self, content_type: &str, data: &str) -> bool {

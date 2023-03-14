@@ -7,7 +7,6 @@ use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
-use config::Configuration;
 use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
@@ -88,7 +87,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         .await
         .unwrap();
 
-    let extractor = Arc::new(Extractor::new(Configuration::default()));
+    let extractor = Arc::new(Extractor::new());
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
