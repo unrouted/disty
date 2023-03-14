@@ -47,7 +47,8 @@ impl ResponseError for RegistryError {
                 HttpResponseBuilder::new(StatusCode::FORBIDDEN).body(body)
             }
             Self::RepositoryNotFound {} => {
-                let body = simple_oci_error("NAME_UNKNOWN", "repository name not known to registry");
+                let body =
+                    simple_oci_error("NAME_UNKNOWN", "repository name not known to registry");
 
                 HttpResponseBuilder::new(StatusCode::NOT_FOUND).body(body)
             }

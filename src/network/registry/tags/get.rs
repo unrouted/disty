@@ -91,6 +91,6 @@ pub(crate) async fn get(
 
             Ok(builder.body(body))
         }
-        None => Err(RegistryError::RepositoryNotFound {  }),
+        None => Err(RegistryError::RepositoryNotFound {}),
     }
 }
