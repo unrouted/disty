@@ -10,6 +10,7 @@ pub(crate) enum RegistryError {
         challenge: String,
     },
     AccessDenied {},
+    RepositoryNotFound {},
     ManifestNotFound {},
     ManifestInvalid {},
     DigestInvalid {},
@@ -44,6 +45,11 @@ impl ResponseError for RegistryError {
                 let body = simple_oci_error("DENIED", "requested access to the resource is denied");
 
                 HttpResponseBuilder::new(StatusCode::FORBIDDEN).body(body)
+            }
+            Self::RepositoryNotFound {} => {
+                let body = simple_oci_error("NAME_UNKNOWN", "repository name not known to registry");
+
+                HttpResponseBuilder::new(StatusCode::NOT_FOUND).body(body)
             }
             Self::ManifestNotFound {} => {
                 let body = simple_oci_error("MANIFEST_NOT_FOUND", "manifest not found");

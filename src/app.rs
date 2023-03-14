@@ -49,6 +49,11 @@ impl RegistryApp {
         sm.get_tag(repository, tag).unwrap()
     }
 
+    pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
+        let sm = self.store.state_machine.read().await;
+        sm.get_tags(repository).unwrap()
+    }
+
     pub fn get_blob_path(&self, digest: &Digest) -> std::path::PathBuf {
         // FIXME: Hookup to settings
         let images_directory = "tmp".to_string();

@@ -9,7 +9,6 @@ use actix_web::delete;
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
-use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
 use chrono::prelude::*;

@@ -8,6 +8,8 @@ use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use bincode::options;
+use bincode::Options;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
@@ -314,6 +316,35 @@ impl RegistryStateMachine {
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
+    }
+    pub fn get_tags(&self, repository: &RepositoryName) -> StorageResult<Option<Vec<String>>> {
+        let opts = options().with_big_endian();
+
+        let key = opts
+            .serialize(&TagKey {
+                repository: repository.clone(),
+                tag: "".to_string(),
+            })
+            .unwrap();
+
+        let tag_tree = tags(&self.db);
+        let r = tag_tree.range(key..);
+
+        let mut digests = vec![];
+
+        for row in r {
+            if let Ok((key, value)) = row {
+                let key = opts.deserialize::<TagKey>(&key).unwrap();
+                if &key.repository != repository {
+                    break;
+                }
+                digests.push(key.tag.clone());
+                continue;
+            }
+            break;
+        }
+
+        Ok(Some(digests))
     }
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
