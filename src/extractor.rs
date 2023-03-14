@@ -67,6 +67,12 @@ struct Extraction {
     content_type: String,
 }
 
+impl Default for Extractor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Extractor {
     pub fn new() -> Self {
         let mut schemas: HashMap<String, Value> = HashMap::new();

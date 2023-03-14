@@ -299,14 +299,10 @@ impl RegistryStateMachine {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
     }
-    pub fn get_tag(
-        &self,
-        repository: &RepositoryName,
-        tag: &String,
-    ) -> StorageResult<Option<Digest>> {
+    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
         let key = bincode::serialize(&TagKey {
             repository: repository.clone(),
-            tag: tag.clone(),
+            tag: tag.to_owned(),
         })
         .unwrap();
         let tag_tree = tags(&self.db);

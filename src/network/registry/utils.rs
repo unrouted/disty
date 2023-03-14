@@ -21,7 +21,7 @@ pub(crate) async fn upload_part(filename: &std::path::Path, mut body: Payload) -
     while let Some(item) = body.next().await {
         let item = item.unwrap();
         println!("Chunk: {:?}", &item);
-        if let Err(_) = file.write_all(&item).await {
+        if file.write_all(&item).await.is_err() {
             return false;
         };
     }
