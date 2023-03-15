@@ -96,6 +96,7 @@ pub struct SerializableRegistryStateMachine {
     pub data: BTreeMap<String, String>,
     pub manifests: BTreeMap<Digest, Manifest>,
     pub blobs: BTreeMap<Digest, Blob>,
+    pub tags: BTreeMap<RepositoryName, BTreeMap<String, Digest>>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,12 +137,26 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
             manifest_tree.insert(key, value);
         }
 
+        let mut tag_tree = BTreeMap::new();
+        for entry_res in tags(&state.db).iter() {
+            let entry = entry_res.expect("read db failed");
+
+            let key = bincode::deserialize::<TagKey>(&entry.0).expect("invalid data");
+            let value = bincode::deserialize::<Digest>(&entry.1).expect("invalid data");
+
+            let repo = tag_tree
+                .entry(key.repository)
+                .or_insert_with(|| BTreeMap::new());
+            repo.insert(key.tag, value);
+        }
+
         Self {
             last_applied_log: state.get_last_applied_log().expect("last_applied_log"),
             last_membership: state.get_last_membership().expect("last_membership"),
             data: data_tree,
             manifests: manifest_tree,
             blobs: blob_tree,
+            tags: tag_tree,
         }
     }
 }
