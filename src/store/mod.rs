@@ -147,9 +147,7 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
                 .expect("invalid data");
             let value = bincode::deserialize::<Digest>(&entry.1).expect("invalid data");
 
-            let repo = tag_tree
-                .entry(key.repository)
-                .or_insert_with(BTreeMap::new);
+            let repo = tag_tree.entry(key.repository).or_insert_with(BTreeMap::new);
             repo.insert(key.tag, value);
         }
 
