@@ -141,7 +141,7 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
         for entry_res in tags(&state.db).iter() {
             let entry = entry_res.expect("read db failed");
 
-            let key = bincode::deserialize::<TagKey>(&entry.0).expect("invalid data");
+            let key = options().with_big_endian().deserialize::<TagKey>(&entry.0).expect("invalid data");
             let value = bincode::deserialize::<Digest>(&entry.1).expect("invalid data");
 
             let repo = tag_tree
@@ -316,6 +316,23 @@ impl RegistryStateMachine {
         }
         manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
         manifest_tree.flush_async().await.map_err(s_w_err)?;
+
+        let tag_tree = tags(&db);
+        let mut batch = sled::Batch::default();
+        for (key, value) in sm.tags {
+            for (tag, digest) in value {
+                let real_key = TagKey {
+                    repository: key.clone(),
+                    tag,
+                };
+                batch.insert(
+                    options().with_big_endian().serialize(&real_key).unwrap(),
+                    bincode::serialize(&digest).unwrap(),
+                )
+            }
+        }
+        tag_tree.apply_batch(batch).map_err(sm_w_err)?;
+        tag_tree.flush_async().await.map_err(s_w_err)?;
 
         let r = Self { db };
         if let Some(log_id) = sm.last_applied_log {
