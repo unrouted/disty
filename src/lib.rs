@@ -76,10 +76,12 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
 
     let config = Arc::new(config.validate().unwrap());
 
-    let db_path = format!("tmp{node_id}");
+    let conf = crate::config::config(None);
 
-    let db: sled::Db =
-        sled::open(&db_path).unwrap_or_else(|_| panic!("could not open: {:?}", db_path));
+    let mut path = std::path::Path::new(&conf.storage).to_path_buf();
+    path.push("db");
+
+    let db: sled::Db = sled::open(&path).unwrap_or_else(|_| panic!("could not open: {:?}", path));
 
     // Create a instance of where the Raft data will be stored.
     let store = RegistryStore::new(Arc::new(db)).await;
@@ -95,7 +97,6 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
 
     let extractor = Arc::new(Extractor::new());
 
-    let conf = crate::config::config(None);
     let webhook_queue = start_webhook_worker(conf.webhooks.clone(), &mut registry);
 
     // Create an application that will store all the instances created above, this will

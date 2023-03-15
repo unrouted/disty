@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
+use crate::config::Configuration;
 use crate::extractor::Extractor;
 use crate::store::RegistryRequest;
 use crate::types::Blob;
@@ -14,7 +15,6 @@ use crate::webhook::Event;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
 use crate::RegistryStore;
-use crate::config::Configuration;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
