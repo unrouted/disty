@@ -33,6 +33,7 @@ use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
+use sled::transaction::TransactionalTree;
 use sled::Transactional;
 use tokio::sync::RwLock;
 
@@ -368,6 +369,83 @@ impl RegistryStateMachine {
             })
             .collect::<Vec<_>>();
         Ok(data)
+    }
+
+    fn tx_get_blob(
+        &self,
+        blobs: &TransactionalTree,
+        digest: &Digest,
+    ) -> StorageResult<Option<Blob>> {
+        let key = digest.hash.as_bytes();
+        blobs
+            .get(key)
+            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+
+    fn tx_put_blob(
+        &self,
+        blobs: &TransactionalTree,
+        digest: &Digest,
+        blob: &Blob,
+    ) -> StorageResult<()> {
+        let key = digest.hash.as_bytes();
+        blobs
+            .insert(key, bincode::serialize(blob).expect("invalid data"))
+            .map(|_value| ())
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+            })
+    }
+
+    fn tx_get_manifest(
+        &self,
+        manifests: &TransactionalTree,
+        digest: &Digest,
+    ) -> StorageResult<Option<Manifest>> {
+        let key = digest.hash.as_bytes();
+        manifests
+            .get(key)
+            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+
+    fn tx_put_manifest(
+        &self,
+        manifests: &TransactionalTree,
+        digest: &Digest,
+        blob: &Manifest,
+    ) -> StorageResult<()> {
+        let key = digest.hash.as_bytes();
+        manifests
+            .insert(key, bincode::serialize(blob).expect("invalid data"))
+            .map(|_value| ())
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+            })
+    }
+
+    fn tx_put_tag(
+        &self,
+        tags: &TransactionalTree,
+        repository: &RepositoryName,
+        tag: &str,
+        digest: &Digest,
+    ) -> StorageResult<()> {
+        let key = bincode::serialize(&TagKey {
+            repository: repository.clone(),
+            tag: tag.to_owned(),
+        })
+        .unwrap();
+        tags.insert(key, bincode::serialize(digest).expect("invalid data"))
+            .map(|_value| ())
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+            })
     }
 }
 
@@ -729,37 +807,273 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         let sm = self.state_machine.write().await;
         let state_machine = state_machine(&self.db);
         let data_tree = data(&self.db);
-        let trans_res =
-            (&state_machine, &data_tree).transaction(|(tx_state_machine, tx_data_tree)| {
-                let mut res = Vec::with_capacity(entries.len());
+        let blob_tree = blobs(&self.db);
+        let manifest_tree = manifests(&self.db);
+        let tag_tree = tags(&self.db);
+        let trans_res = (
+            &state_machine,
+            &data_tree,
+            &blob_tree,
+            &manifest_tree,
+            &tag_tree,
+        )
+            .transaction(
+                |(tx_state_machine, tx_data_tree, tx_blob_tree, tx_manifest_tree, tx_tag_tree)| {
+                    let mut res = Vec::with_capacity(entries.len());
 
-                for entry in entries {
-                    tracing::debug!(%entry.log_id, "replicate to sm");
+                    for entry in entries {
+                        tracing::debug!(%entry.log_id, "replicate to sm");
 
-                    sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
+                        sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
 
-                    match entry.payload {
-                        EntryPayload::Blank => res.push(RegistryResponse { value: None }),
-                        EntryPayload::Normal(ref req) => match req {
-                            RegistryRequest::Set { key, value } => {
-                                sm.insert_tx(tx_data_tree, key.clone(), value.clone())?;
-                                res.push(RegistryResponse {
-                                    value: Some(value.clone()),
-                                })
+                        match entry.payload {
+                            EntryPayload::Blank => res.push(RegistryResponse { value: None }),
+                            EntryPayload::Normal(ref req) => match req {
+                                RegistryRequest::Set { key, value } => {
+                                    sm.insert_tx(tx_data_tree, key.clone(), value.clone())?;
+                                    res.push(RegistryResponse {
+                                        value: Some(value.clone()),
+                                    })
+                                }
+                                RegistryRequest::Transaction { actions } => {
+                                    for action in actions {
+                                        match action {
+                                            RegistryAction::Empty => {}
+                                            RegistryAction::BlobStored {
+                                                timestamp,
+                                                digest,
+                                                location,
+                                                user,
+                                            } => {
+                                                let mut blob = sm
+                                                    .tx_get_blob(tx_blob_tree, digest)
+                                                    .unwrap()
+                                                    .unwrap();
+                                                blob.updated = timestamp.clone();
+                                                blob.locations.insert(location.clone());
+                                                sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                    .unwrap();
+                                            }
+                                            RegistryAction::BlobUnstored {
+                                                timestamp,
+                                                digest,
+                                                location,
+                                                user,
+                                            } => {
+                                                if let Some(mut blob) =
+                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                                {
+                                                    blob.updated = timestamp.clone();
+                                                    blob.locations.remove(location);
+                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                        .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::BlobMounted {
+                                                timestamp,
+                                                digest,
+                                                repository,
+                                                user,
+                                            } => {
+                                                let mut blob = sm
+                                                    .tx_get_blob(tx_blob_tree, digest)
+                                                    .unwrap()
+                                                    .unwrap();
+                                                blob.updated = timestamp.clone();
+                                                blob.repositories.insert(repository.clone());
+                                                sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                    .unwrap();
+                                            }
+                                            RegistryAction::BlobUnmounted {
+                                                timestamp,
+                                                digest,
+                                                repository,
+                                                user,
+                                            } => {
+                                                if let Some(mut blob) =
+                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                                {
+                                                    blob.updated = timestamp.clone();
+                                                    blob.repositories.remove(repository);
+                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                        .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::BlobInfo {
+                                                timestamp,
+                                                digest,
+                                                dependencies,
+                                                content_type,
+                                            } => {
+                                                if let Some(mut blob) =
+                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                                {
+                                                    blob.updated = timestamp.clone();
+                                                    blob.dependencies = Some(dependencies.clone());
+                                                    blob.content_type = Some(content_type.clone());
+                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                        .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::BlobStat {
+                                                timestamp,
+                                                digest,
+                                                size,
+                                            } => {
+                                                if let Some(mut blob) =
+                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                                {
+                                                    blob.updated = timestamp.clone();
+                                                    blob.size = Some(*size);
+                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                        .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::ManifestStored {
+                                                timestamp,
+                                                digest,
+                                                location,
+                                                user,
+                                            } => {
+                                                let mut manifest = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                    .unwrap();
+                                                manifest.updated = timestamp.clone();
+                                                manifest.locations.insert(location.clone());
+                                                sm.tx_put_manifest(
+                                                    tx_manifest_tree,
+                                                    digest,
+                                                    &manifest,
+                                                )
+                                                .unwrap();
+                                            }
+                                            RegistryAction::ManifestUnstored {
+                                                timestamp,
+                                                digest,
+                                                location,
+                                                user,
+                                            } => {
+                                                if let Some(mut manifest) = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                {
+                                                    manifest.updated = timestamp.clone();
+                                                    manifest.locations.remove(location);
+                                                    sm.tx_put_manifest(
+                                                        tx_manifest_tree,
+                                                        digest,
+                                                        &manifest,
+                                                    )
+                                                    .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::ManifestMounted {
+                                                timestamp,
+                                                digest,
+                                                repository,
+                                                user,
+                                            } => {
+                                                let mut manifest = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                    .unwrap();
+                                                manifest.updated = timestamp.clone();
+                                                manifest.repositories.insert(repository.clone());
+                                                sm.tx_put_manifest(
+                                                    tx_manifest_tree,
+                                                    digest,
+                                                    &manifest,
+                                                )
+                                                .unwrap();
+                                            }
+                                            RegistryAction::ManifestUnmounted {
+                                                timestamp,
+                                                digest,
+                                                repository,
+                                                user,
+                                            } => {
+                                                if let Some(mut manifest) = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                {
+                                                    manifest.updated = timestamp.clone();
+                                                    manifest.repositories.remove(repository);
+                                                    sm.tx_put_manifest(
+                                                        tx_manifest_tree,
+                                                        digest,
+                                                        &manifest,
+                                                    )
+                                                    .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::ManifestInfo {
+                                                timestamp,
+                                                digest,
+                                                dependencies,
+                                                content_type,
+                                            } => {
+                                                if let Some(mut manifest) = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                {
+                                                    manifest.updated = timestamp.clone();
+                                                    manifest.dependencies =
+                                                        Some(dependencies.clone());
+                                                    manifest.content_type =
+                                                        Some(content_type.clone());
+                                                    sm.tx_put_manifest(
+                                                        tx_manifest_tree,
+                                                        digest,
+                                                        &manifest,
+                                                    )
+                                                    .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::ManifestStat {
+                                                timestamp,
+                                                digest,
+                                                size,
+                                            } => {
+                                                if let Some(mut manifest) = sm
+                                                    .tx_get_manifest(tx_manifest_tree, digest)
+                                                    .unwrap()
+                                                {
+                                                    manifest.updated = timestamp.clone();
+                                                    manifest.size = Some(*size);
+                                                    sm.tx_put_manifest(
+                                                        tx_manifest_tree,
+                                                        digest,
+                                                        &manifest,
+                                                    )
+                                                    .unwrap();
+                                                }
+                                            }
+                                            RegistryAction::HashTagged {
+                                                timestamp,
+                                                digest,
+                                                repository,
+                                                tag,
+                                                user,
+                                            } => {
+                                                sm.tx_put_tag(tx_tag_tree, repository, tag, digest)
+                                                    .unwrap();
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            EntryPayload::Membership(ref mem) => {
+                                let membership =
+                                    StoredMembership::new(Some(entry.log_id), mem.clone());
+                                sm.set_last_membership_tx(tx_state_machine, membership)?;
+                                res.push(RegistryResponse { value: None })
                             }
-                            RegistryRequest::Transaction { .. } => {
-                                todo!()
-                            }
-                        },
-                        EntryPayload::Membership(ref mem) => {
-                            let membership = StoredMembership::new(Some(entry.log_id), mem.clone());
-                            sm.set_last_membership_tx(tx_state_machine, membership)?;
-                            res.push(RegistryResponse { value: None })
-                        }
-                    };
-                }
-                Ok(res)
-            });
+                        };
+                    }
+                    Ok(res)
+                },
+            );
         let result_vec = trans_res.map_err(t_err)?;
 
         self.db.flush_async().await.map_err(|e| {
