@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::mpsc::Sender;
@@ -58,10 +57,7 @@ impl RegistryApp {
     }
 
     pub fn get_blob_path(&self, digest: &Digest) -> std::path::PathBuf {
-        // FIXME: Hookup to settings
-        let images_directory = "tmp".to_string();
-
-        let mut path = std::path::Path::new(&images_directory).to_path_buf();
+        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
         let digest_string = &digest.hash;
 
         path.push("blobs");
@@ -77,10 +73,7 @@ impl RegistryApp {
     }
 
     pub fn get_manifest_path(&self, digest: &Digest) -> std::path::PathBuf {
-        // FIXME: Hookup to settings
-        let images_directory = "tmp".to_string();
-
-        let mut path = std::path::Path::new(&images_directory).to_path_buf();
+        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
         let digest_string = &digest.hash;
 
         path.push("manifests");
@@ -96,10 +89,7 @@ impl RegistryApp {
     }
 
     pub fn get_upload_path(&self, upload_id: &str) -> std::path::PathBuf {
-        // FIXME: Hookup to settings
-        let images_directory = "tmp".to_string();
-
-        let mut path = Path::new(&images_directory).to_path_buf();
+        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
         path.push("uploads");
         path.push(format!("blob-{upload_id}"));
 
@@ -107,12 +97,9 @@ impl RegistryApp {
     }
 
     pub fn get_temp_path(&self) -> std::path::PathBuf {
-        // FIXME: Hookup to settings
-        let images_directory = "tmp".to_string();
-
         let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
-        let mut path = Path::new(&images_directory).to_path_buf();
+        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
         path.push("uploads");
         path.push(format!("manifest-{upload_id}"));
 
