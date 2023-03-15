@@ -94,6 +94,8 @@ pub struct SerializableRegistryStateMachine {
 
     /// Application data.
     pub data: BTreeMap<String, String>,
+    pub manifests: BTreeMap<Digest, Manifest>,
+    pub blobs: BTreeMap<Digest, Blob>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,10 +117,31 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
                 String::from_utf8(value.to_vec()).expect("invalid data"),
             );
         }
+
+        let mut blob_tree = BTreeMap::new();
+        for entry_res in blobs(&state.db).iter() {
+            let entry = entry_res.expect("read db failed");
+
+            let key = bincode::deserialize::<Digest>(&entry.0).expect("invalid data");
+            let value = bincode::deserialize::<Blob>(&entry.1).expect("invalid data");
+            blob_tree.insert(key, value);
+        }
+
+        let mut manifest_tree = BTreeMap::new();
+        for entry_res in manifests(&state.db).iter() {
+            let entry = entry_res.expect("read db failed");
+
+            let key = bincode::deserialize::<Digest>(&entry.0).expect("invalid data");
+            let value = bincode::deserialize::<Manifest>(&entry.1).expect("invalid data");
+            manifest_tree.insert(key, value);
+        }
+
         Self {
             last_applied_log: state.get_last_applied_log().expect("last_applied_log"),
             last_membership: state.get_last_membership().expect("last_membership"),
             data: data_tree,
+            manifests: manifest_tree,
+            blobs: blob_tree,
         }
     }
 }
@@ -281,7 +304,7 @@ impl RegistryStateMachine {
         Ok(())
     }
     pub fn get_blob(&self, key: &Digest) -> StorageResult<Option<Blob>> {
-        let key = key.hash.as_bytes();
+        let key = bincode::serialize(key).unwrap();
         let blob_tree = blobs(&self.db);
         blob_tree
             .get(key)
@@ -291,7 +314,7 @@ impl RegistryStateMachine {
             })
     }
     pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
-        let key = key.hash.as_bytes();
+        let key = bincode::serialize(key).unwrap();
         let manifest_tree = manifests(&self.db);
         manifest_tree
             .get(key)
@@ -376,7 +399,7 @@ impl RegistryStateMachine {
         blobs: &TransactionalTree,
         digest: &Digest,
     ) -> StorageResult<Option<Blob>> {
-        let key = digest.hash.as_bytes();
+        let key = bincode::serialize(digest).unwrap();
         blobs
             .get(key)
             .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
@@ -391,7 +414,7 @@ impl RegistryStateMachine {
         digest: &Digest,
         blob: &Blob,
     ) -> StorageResult<()> {
-        let key = digest.hash.as_bytes();
+        let key = bincode::serialize(digest).unwrap();
         blobs
             .insert(key, bincode::serialize(blob).expect("invalid data"))
             .map(|_value| ())
@@ -405,7 +428,7 @@ impl RegistryStateMachine {
         manifests: &TransactionalTree,
         digest: &Digest,
     ) -> StorageResult<Option<Manifest>> {
-        let key = digest.hash.as_bytes();
+        let key = bincode::serialize(digest).unwrap();
         manifests
             .get(key)
             .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
@@ -420,7 +443,7 @@ impl RegistryStateMachine {
         digest: &Digest,
         blob: &Manifest,
     ) -> StorageResult<()> {
-        let key = digest.hash.as_bytes();
+        let key = bincode::serialize(digest).unwrap();
         manifests
             .insert(key, bincode::serialize(blob).expect("invalid data"))
             .map(|_value| ())
