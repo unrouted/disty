@@ -39,10 +39,10 @@ jsonschema = { version = "0.16", default-features = false }
 chrono = {version = "0.4", features=["serde"]}
 prometheus-client = "0.19.0"
 platform-dirs = "0.3.0"
+serde_regex="1.1.0"
 sled = "0.34.7"
 bincode = "1.3.3"
 futures-util = "*"
-serde_regex="*"
 
 [dev-dependencies]
 anyhow = "1.0.63"
