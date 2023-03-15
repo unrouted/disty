@@ -8,7 +8,6 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
-use config::Configuration;
 use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
@@ -96,8 +95,8 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
 
     let extractor = Arc::new(Extractor::new());
 
-    let conf = Configuration::default();
-    let webhook_queue = start_webhook_worker(conf.webhooks, &mut registry);
+    let conf = crate::config::config(None);
+    let webhook_queue = start_webhook_worker(conf.webhooks.clone(), &mut registry);
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
@@ -106,7 +105,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         addr: http_addr.clone(),
         raft,
         store,
-        config,
+        config: conf,
         extractor,
         webhooks: Arc::new(webhook_queue),
     });

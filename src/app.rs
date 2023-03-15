@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use openraft::Config;
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
@@ -16,6 +15,7 @@ use crate::webhook::Event;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
 use crate::RegistryStore;
+use crate::config::Configuration;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
@@ -24,7 +24,7 @@ pub struct RegistryApp {
     pub addr: String,
     pub raft: RegistryRaft,
     pub store: Arc<RegistryStore>,
-    pub config: Arc<Config>,
+    pub config: Configuration,
     pub extractor: Arc<Extractor>,
     pub webhooks: Arc<Sender<Event>>,
 }
