@@ -138,6 +138,15 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .service(registry::blobs::uploads::put::put)
             // blobs
             .service(registry::blobs::get::get)
+            .service(registry::blobs::delete::delete)
+            // manifests
+            .service(registry::manifests::put::put)
+            .service(registry::manifests::get::get)
+            .service(registry::manifests::delete::delete)
+            // tags
+            .service(registry::tags::get::get)
+            // roots
+            .service(registry::get::get)
     });
 
     let x = server.bind(http_addr)?;
