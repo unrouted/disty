@@ -112,6 +112,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
     });
 
     let app1 = app.clone();
+    let app2 = app.clone();
 
     let mut tasks = JoinSet::new();
 
@@ -136,7 +137,10 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .service(api::read)
             .service(api::consistent_read)
     })
-    .bind(http_addr.clone())?
+    .bind((
+        app2.config.raft.address.clone().as_str(),
+        app2.config.raft.port.clone(),
+    ))?
     .run();
     tasks.spawn(server);
 
@@ -167,7 +171,10 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .app_data(app.clone())
             .service(registry_api)
     })
-    .bind(http_addr.clone())?
+    .bind((
+        app2.config.registry.address.as_str(),
+        app2.config.registry.port.clone(),
+    ))?
     .run();
     tasks.spawn(registry);
 
