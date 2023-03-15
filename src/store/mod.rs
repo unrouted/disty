@@ -280,6 +280,28 @@ impl RegistryStateMachine {
         data_tree.apply_batch(batch).map_err(sm_w_err)?;
         data_tree.flush_async().await.map_err(s_w_err)?;
 
+        let blob_tree = blobs(&db);
+        let mut batch = sled::Batch::default();
+        for (key, value) in sm.blobs {
+            batch.insert(
+                bincode::serialize(&key).unwrap(),
+                bincode::serialize(&value).unwrap(),
+            )
+        }
+        blob_tree.apply_batch(batch).map_err(sm_w_err)?;
+        blob_tree.flush_async().await.map_err(s_w_err)?;
+
+        let manifest_tree = manifests(&db);
+        let mut batch = sled::Batch::default();
+        for (key, value) in sm.manifests {
+            batch.insert(
+                bincode::serialize(&key).unwrap(),
+                bincode::serialize(&value).unwrap(),
+            )
+        }
+        manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
+        manifest_tree.flush_async().await.map_err(s_w_err)?;
+
         let r = Self { db };
         if let Some(log_id) = sm.last_applied_log {
             r.set_last_applied_log(log_id).await?;
