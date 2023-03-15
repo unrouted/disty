@@ -843,13 +843,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 location,
-                                                user,
+                                                user: _,
                                             } => {
                                                 let mut blob = sm
                                                     .tx_get_blob(tx_blob_tree, digest)
                                                     .unwrap()
                                                     .unwrap();
-                                                blob.updated = timestamp.clone();
+                                                blob.updated = *timestamp;
                                                 blob.locations.insert(location.clone());
                                                 sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                     .unwrap();
@@ -858,12 +858,12 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 location,
-                                                user,
+                                                user: _,
                                             } => {
                                                 if let Some(mut blob) =
                                                     sm.tx_get_blob(tx_blob_tree, digest).unwrap()
                                                 {
-                                                    blob.updated = timestamp.clone();
+                                                    blob.updated = *timestamp;
                                                     blob.locations.remove(location);
                                                     sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                         .unwrap();
@@ -873,13 +873,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 repository,
-                                                user,
+                                                user: _,
                                             } => {
                                                 let mut blob = sm
                                                     .tx_get_blob(tx_blob_tree, digest)
                                                     .unwrap()
                                                     .unwrap();
-                                                blob.updated = timestamp.clone();
+                                                blob.updated = *timestamp;
                                                 blob.repositories.insert(repository.clone());
                                                 sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                     .unwrap();
@@ -888,12 +888,12 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 repository,
-                                                user,
+                                                user: _,
                                             } => {
                                                 if let Some(mut blob) =
                                                     sm.tx_get_blob(tx_blob_tree, digest).unwrap()
                                                 {
-                                                    blob.updated = timestamp.clone();
+                                                    blob.updated = *timestamp;
                                                     blob.repositories.remove(repository);
                                                     sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                         .unwrap();
@@ -908,7 +908,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 if let Some(mut blob) =
                                                     sm.tx_get_blob(tx_blob_tree, digest).unwrap()
                                                 {
-                                                    blob.updated = timestamp.clone();
+                                                    blob.updated = *timestamp;
                                                     blob.dependencies = Some(dependencies.clone());
                                                     blob.content_type = Some(content_type.clone());
                                                     sm.tx_put_blob(tx_blob_tree, digest, &blob)
@@ -923,7 +923,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 if let Some(mut blob) =
                                                     sm.tx_get_blob(tx_blob_tree, digest).unwrap()
                                                 {
-                                                    blob.updated = timestamp.clone();
+                                                    blob.updated = *timestamp;
                                                     blob.size = Some(*size);
                                                     sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                         .unwrap();
@@ -933,13 +933,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 location,
-                                                user,
+                                                user: _,
                                             } => {
                                                 let mut manifest = sm
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                     .unwrap();
-                                                manifest.updated = timestamp.clone();
+                                                manifest.updated = *timestamp;
                                                 manifest.locations.insert(location.clone());
                                                 sm.tx_put_manifest(
                                                     tx_manifest_tree,
@@ -952,13 +952,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 location,
-                                                user,
+                                                user: _,
                                             } => {
                                                 if let Some(mut manifest) = sm
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                 {
-                                                    manifest.updated = timestamp.clone();
+                                                    manifest.updated = *timestamp;
                                                     manifest.locations.remove(location);
                                                     sm.tx_put_manifest(
                                                         tx_manifest_tree,
@@ -972,13 +972,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 repository,
-                                                user,
+                                                user: _,
                                             } => {
                                                 let mut manifest = sm
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                     .unwrap();
-                                                manifest.updated = timestamp.clone();
+                                                manifest.updated = *timestamp;
                                                 manifest.repositories.insert(repository.clone());
                                                 sm.tx_put_manifest(
                                                     tx_manifest_tree,
@@ -991,13 +991,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 timestamp,
                                                 digest,
                                                 repository,
-                                                user,
+                                                user: _,
                                             } => {
                                                 if let Some(mut manifest) = sm
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                 {
-                                                    manifest.updated = timestamp.clone();
+                                                    manifest.updated = *timestamp;
                                                     manifest.repositories.remove(repository);
                                                     sm.tx_put_manifest(
                                                         tx_manifest_tree,
@@ -1017,7 +1017,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                 {
-                                                    manifest.updated = timestamp.clone();
+                                                    manifest.updated = *timestamp;
                                                     manifest.dependencies =
                                                         Some(dependencies.clone());
                                                     manifest.content_type =
@@ -1039,7 +1039,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
                                                 {
-                                                    manifest.updated = timestamp.clone();
+                                                    manifest.updated = *timestamp;
                                                     manifest.size = Some(*size);
                                                     sm.tx_put_manifest(
                                                         tx_manifest_tree,
@@ -1050,11 +1050,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 }
                                             }
                                             RegistryAction::HashTagged {
-                                                timestamp,
+                                                timestamp: _,
                                                 digest,
                                                 repository,
                                                 tag,
-                                                user,
+                                                user: _,
                                             } => {
                                                 sm.tx_put_tag(tx_tag_tree, repository, tag, digest)
                                                     .unwrap();
