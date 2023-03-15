@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::extractors::token::Access;
 use crate::extractors::Token;
-use crate::network::registry::errors::RegistryError;
-use crate::network::registry::utils::{upload_part, validate_hash};
+use crate::registry::errors::RegistryError;
+use crate::registry::utils::{upload_part, validate_hash};
 use crate::types::{Digest, RegistryAction};
 use crate::{app::RegistryApp, types::RepositoryName};
 use actix_web::http::StatusCode;

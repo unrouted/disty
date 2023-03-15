@@ -1,7 +1,7 @@
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, HttpResponseBuilder, ResponseError};
 
-use crate::network::registry::utils::simple_oci_error;
+use crate::registry::utils::simple_oci_error;
 use crate::types::RepositoryName;
 
 #[derive(Debug)]

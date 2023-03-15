@@ -1,7 +1,7 @@
 use crate::extractors::Token;
-use crate::network::registry::errors::RegistryError;
-use crate::network::registry::utils::upload_part;
-use crate::network::registry::utils::validate_hash;
+use crate::registry::errors::RegistryError;
+use crate::registry::utils::upload_part;
+use crate::registry::utils::validate_hash;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;

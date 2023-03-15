@@ -1,5 +1,5 @@
 use crate::extractors::Token;
-use crate::network::registry::errors::RegistryError;
+use crate::registry::errors::RegistryError;
 use crate::{app::RegistryApp, types::RepositoryName};
 use actix_web::http::StatusCode;
 use actix_web::Responder;

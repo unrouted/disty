@@ -1,7 +1,7 @@
 use crate::app::RegistryApp;
 use crate::extractors::Token;
 
-use crate::network::registry::errors::RegistryError;
+use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;

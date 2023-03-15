@@ -1,6 +1,6 @@
 use crate::app::RegistryApp;
 use crate::extractors::Token;
-use crate::network::registry::errors::RegistryError;
+use crate::registry::errors::RegistryError;
 use crate::registry::utils::get_hash;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;

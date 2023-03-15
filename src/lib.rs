@@ -20,7 +20,6 @@ use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
 use crate::network::raft_network_impl::RegistryNetwork;
-use crate::network::registry;
 use crate::store::RegistryRequest;
 use crate::store::RegistryResponse;
 use crate::store::RegistryStore;
@@ -34,6 +33,7 @@ pub mod network;
 pub mod store;
 pub mod types;
 pub mod webhook;
+pub mod registry;
 
 pub type RegistryNodeId = u64;
 
