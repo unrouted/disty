@@ -149,7 +149,7 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
 
             let repo = tag_tree
                 .entry(key.repository)
-                .or_insert_with(|| BTreeMap::new());
+                .or_insert_with(BTreeMap::new);
             repo.insert(key.tag, value);
         }
 
