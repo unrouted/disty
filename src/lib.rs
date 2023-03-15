@@ -12,6 +12,7 @@ use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
+use tokio::task::JoinSet;
 use webhook::start_webhook_worker;
 
 use crate::app::RegistryApp;
@@ -109,13 +110,17 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
         webhooks: Arc::new(webhook_queue),
     });
 
+    let app1 = app.clone();
+
+    let mut tasks = JoinSet::new();
+
     // Start the actix-web server.
     let server = HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::Compress::default())
-            .app_data(app.clone())
+            .app_data(app1.clone())
             // raft internal RPC
             .service(raft::append)
             .service(raft::snapshot)
@@ -129,6 +134,17 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .service(api::write)
             .service(api::read)
             .service(api::consistent_read)
+    })
+    .bind(http_addr.clone())?
+    .run();
+    tasks.spawn(server);
+
+    let registry = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(middleware::Compress::default())
+            .app_data(app.clone())
             // registry
             //   blob upload
             .service(registry::blobs::uploads::delete::delete)
@@ -147,9 +163,12 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             .service(registry::tags::get::get)
             // roots
             .service(registry::get::get)
-    });
+    })
+    .bind(http_addr.clone())?
+    .run();
+    tasks.spawn(registry);
 
-    let x = server.bind(http_addr)?;
+    tasks.join_next().await.unwrap().unwrap().unwrap();
 
-    x.run().await
+    Ok(())
 }

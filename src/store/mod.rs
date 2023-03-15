@@ -141,7 +141,10 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
         for entry_res in tags(&state.db).iter() {
             let entry = entry_res.expect("read db failed");
 
-            let key = options().with_big_endian().deserialize::<TagKey>(&entry.0).expect("invalid data");
+            let key = options()
+                .with_big_endian()
+                .deserialize::<TagKey>(&entry.0)
+                .expect("invalid data");
             let value = bincode::deserialize::<Digest>(&entry.1).expect("invalid data");
 
             let repo = tag_tree
