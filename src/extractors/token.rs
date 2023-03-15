@@ -112,11 +112,6 @@ impl Token {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum TokenError {
-    Missing,
-}
-
 impl FromRequest for Token {
     type Future = Ready<Result<Self, Self::Error>>;
     type Error = Error;
