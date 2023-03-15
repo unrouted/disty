@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use actix_web::middleware;
 use actix_web::middleware::Logger;
+use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
@@ -140,12 +141,7 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
     tasks.spawn(server);
 
     let registry = HttpServer::new(move || {
-        App::new()
-            .wrap(Logger::default())
-            .wrap(Logger::new("%a %{User-Agent}i"))
-            .wrap(middleware::Compress::default())
-            .app_data(app.clone())
-            // registry
+        let registry_api = web::scope("/v2")
             //   blob upload
             .service(registry::blobs::uploads::delete::delete)
             .service(registry::blobs::uploads::get::get)
@@ -162,7 +158,14 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
             // tags
             .service(registry::tags::get::get)
             // roots
-            .service(registry::get::get)
+            .service(registry::get::get);
+
+        App::new()
+            .wrap(Logger::default())
+            .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(middleware::Compress::default())
+            .app_data(app.clone())
+            .service(registry_api)
     })
     .bind(http_addr.clone())?
     .run();
