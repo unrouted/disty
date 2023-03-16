@@ -50,6 +50,10 @@ anyhow = "1.0.63"
 maplit = "1.0.2"
 tempfile = { version = "3.4.0" }
 rstest = "*"
+reqwest-retry = "*" 
+reqwest-middleware = "*"
+lazy_static = "*"
+simple-pool = "*"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.

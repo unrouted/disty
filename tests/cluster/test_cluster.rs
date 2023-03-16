@@ -1,7 +1,7 @@
 use std::backtrace::Backtrace;
-use std::collections::BTreeMap;
 use std::panic::PanicInfo;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use distribd::client::RegistryClient;
@@ -10,14 +10,32 @@ use distribd::config::PeerConfig;
 use distribd::config::RaftConfig;
 use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
-use distribd::store::RegistryRequest;
-use maplit::btreemap;
+use lazy_static::lazy_static;
 use maplit::btreeset;
-use openraft::BasicNode;
 use reqwest::StatusCode;
-
+use reqwest::{
+    header::{HeaderMap, CONTENT_TYPE},
+    Url,
+};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use simple_pool::{ResourcePool, ResourcePoolGuard};
+use tempfile::TempDir;
 use tokio::runtime::Runtime;
+use tracing::debug;
 use tracing_subscriber::EnvFilter;
+
+lazy_static! {
+    static ref IP_ADDRESSES: ResourcePool<String> = {
+        let r = ResourcePool::new();
+
+        for i in 1..200 {
+            r.append(format!("127.37.0.{i}"));
+        }
+
+        r
+    };
+}
 
 pub fn log_panic(panic: &PanicInfo) {
     let backtrace = {
@@ -56,7 +74,7 @@ pub fn log_panic(panic: &PanicInfo) {
     eprintln!("{}", backtrace);
 }
 
-fn test_config(node_id: u64) -> Configuration {
+fn test_config(node_id: u64, addr: String) -> Configuration {
     let mut config = distribd::config::config(None);
 
     config.identifier = format!("registry{}", node_id);
@@ -64,45 +82,45 @@ fn test_config(node_id: u64) -> Configuration {
     config.storage = format!("tmp{}", node_id);
 
     config.raft = RaftConfig {
-        address: "127.0.0.1".to_owned(),
+        address: addr.clone(),
         port: (8079 + node_id) as u16,
     };
 
     config.registry = RegistryConfig {
-        address: "127.0.0.1".to_owned(),
+        address: addr.clone(),
         port: (9079 + node_id) as u16,
     };
 
     config.peers.push(PeerConfig {
         name: "registry1".to_owned(),
         raft: RaftConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 8080,
         },
         registry: RegistryConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 9080,
         },
     });
     config.peers.push(PeerConfig {
         name: "registry2".to_owned(),
         raft: RaftConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 8080,
         },
         registry: RegistryConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 9080,
         },
     });
     config.peers.push(PeerConfig {
         name: "registry3".to_owned(),
         raft: RaftConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 8080,
         },
         registry: RegistryConfig {
-            address: "127.0.0.1".to_owned(),
+            address: addr.clone(),
             port: 9080,
         },
     });
@@ -110,6 +128,7 @@ fn test_config(node_id: u64) -> Configuration {
     config
 }
 
+/*
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -147,7 +166,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(test_config(1)).await });
+        let x = rt.block_on(async move { start_raft_node(test_config(1, "127.0.0.1")).await });
         println!("x: {:?}", x);
     });
 
@@ -339,56 +358,506 @@ async fn test_cluster() -> anyhow::Result<()> {
     assert_eq!("zoo", got);
     */
 
-    let client = reqwest::ClientBuilder::new().build().unwrap();
+    Ok(())
+}
+*/
 
-    let url = "http://localhost:9080/v2/foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
-    let resp = client.post(url).body("FOOBAR").send().await.unwrap();
-    assert_eq!(resp.status(), StatusCode::CREATED);
+struct TestNode {
+    id: u64,
+    address: String,
+    backend: RegistryClient,
+    url: Url,
+    client: ClientWithMiddleware,
+    _tempdir: TempDir,
+    _thread: JoinHandle<()>,
+}
 
-    // Wait for replication
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+struct TestCluster {
+    _address: ResourcePoolGuard<String>,
+    peers: Vec<TestNode>,
+}
 
-    let url = "http://localhost:9080/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
-    let resp = client.head(url).send().await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+async fn configure() -> anyhow::Result<TestCluster> {
+    /*std::panic::set_hook(Box::new(|panic| {
+        log_panic(panic);
+    }));*/
 
-    let url = "http://localhost:9080/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    /*tracing_subscriber::fmt()
+    .with_target(true)
+    .with_thread_ids(true)
+    .with_level(true)
+    .with_ansi(false)
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();*/
+
+    let address = IP_ADDRESSES.get().await;
+
+    let mut peers = vec![];
+    for id in 1..4 {
+        let mut config = test_config(id, address.clone());
+
+        let tempdir = tempfile::tempdir().unwrap();
+        config.storage = tempdir.path().to_owned().to_string_lossy().to_string();
+
+        let thread_config = config.clone();
+        let handle = thread::spawn(|| {
+            let rt = Runtime::new().unwrap();
+            let x = rt.block_on(async move { start_raft_node(thread_config).await });
+        });
+
+        let backend = RegistryClient::new(id, format!("{}:{}", address.clone(), config.raft.port));
+
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+            .build();
+
+        peers.push(TestNode {
+            id,
+            address: format!("{}:{}", address.clone(), config.raft.port),
+            url: Url::parse(&format!(
+                "http://{}:{}/v2/",
+                address.clone(),
+                config.registry.port
+            ))
+            .unwrap(),
+            backend,
+            client,
+            _thread: handle,
+            _tempdir: tempdir,
+        });
+    }
+
+    // Wait for server to start up.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    let leader = &peers.get(0).unwrap().backend;
+    leader.init().await?;
+    leader
+        .add_learner((2, peers.get(1).unwrap().address.clone()))
+        .await?;
+    leader
+        .add_learner((3, peers.get(2).unwrap().address.clone()))
+        .await?;
+    leader.change_membership(&btreeset! {1,2,3}).await?;
+
+    Ok(TestCluster {
+        peers: peers,
+        _address: address,
+    })
+}
+
+#[tokio::test]
+async fn get_root() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
+
     let resp = client.get(url).send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+}
 
-    let url = "http://localhost:9081/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
-    let resp = client.head(url).send().await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+#[tokio::test]
+async fn upload_whole_blob() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
-    let url = "http://localhost:9082/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
-    let resp = client.head(url).send().await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // Test cross mount
     {
-        let url = "http://localhost:9080/v2/bar/foo/blobs/uploads?from=foo%2Fbar&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
-        let resp = client.post(url).send().await.unwrap();
+        let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.post(url).body("FOOBAR").send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
+
     {
-        let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+}
+
+#[tokio::test]
+async fn upload_cross_mount() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
+
+    {
+        let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.post(url).body("FOOBAR").send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
     }
 
-    // Test delete
     {
-        let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+        let url = url.clone().join("bar/foo/blobs/uploads?from=foo%2Fbar&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.post(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+}
+
+#[tokio::test]
+async fn upload_blob_multiple() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
+
+    let upload_id = {
+        let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+        let resp = client.post(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+        resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+    };
+
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        for chonk in ["FO", "OB", "AR"] {
+            let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        }
+    }
+
+    {
+        let mut url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+        url.query_pairs_mut().append_pair(
+            "digest",
+            "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+        );
+
+        let resp = client.put(url.clone()).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+}
+
+/*
+#[tokio::test]
+async fn upload_blob_multiple_finish_with_put() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    let upload_id = {
+        let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+        let resp = client.post(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+        resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+    };
+
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        for chonk in ["FO", "OB"] {
+            let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        }
+    }
+
+    {
+        let mut url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+        url.query_pairs_mut().append_pair(
+            "digest",
+            "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+        );
+
+        let resp = client.put(url.clone()).body("AR").send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+}
+
+#[tokio::test]
+async fn delete_blob() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    {
+        let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.post(url).body("FOOBAR").send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.delete(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
     }
+
     {
-        let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
-
-    Ok(())
 }
+
+#[tokio::test]
+async fn upload_manifest() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    let payload = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "manifests": []
+    });
+
+    {
+        let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+                .parse()
+                .unwrap(),
+        );
+
+        let resp = client
+            .put(url)
+            .json(&payload)
+            .headers(headers)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let value: Value = resp.json().await.unwrap();
+        assert_eq!(value, payload);
+    }
+
+    {
+        let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let value: Value = resp.json().await.unwrap();
+        assert_eq!(value, payload);
+    }
+}
+
+#[tokio::test]
+async fn list_tags() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    let payload = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "manifests": []
+    });
+
+    {
+        let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+                .parse()
+                .unwrap(),
+        );
+
+        let resp = client
+            .put(url)
+            .json(&payload)
+            .headers(headers)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("foo/bar/tags/list").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let value: Value = resp.json().await.unwrap();
+        assert_eq!(value, json!({"name": "foo/bar", "tags": ["latest"]}));
+    }
+}
+
+#[tokio::test]
+async fn delete_tag() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    let payload = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "manifests": []
+    });
+
+    {
+        let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+                .parse()
+                .unwrap(),
+        );
+
+        let resp = client
+            .put(url)
+            .json(&payload)
+            .headers(headers)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    // Confirm upload worked
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // Delete manifest
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
+        let resp = client.delete(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+
+    // Confirm delete worked
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+}
+
+#[tokio::test]
+async fn delete_upload() {
+    let TestCluster {
+        client,
+        url,
+        _tempdir,
+        _address,
+    } = configure().await;
+
+    // Initiate a multi-part upload
+    let upload_id = {
+        let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
+        let resp = client.post(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+        resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+    };
+
+    // Upload some data
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        for chonk in ["FO", "OB", "AR"] {
+            let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        }
+    }
+
+    // Delete upload
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        let resp = client.delete(url.clone()).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    // Verify upload was cancelled
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        let resp = client.get(url.clone()).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+}
+ */
