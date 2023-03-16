@@ -51,7 +51,8 @@ pub async fn init(app: Data<RegistryApp>) -> actix_web::Result<impl Responder> {
     nodes.insert(
         app.id,
         BasicNode {
-            addr: app.addr.clone(),
+            // FIXME: Use peers config
+            addr: format!("{}:{}", &app.config.raft.address, &app.config.raft.port),
         },
     );
     let res = app.raft.initialize(nodes).await;

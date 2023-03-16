@@ -32,5 +32,7 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    start_raft_node(options.id, options.http_addr).await
+    let config = distribd::config::config(None);
+
+    start_raft_node(config).await
 }

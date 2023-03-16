@@ -73,9 +73,9 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let get_addr = |node_id| {
         let addr = match node_id {
-            1 => "127.0.0.1:21001".to_string(),
-            2 => "127.0.0.1:21002".to_string(),
-            3 => "127.0.0.1:21003".to_string(),
+            1 => "127.0.0.1:8080".to_string(),
+            2 => "127.0.0.1:8081".to_string(),
+            3 => "127.0.0.1:8082".to_string(),
             _ => {
                 return Err(anyhow::anyhow!("node {} not found", node_id));
             }
@@ -83,23 +83,38 @@ async fn test_cluster() -> anyhow::Result<()> {
         Ok(addr)
     };
 
+    let mut config1 = distribd::config::config(None);
+    config1.raft.port = 8080;
+    config1.registry.port = 9080;
+    config1.prometheus.port = 7080;
+
+    let mut config2 = distribd::config::config(None);
+    config2.raft.port = 8081;
+    config2.registry.port = 9081;
+    config2.prometheus.port = 7081;
+
+    let mut config3 = distribd::config::config(None);
+    config3.raft.port = 8082;
+    config3.registry.port = 9082;
+    config3.prometheus.port = 7082;
+
     // --- Start 3 raft node in 3 threads.
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(1, "127.0.0.1:21001".to_string()).await });
+        let x = rt.block_on(async move { start_raft_node(config1).await });
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(2, "127.0.0.1:21002".to_string()).await });
+        let x = rt.block_on(async move { start_raft_node(config2).await });
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(3, "127.0.0.1:21003".to_string()).await });
+        let x = rt.block_on(async move { start_raft_node(config3).await });
         println!("x: {:?}", x);
     });
 
@@ -143,9 +158,9 @@ async fn test_cluster() -> anyhow::Result<()> {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => BasicNode::new("127.0.0.1:21001"),
-            2 => BasicNode::new("127.0.0.1:21002"),
-            3 => BasicNode::new("127.0.0.1:21003"),
+            1 => BasicNode::new("127.0.0.1:8080"),
+            2 => BasicNode::new("127.0.0.1:8081"),
+            3 => BasicNode::new("127.0.0.1:8082"),
         },
         nodes_in_cluster
     );
@@ -244,7 +259,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:21001\" })".to_string();
+            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:8080\" })".to_string();
 
             assert_eq!(s, expect_err);
         }

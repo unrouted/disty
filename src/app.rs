@@ -20,7 +20,6 @@ use crate::RegistryStore;
 // instances of raft, store and more.
 pub struct RegistryApp {
     pub id: RegistryNodeId,
-    pub addr: String,
     pub raft: RegistryRaft,
     pub store: Arc<RegistryStore>,
     pub config: Configuration,

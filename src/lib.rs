@@ -8,6 +8,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use config::Configuration;
 use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
@@ -30,10 +31,10 @@ pub mod config;
 pub mod extractor;
 pub mod extractors;
 pub mod network;
+pub mod registry;
 pub mod store;
 pub mod types;
 pub mod webhook;
-pub mod registry;
 
 pub type RegistryNodeId = u64;
 
@@ -63,8 +64,10 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }
 
-pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std::io::Result<()> {
+pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     let mut registry = <prometheus_client::registry::Registry>::default();
+
+    let node_id = 1;
 
     // Create a configuration for the raft instance.
     let config = Config {
@@ -75,8 +78,6 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
     };
 
     let config = Arc::new(config.validate().unwrap());
-
-    let conf = crate::config::config(None);
 
     let mut path = std::path::Path::new(&conf.storage).to_path_buf();
     path.push("db");
@@ -103,7 +104,6 @@ pub async fn start_raft_node(node_id: RegistryNodeId, http_addr: String) -> std:
     // be later used on the actix-web services.
     let app = Data::new(RegistryApp {
         id: node_id,
-        addr: http_addr.clone(),
         raft,
         store,
         config: conf,
