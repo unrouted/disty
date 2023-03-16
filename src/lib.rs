@@ -70,7 +70,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     let (node_id, _this_node) = match conf
         .peers
         .iter()
-        .enumerate().find(|(_, p)| p.name == conf.identifier)
+        .enumerate()
+        .find(|(_, p)| p.name == conf.identifier)
     {
         Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
         None => {
@@ -162,12 +163,17 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
             .service(registry::blobs::uploads::post::post)
             .service(registry::blobs::uploads::put::put)
             // blobs
+            .service(registry::blobs::head::head)
             .service(registry::blobs::get::get)
             .service(registry::blobs::delete::delete)
             // manifests
             .service(registry::manifests::put::put)
+            .service(registry::manifests::head::head)
+            .service(registry::manifests::head::head_by_tag)
             .service(registry::manifests::get::get)
+            .service(registry::manifests::get::get_by_tag)
             .service(registry::manifests::delete::delete)
+            .service(registry::manifests::delete::delete_by_tag)
             // tags
             .service(registry::tags::get::get)
             // roots
