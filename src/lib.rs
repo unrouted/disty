@@ -67,12 +67,10 @@ pub mod typ {
 pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let (node_id, this_node) = match conf
+    let (node_id, _this_node) = match conf
         .peers
         .iter()
-        .enumerate()
-        .filter(|(_, p)| p.name == conf.identifier)
-        .next()
+        .enumerate().find(|(_, p)| p.name == conf.identifier)
     {
         Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
         None => {
@@ -150,7 +148,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     })
     .bind((
         app2.config.raft.address.clone().as_str(),
-        app2.config.raft.port.clone(),
+        app2.config.raft.port,
     ))?
     .run();
     tasks.spawn(server);
@@ -184,7 +182,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     })
     .bind((
         app2.config.registry.address.as_str(),
-        app2.config.registry.port.clone(),
+        app2.config.registry.port,
     ))?
     .run();
     tasks.spawn(registry);

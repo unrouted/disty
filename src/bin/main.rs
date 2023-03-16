@@ -30,7 +30,7 @@ async fn main() -> std::io::Result<()> {
         .init();
 
     // Parse the parameters passed by arguments.
-    let options = Opt::parse();
+    let _options = Opt::parse();
 
     let config = distribd::config::config(None);
 
