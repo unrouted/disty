@@ -67,7 +67,18 @@ pub mod typ {
 pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
     let mut registry = <prometheus_client::registry::Registry>::default();
 
-    let node_id = 1;
+    let (node_id, this_node) = match conf
+        .peers
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.name == conf.identifier)
+        .next()
+    {
+        Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
+        None => {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "value"));
+        }
+    };
 
     // Create a configuration for the raft instance.
     let config = Config {
