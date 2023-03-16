@@ -136,7 +136,7 @@ pub(crate) async fn put(
     Content-Length: 0
     Docker-Content-Digest: <digest>
     */
-    Ok(HttpResponseBuilder::new(StatusCode::OK)
+    Ok(HttpResponseBuilder::new(StatusCode::CREATED)
         .append_header((
             "Location",
             format!("/v2/{}/manifests/{}", path.repository, digest),

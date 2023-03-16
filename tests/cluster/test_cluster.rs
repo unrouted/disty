@@ -19,6 +19,8 @@ use reqwest::{
 };
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use serde_json::json;
+use serde_json::Value;
 use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
@@ -29,49 +31,14 @@ lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
         let r = ResourcePool::new();
 
-        for i in 1..200 {
-            r.append(format!("127.37.0.{i}"));
-        }
+        //for i in 1..200 {
+        //    r.append(format!("127.37.0.{i}"));
+        //}
+
+        r.append("127.0.0.1".to_owned());
 
         r
     };
-}
-
-pub fn log_panic(panic: &PanicInfo) {
-    let backtrace = {
-        format!("{:?}", Backtrace::force_capture())
-        // #[cfg(feature = "bt")]
-        // {
-        //     format!("{:?}", Backtrace::force_capture())
-        // }
-        //
-        // #[cfg(not(feature = "bt"))]
-        // {
-        //     "backtrace is disabled without --features 'bt'".to_string()
-        // }
-    };
-
-    eprintln!("{}", panic);
-
-    if let Some(location) = panic.location() {
-        tracing::error!(
-            message = %panic,
-            backtrace = %backtrace,
-            panic.file = location.file(),
-            panic.line = location.line(),
-            panic.column = location.column(),
-        );
-        eprintln!(
-            "{}:{}:{}",
-            location.file(),
-            location.line(),
-            location.column()
-        );
-    } else {
-        tracing::error!(message = %panic, backtrace = %backtrace);
-    }
-
-    eprintln!("{}", backtrace);
 }
 
 fn test_config(node_id: u64, addr: String) -> Configuration {
@@ -363,7 +330,6 @@ async fn test_cluster() -> anyhow::Result<()> {
 */
 
 struct TestNode {
-    id: u64,
     address: String,
     backend: RegistryClient,
     url: Url,
@@ -403,6 +369,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
         let handle = thread::spawn(|| {
             let rt = Runtime::new().unwrap();
             let x = rt.block_on(async move { start_raft_node(thread_config).await });
+            println!("x: {:?}", x);
         });
 
         let backend = RegistryClient::new(id, format!("{}:{}", address.clone(), config.raft.port));
@@ -413,7 +380,6 @@ async fn configure() -> anyhow::Result<TestCluster> {
             .build();
 
         peers.push(TestNode {
-            id,
             address: format!("{}:{}", address.clone(), config.raft.port),
             url: Url::parse(&format!(
                 "http://{}:{}/v2/",
@@ -560,15 +526,11 @@ async fn upload_blob_multiple() {
     }
 }
 
-/*
 #[tokio::test]
 async fn upload_blob_multiple_finish_with_put() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -616,12 +578,9 @@ async fn upload_blob_multiple_finish_with_put() {
 
 #[tokio::test]
 async fn delete_blob() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     {
         let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -644,12 +603,9 @@ async fn delete_blob() {
 
 #[tokio::test]
 async fn upload_manifest() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     let payload = json!({
         "schemaVersion": 2,
@@ -700,12 +656,9 @@ async fn upload_manifest() {
 
 #[tokio::test]
 async fn list_tags() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     let payload = json!({
         "schemaVersion": 2,
@@ -747,12 +700,9 @@ async fn list_tags() {
 
 #[tokio::test]
 async fn delete_tag() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     let payload = json!({
         "schemaVersion": 2,
@@ -806,12 +756,9 @@ async fn delete_tag() {
 
 #[tokio::test]
 async fn delete_upload() {
-    let TestCluster {
-        client,
-        url,
-        _tempdir,
-        _address,
-    } = configure().await;
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
 
     // Initiate a multi-part upload
     let upload_id = {
@@ -860,4 +807,3 @@ async fn delete_upload() {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
- */

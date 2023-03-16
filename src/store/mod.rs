@@ -1068,10 +1068,22 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 repository,
                                                 user: _,
                                             } => {
-                                                let mut manifest = sm
+                                                let mut manifest = match sm
                                                     .tx_get_manifest(tx_manifest_tree, digest)
                                                     .unwrap()
-                                                    .unwrap();
+                                                {
+                                                    Some(manifest) => manifest,
+                                                    None => Manifest {
+                                                        created: *timestamp,
+                                                        updated: *timestamp,
+                                                        content_type: None,
+                                                        size: None,
+                                                        dependencies: Some(vec![]),
+                                                        locations: HashSet::new(),
+                                                        repositories: HashSet::new(),
+                                                    },
+                                                };
+
                                                 manifest.updated = *timestamp;
                                                 manifest.repositories.insert(repository.clone());
                                                 sm.tx_put_manifest(
