@@ -15,7 +15,7 @@ use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
 use reqwest::StatusCode;
-use rstest::rstest;
+
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 

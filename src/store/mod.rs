@@ -964,8 +964,8 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 {
                                                     Some(blob) => blob,
                                                     None => Blob {
-                                                        created: timestamp.clone(),
-                                                        updated: timestamp.clone(),
+                                                        created: *timestamp,
+                                                        updated: *timestamp,
                                                         content_type: None,
                                                         size: None,
                                                         dependencies: Some(vec![]),

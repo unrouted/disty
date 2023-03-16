@@ -32,12 +32,12 @@ impl RegistryApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
         let req = RegistryRequest::Transaction { actions };
 
-        if let Ok(resp) = self.raft.client_write(req.clone()).await {
+        if let Ok(_resp) = self.raft.client_write(req.clone()).await {
             return true;
         }
 
         // FIXME: This is super dumb
-        for i in 1..4 {
+        for _i in 1..4 {
             for (idx, peer) in self.config.peers.iter().enumerate() {
                 let client = RegistryClient::new(
                     (idx + 1) as u64,
