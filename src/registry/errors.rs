@@ -73,7 +73,7 @@ impl ResponseError for RegistryError {
             Self::BlobNotFound {} => {
                 let body = simple_oci_error("BLOB_NOT_FOUND", "blob not found");
 
-                HttpResponseBuilder::new(StatusCode::BAD_REQUEST).body(body)
+                HttpResponseBuilder::new(StatusCode::NOT_FOUND).body(body)
             }
             Self::UploadNotFound {} => {
                 let body =

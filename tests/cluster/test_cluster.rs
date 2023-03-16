@@ -371,12 +371,23 @@ async fn test_cluster() -> anyhow::Result<()> {
         let resp = client.post(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
-
     {
         let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+
+    // Test delete
+    {
+        let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+        let resp = client.delete(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+    {
+        let url = "http://localhost:9080/v2/bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     Ok(())
