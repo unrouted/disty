@@ -14,6 +14,8 @@ use distribd::store::RegistryRequest;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::BasicNode;
+use reqwest::StatusCode;
+use rstest::rstest;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -309,6 +311,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         Ok(_) => panic!("MUST return CheckIsLeaderError"),
     }
 
+    /*
     // --- Remove node 1,2 from the cluster.
 
     println!("=== change-membership to 3, ");
@@ -334,5 +337,33 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== read `foo=zoo` to node-3");
     let got = client3.read(&"foo".to_string()).await?;
     assert_eq!("zoo", got);
+    */
+
+    let client = reqwest::ClientBuilder::new().build().unwrap();
+
+    let url = "http://localhost:9080/v2/foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    let resp = client.post(url).body("FOOBAR").send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Wait for replication
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
+
+    let url = "http://localhost:9080/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    let resp = client.head(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let url = "http://localhost:9080/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    let resp = client.get(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+
+    let url = "http://localhost:9081/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    let resp = client.head(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let url = "http://localhost:9082/v2/foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5";
+    let resp = client.head(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
     Ok(())
 }

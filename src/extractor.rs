@@ -161,7 +161,6 @@ impl Extractor {
                 }
 
                 Manifest::ManifestV2 { config, layers } => {
-                    println!("Got a v2 manifest: {layers:?}");
                     results.insert(Extraction {
                         digest: config.digest.clone(),
                         content_type: config.media_type,

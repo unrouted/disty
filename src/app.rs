@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
+use crate::client::RegistryClient;
 use crate::config::Configuration;
 use crate::extractor::Extractor;
 use crate::store::RegistryRequest;
@@ -30,9 +31,26 @@ pub struct RegistryApp {
 impl RegistryApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
         let req = RegistryRequest::Transaction { actions };
-        let _response = self.raft.client_write(req).await;
 
-        true
+        if let Ok(resp) = self.raft.client_write(req.clone()).await {
+            return true;
+        }
+
+        // FIXME: This is super dumb
+        for i in 1..4 {
+            for (idx, peer) in self.config.peers.iter().enumerate() {
+                let client = RegistryClient::new(
+                    (idx + 1) as u64,
+                    format!("{}:{}", peer.raft.address, peer.raft.port),
+                );
+                let resp = client.write(&req).await;
+                if resp.is_ok() {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {

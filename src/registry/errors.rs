@@ -55,7 +55,7 @@ impl ResponseError for RegistryError {
             Self::ManifestNotFound {} => {
                 let body = simple_oci_error("MANIFEST_NOT_FOUND", "manifest not found");
 
-                HttpResponseBuilder::new(StatusCode::BAD_REQUEST).body(body)
+                HttpResponseBuilder::new(StatusCode::NOT_FOUND).body(body)
             }
             Self::ManifestInvalid {} => {
                 let body = simple_oci_error("MANIFEST_INVALID", "upload was invalid");

@@ -64,7 +64,19 @@ pub mod typ {
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }
 
+fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
+    let path = std::path::PathBuf::from(&parent_dir).join(child_dir);
+    if !path.exists() {
+        return std::fs::create_dir_all(path);
+    }
+    Ok(())
+}
+
 pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
+    create_dir(&conf.storage, "uploads")?;
+    create_dir(&conf.storage, "manifests")?;
+    create_dir(&conf.storage, "blobs")?;
+
     let mut registry = <prometheus_client::registry::Registry>::default();
 
     let (node_id, _this_node) = match conf

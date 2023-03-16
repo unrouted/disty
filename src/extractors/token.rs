@@ -1,7 +1,7 @@
 use crate::app::RegistryApp;
 use crate::config::Configuration;
 use crate::types::RepositoryName;
-use actix_web::{http::Error, FromRequest, HttpRequest};
+use actix_web::{http::Error, web::Data, FromRequest, HttpRequest};
 use futures_util::future::{ready, Ready};
 use jwt_simple::prelude::*;
 use std::collections::HashSet;
@@ -123,7 +123,7 @@ impl FromRequest for Token {
         //FIXME
         let config = Configuration::default();
 
-        let _app = req.app_data::<RegistryApp>().unwrap();
+        let _app = req.app_data::<Data<RegistryApp>>().unwrap();
 
         let config = match &config.token_server {
             None => {

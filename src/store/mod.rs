@@ -2,6 +2,7 @@
 mod test;
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Debug;
 use std::io::Cursor;
@@ -915,6 +916,10 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 }
                                 RegistryRequest::Transaction { actions } => {
                                     for action in actions {
+                                        // FIXME: Need a less crap response!! :)
+                                        res.push(RegistryResponse {
+                                            value: Some("ok".to_owned()),
+                                        });
                                         match action {
                                             RegistryAction::Empty => {}
                                             RegistryAction::BlobStored {
@@ -953,10 +958,21 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 repository,
                                                 user: _,
                                             } => {
-                                                let mut blob = sm
+                                                let mut blob = match sm
                                                     .tx_get_blob(tx_blob_tree, digest)
                                                     .unwrap()
-                                                    .unwrap();
+                                                {
+                                                    Some(blob) => blob,
+                                                    None => Blob {
+                                                        created: timestamp.clone(),
+                                                        updated: timestamp.clone(),
+                                                        content_type: None,
+                                                        size: None,
+                                                        dependencies: Some(vec![]),
+                                                        locations: HashSet::new(),
+                                                        repositories: HashSet::new(),
+                                                    },
+                                                };
                                                 blob.updated = *timestamp;
                                                 blob.repositories.insert(repository.clone());
                                                 sm.tx_put_blob(tx_blob_tree, digest, &blob)
