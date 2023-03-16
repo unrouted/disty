@@ -5,6 +5,10 @@ use std::thread;
 use std::time::Duration;
 
 use distribd::client::RegistryClient;
+use distribd::config::Configuration;
+use distribd::config::PeerConfig;
+use distribd::config::RaftConfig;
+use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
 use distribd::store::RegistryRequest;
 use maplit::btreemap;
@@ -50,6 +54,60 @@ pub fn log_panic(panic: &PanicInfo) {
     eprintln!("{}", backtrace);
 }
 
+fn test_config(node_id: u64) -> Configuration {
+    let mut config = distribd::config::config(None);
+
+    config.identifier = format!("registry{}", node_id);
+
+    config.storage = format!("tmp{}", node_id);
+
+    config.raft = RaftConfig {
+        address: "127.0.0.1".to_owned(),
+        port: (8079 + node_id) as u16,
+    };
+
+    config.registry = RegistryConfig {
+        address: "127.0.0.1".to_owned(),
+        port: (9079 + node_id) as u16,
+    };
+
+    config.peers.push(PeerConfig {
+        name: "registry1".to_owned(),
+        raft: RaftConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 8080,
+        },
+        registry: RegistryConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 9080,
+        },
+    });
+    config.peers.push(PeerConfig {
+        name: "registry2".to_owned(),
+        raft: RaftConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 8080,
+        },
+        registry: RegistryConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 9080,
+        },
+    });
+    config.peers.push(PeerConfig {
+        name: "registry3".to_owned(),
+        raft: RaftConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 8080,
+        },
+        registry: RegistryConfig {
+            address: "127.0.0.1".to_owned(),
+            port: 9080,
+        },
+    });
+
+    config
+}
+
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -83,38 +141,23 @@ async fn test_cluster() -> anyhow::Result<()> {
         Ok(addr)
     };
 
-    let mut config1 = distribd::config::config(None);
-    config1.raft.port = 8080;
-    config1.registry.port = 9080;
-    config1.prometheus.port = 7080;
-
-    let mut config2 = distribd::config::config(None);
-    config2.raft.port = 8081;
-    config2.registry.port = 9081;
-    config2.prometheus.port = 7081;
-
-    let mut config3 = distribd::config::config(None);
-    config3.raft.port = 8082;
-    config3.registry.port = 9082;
-    config3.prometheus.port = 7082;
-
     // --- Start 3 raft node in 3 threads.
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(config1).await });
+        let x = rt.block_on(async move { start_raft_node(test_config(1)).await });
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(config2).await });
+        let x = rt.block_on(async move { start_raft_node(test_config(2)).await });
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_raft_node(config3).await });
+        let x = rt.block_on(async move { start_raft_node(test_config(3)).await });
         println!("x: {:?}", x);
     });
 
