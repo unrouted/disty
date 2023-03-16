@@ -106,7 +106,7 @@ pub(crate) async fn patch(
     Docker-Upload-UUID: <uuid>
     */
 
-    let range_end = size - 1;
+    let range_end = if size > 0 { size - 1 } else { 0 };
 
     Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED)
         .append_header((
