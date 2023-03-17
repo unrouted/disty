@@ -35,6 +35,7 @@ pub mod registry;
 pub mod store;
 pub mod types;
 pub mod webhook;
+pub mod mirror;
 
 pub type RegistryNodeId = u64;
 

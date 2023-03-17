@@ -1,8 +1,7 @@
 use crate::app::RegistryApp;
-use crate::mint::Mint;
 use crate::types::{Digest, RegistryAction};
 use chrono::Utc;
-use log::{debug, info, warn};
+use tracing::{debug, info, warn};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
@@ -50,11 +49,11 @@ impl MirrorRequest {
         }
     }
 
-    pub fn storage_path(&self, images_directory: &str) -> PathBuf {
+    pub fn storage_path(&self, app: &Arc<RegistryApp>) -> PathBuf {
         match self {
-            MirrorRequest::Blob { digest } => crate::utils::get_blob_path(images_directory, digest),
+            MirrorRequest::Blob { digest } => app.get_blob_path(digest),
             MirrorRequest::Manifest { digest } => {
-                crate::utils::get_manifest_path(images_directory, digest)
+                app.get_manifest_path(digest)
             }
         }
     }
@@ -62,16 +61,12 @@ impl MirrorRequest {
 
 async fn do_transfer(
     app: Arc<RegistryApp>,
-    mint: Mint,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, repository, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match app.get_blob_directly(digest).await {
-            Err(_) => {
-                return MirrorResult::Retry { request };
-            }
-            Ok(Some(blob)) => {
+        MirrorRequest::Blob { ref digest } => match app.get_blob(digest).await {
+            Some(blob) => {
                 let repository = match blob.repositories.iter().next() {
                     Some(repository) => repository.clone(),
                     None => {
@@ -79,23 +74,20 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if blob.locations.contains(&app.settings.identifier) {
+                if blob.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
 
                 (digest, repository, blob.locations, "blobs")
             }
-            Ok(None) => {
+            None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match app.get_manifest_directly(digest).await {
-            Err(_) => {
-                return MirrorResult::Retry { request };
-            }
-            Ok(Some(manifest)) => {
+        MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest).await {
+            Some(manifest) => {
                 let repository = match manifest.repositories.iter().next() {
                     Some(repository) => repository.clone(),
                     None => {
@@ -103,14 +95,14 @@ async fn do_transfer(
                         return MirrorResult::None;
                     }
                 };
-                if manifest.locations.contains(&app.settings.identifier) {
+                if manifest.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
 
                 (digest, repository, manifest.locations, "manifests")
             }
-            Ok(None) => {
+            None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                 return MirrorResult::None;
             }
@@ -118,7 +110,7 @@ async fn do_transfer(
     };
 
     let mut urls = vec![];
-    for peer in &app.settings.peers {
+    for peer in &app.config.peers {
         if !locations.contains(&peer.name) {
             continue;
         }
@@ -138,17 +130,9 @@ async fn do_transfer(
         }
     };
 
-    let builder = match mint.enrich_request(client.get(url), repository).await {
-        Ok(builder) => builder,
-        Err(err) => {
-            warn!("Mirroring: Unable to fetch {url} as minting failed: {err}");
-            return MirrorResult::Retry { request };
-        }
-    };
-
     debug!("Mirroring: Will download: {url}");
 
-    let mut resp = match builder.send().await {
+    let mut resp = match client.get(url).send().await {
         Ok(resp) => resp,
         Err(err) => {
             debug!("Mirroring: Unable to fetch {url}: {err}");
@@ -163,7 +147,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     }
 
-    let file_name = crate::utils::get_temp_mirror_path(&app.settings.storage);
+    let file_name = app.get_temp_mirror_path();
 
     let mut file = match tokio::fs::File::create(&file_name).await {
         Ok(file) => {
@@ -232,7 +216,7 @@ async fn do_transfer(
         return MirrorResult::Retry { request };
     };
 
-    let storage_path = request.storage_path(&app.settings.storage);
+    let storage_path = request.storage_path(&app);
     if let Err(err) = tokio::fs::rename(file_name, storage_path).await {
         debug!("Mirroring: Failed to store file for {url}: {err}");
         return MirrorResult::Retry { request };
@@ -240,7 +224,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(app.settings.identifier.clone())
+    request.success(app.config.identifier.clone())
 }
 
 fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest> {
@@ -295,8 +279,6 @@ pub(crate) async fn do_miroring(
     app: Arc<RegistryApp>,
     mut rx: Receiver<Vec<RegistryAction>>,
 ) -> anyhow::Result<()> {
-    let mint = Mint::new(app.settings.mirroring.clone());
-
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
@@ -304,7 +286,7 @@ pub(crate) async fn do_miroring(
 
     let mut requests = HashSet::<MirrorRequest>::new();
 
-    let mut lifecycle = app.subscribe_lifecycle();
+    // let mut lifecycle = app.subscribe_lifecycle();
 
     loop {
         select! {
@@ -312,10 +294,10 @@ pub(crate) async fn do_miroring(
             Some(actions) = rx.recv() => {
                 requests.extend(get_tasks_from_raft_event(actions));
             }
-            Ok(_ev) = lifecycle.recv() => {
+            /*Ok(_ev) = lifecycle.recv() => {
                 info!("Mirroring: Graceful shutdown");
                 break;
-            }
+            }*/
         };
 
         debug!("Mirroring: There are {} mirroring tasks", requests.len());
@@ -326,7 +308,7 @@ pub(crate) async fn do_miroring(
         let tasks: Vec<MirrorRequest> = requests.drain().collect();
         for task in tasks {
             let client = client.clone();
-            let result = do_transfer(app.clone(), mint.clone(), client, task).await;
+            let result = do_transfer(app.clone(), client, task).await;
 
             match result {
                 MirrorResult::Retry { request } => {
@@ -344,6 +326,4 @@ pub(crate) async fn do_miroring(
             }
         }
     }
-
-    Ok(())
 }
