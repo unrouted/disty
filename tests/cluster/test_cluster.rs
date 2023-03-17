@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use serde_json::Value;
 use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
+use tokio::sync::Notify;
 
 lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
@@ -331,12 +333,32 @@ struct TestNode {
     url: Url,
     client: ClientWithMiddleware,
     _tempdir: TempDir,
-    _thread: JoinHandle<()>,
+    _thread: Arc<Notify>,
+    _handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for TestNode {
+    fn drop(&mut self) {
+        self._thread.notify_one();
+        match self._handle.take().unwrap().join() {
+            Ok(_) => {}
+            Err(_) => {}
+        };
+    }
 }
 
 struct TestCluster {
     _address: ResourcePoolGuard<String>,
     peers: Vec<TestNode>,
+}
+
+impl Drop for TestCluster {
+    fn drop(&mut self) {
+        // We do this explicitly to make sure the drop of the peers happens before the drop of the resource pool guard
+        for peer in self.peers.drain(..) {
+            drop(peer);
+        }
+    }
 }
 
 async fn configure() -> anyhow::Result<TestCluster> {
@@ -362,10 +384,19 @@ async fn configure() -> anyhow::Result<TestCluster> {
         config.storage = tempdir.path().to_owned().to_string_lossy().to_string();
 
         let thread_config = config.clone();
-        let handle = thread::spawn(|| {
+
+        let sender = Arc::new(Notify::new());
+        let receiver = sender.clone();
+
+        let handle = thread::spawn(move || {
             let rt = Runtime::new().unwrap();
-            let x = rt.block_on(async move { start_raft_node(thread_config).await });
-            println!("x: {:?}", x);
+            let x = rt.block_on(async move {
+                let tasks = start_raft_node(thread_config).await.unwrap();
+                receiver.notified().await;
+                tasks.notify_one();
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            });
+            rt.shutdown_timeout(Duration::from_secs(5));
         });
 
         let backend = RegistryClient::new(id, format!("{}:{}", address.clone(), config.raft.port));
@@ -385,7 +416,8 @@ async fn configure() -> anyhow::Result<TestCluster> {
             .unwrap(),
             backend,
             client,
-            _thread: handle,
+            _handle: Some(handle),
+            _thread: sender,
             _tempdir: tempdir,
         });
     }

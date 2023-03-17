@@ -4,6 +4,7 @@ use distribd::start_raft_node;
 use distribd::store::RegistryStore;
 use distribd::RegistryTypeConfig;
 use openraft::Raft;
+use tokio::signal;
 use tracing_subscriber::EnvFilter;
 
 pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>;
@@ -34,5 +35,17 @@ async fn main() -> std::io::Result<()> {
 
     let config = distribd::config::config(None);
 
-    start_raft_node(config).await
+    let tasks = start_raft_node(config).await.unwrap();
+
+    match signal::ctrl_c().await {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("Unable to listen for shutdown signal: {}", err);
+            // we also shut down in case of error
+        }
+    }
+
+    tasks.notify_one();
+
+    Ok(())
 }

@@ -1,6 +1,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::middleware;
 use actix_web::middleware::Logger;
@@ -13,7 +14,8 @@ use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
-use tokio::task::JoinSet;
+use tokio::join;
+use tokio::sync::Notify;
 use webhook::start_webhook_worker;
 
 use crate::app::RegistryApp;
@@ -72,7 +74,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
+pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>> {
     create_dir(&conf.storage, "uploads")?;
     create_dir(&conf.storage, "manifests")?;
     create_dir(&conf.storage, "blobs")?;
@@ -135,8 +137,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
 
     let app1 = app.clone();
     let app2 = app.clone();
-
-    let mut tasks = JoinSet::new();
+    let app3 = app.clone();
 
     // Start the actix-web server.
     let server = HttpServer::new(move || {
@@ -163,8 +164,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
         app2.config.raft.address.clone().as_str(),
         app2.config.raft.port,
     ))?
+    .disable_signals()
     .run();
-    tasks.spawn(server);
 
     let registry = HttpServer::new(move || {
         let registry_api = web::scope("/v2")
@@ -202,10 +203,25 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<()> {
         app2.config.registry.address.as_str(),
         app2.config.registry.port,
     ))?
+    .disable_signals()
     .run();
-    tasks.spawn(registry);
 
-    tasks.join_next().await.unwrap().unwrap().unwrap();
+    let raft_handle = server.handle();
+    let handle1 = tokio::spawn(server);
 
-    Ok(())
+    let registry_handle = registry.handle();
+    let handle2 = tokio::spawn(registry);
+
+    let sender = Arc::new(Notify::new());
+    let receiver = sender.clone();
+
+    tokio::spawn(async move {
+        receiver.notified().await;
+        drop(receiver);
+        app3.raft.shutdown().await.unwrap();
+        registry_handle.stop(false).await;
+        raft_handle.stop(false).await;
+    });
+
+    Ok(sender)
 }
