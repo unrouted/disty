@@ -380,11 +380,13 @@ impl RegistryStateMachine {
             })
     }
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
-        let key = options().with_big_endian().serialize(&TagKey {
-            repository: repository.clone(),
-            tag: tag.to_owned(),
-        })
-        .unwrap();
+        let key = options()
+            .with_big_endian()
+            .serialize(&TagKey {
+                repository: repository.clone(),
+                tag: tag.to_owned(),
+            })
+            .unwrap();
         let tag_tree = tags(&self.db);
         tag_tree
             .get(key)
