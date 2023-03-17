@@ -1,7 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix_web::middleware;
 use actix_web::middleware::Logger;
@@ -14,7 +13,6 @@ use extractor::Extractor;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
-use tokio::join;
 use tokio::sync::Notify;
 use webhook::start_webhook_worker;
 
