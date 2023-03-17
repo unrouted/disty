@@ -515,11 +515,13 @@ impl RegistryStateMachine {
         tag: &str,
         digest: &Digest,
     ) -> StorageResult<()> {
-        let key = bincode::serialize(&TagKey {
-            repository: repository.clone(),
-            tag: tag.to_owned(),
-        })
-        .unwrap();
+        let opts = options().with_big_endian();
+        let key = opts
+            .serialize(&TagKey {
+                repository: repository.clone(),
+                tag: tag.to_owned(),
+            })
+            .unwrap();
         tags.insert(key, bincode::serialize(digest).expect("invalid data"))
             .map(|_value| ())
             .map_err(|e| {
