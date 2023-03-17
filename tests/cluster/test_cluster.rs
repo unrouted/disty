@@ -1,5 +1,3 @@
-use std::backtrace::Backtrace;
-use std::panic::PanicInfo;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -24,8 +22,6 @@ use serde_json::Value;
 use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
-use tracing::debug;
-use tracing_subscriber::EnvFilter;
 
 lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
