@@ -205,10 +205,10 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     .run();
 
     let raft_handle = server.handle();
-    let handle1 = tokio::spawn(server);
+    let _handle1 = tokio::spawn(server);
 
     let registry_handle = registry.handle();
-    let handle2 = tokio::spawn(registry);
+    let _handle2 = tokio::spawn(registry);
 
     let sender = Arc::new(Notify::new());
     let receiver = sender.clone();

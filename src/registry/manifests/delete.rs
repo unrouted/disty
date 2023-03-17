@@ -19,7 +19,7 @@ pub struct ManifestDeleteRequestDigest {
     digest: Digest,
 }
 
-#[delete("/{repository:[^{}]+}/manifests/{digest}")]
+#[delete("/{repository:[^{}]+}/manifests/{digest:sha256:.*}")]
 pub(crate) async fn delete(
     app: Data<RegistryApp>,
     path: Path<ManifestDeleteRequestDigest>,

@@ -38,7 +38,7 @@ pub struct ManifestGetRequestDigest {
     digest: Digest,
 }
 
-#[head("/{repository:[^{}]+}/manifests/{digest}")]
+#[head("/{repository:[^{}]+}/manifests/{digest:sha256:.*}")]
 pub(crate) async fn head(
     app: Data<RegistryApp>,
     path: Path<ManifestGetRequestDigest>,

@@ -85,7 +85,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
             port: 8080,
         },
         registry: RegistryConfig {
-            address: addr.clone(),
+            address: addr,
             port: 9080,
         },
     });
@@ -340,10 +340,7 @@ struct TestNode {
 impl Drop for TestNode {
     fn drop(&mut self) {
         self._thread.notify_one();
-        match self._handle.take().unwrap().join() {
-            Ok(_) => {}
-            Err(_) => {}
-        };
+        if let Ok(_) = self._handle.take().unwrap().join() {}
     }
 }
 
@@ -390,7 +387,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
 
         let handle = thread::spawn(move || {
             let rt = Runtime::new().unwrap();
-            let x = rt.block_on(async move {
+            rt.block_on(async move {
                 let tasks = start_raft_node(thread_config).await.unwrap();
                 receiver.notified().await;
                 tasks.notify_one();
@@ -436,7 +433,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
     leader.change_membership(&btreeset! {1,2,3}).await?;
 
     Ok(TestCluster {
-        peers: peers,
+        peers,
         _address: address,
     })
 }
