@@ -1,5 +1,6 @@
 use crate::app::RegistryApp;
 use crate::types::{Digest, RegistryAction};
+use actix_web::web::Data;
 use chrono::Utc;
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
@@ -58,7 +59,7 @@ impl MirrorRequest {
 }
 
 async fn do_transfer(
-    app: Arc<RegistryApp>,
+    app: Data<RegistryApp>,
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
@@ -260,7 +261,7 @@ fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest>
 }
 
 pub(crate) async fn do_miroring(
-    app: Arc<RegistryApp>,
+    app: Data<RegistryApp>,
     mut rx: Receiver<Vec<RegistryAction>>,
 ) -> anyhow::Result<()> {
     let client = reqwest::Client::builder()
