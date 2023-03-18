@@ -149,6 +149,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(raft::append)
             .service(raft::snapshot)
             .service(raft::vote)
+            .service(raft::get_blob)
+            .service(raft::get_manifest)
             // admin API
             .service(management::init)
             .service(management::add_learner)
