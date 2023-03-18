@@ -8,7 +8,7 @@ use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::select;
 use tokio::sync::mpsc::Receiver;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {

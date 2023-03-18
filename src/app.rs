@@ -26,6 +26,7 @@ pub struct RegistryApp {
     pub config: Configuration,
     pub extractor: Arc<Extractor>,
     pub webhooks: Arc<Sender<Event>>,
+    pub mirror_tx: Sender<Vec<RegistryAction>>,
 }
 
 impl RegistryApp {

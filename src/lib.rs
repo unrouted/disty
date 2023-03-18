@@ -135,6 +135,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         config: conf,
         extractor,
         webhooks: Arc::new(webhook_queue),
+        mirror_tx: actions_tx,
     });
 
     let app1 = app.clone();
@@ -219,7 +220,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     let sender = Arc::new(Notify::new());
     let receiver = sender.clone();
 
-    let mirrorer = tokio::spawn(crate::mirror::do_miroring(app3.clone(), actions_rx));
+    let _mirrorer = tokio::spawn(crate::mirror::do_miroring(app3.clone(), actions_rx));
 
     tokio::spawn(async move {
         receiver.notified().await;
