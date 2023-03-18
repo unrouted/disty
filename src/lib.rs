@@ -30,12 +30,12 @@ pub mod client;
 pub mod config;
 pub mod extractor;
 pub mod extractors;
+pub mod mirror;
 pub mod network;
 pub mod registry;
 pub mod store;
 pub mod types;
 pub mod webhook;
-pub mod mirror;
 
 pub type RegistryNodeId = u64;
 

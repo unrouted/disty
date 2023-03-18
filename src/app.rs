@@ -125,11 +125,11 @@ impl RegistryApp {
 
     pub fn get_temp_mirror_path(&self) -> std::path::PathBuf {
         let upload_id = Uuid::new_v4().as_hyphenated().to_string();
-    
+
         let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
         path.push("uploads");
         path.push(format!("mirror-{upload_id}"));
-    
+
         path
-    }    
+    }
 }

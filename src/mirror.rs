@@ -1,13 +1,13 @@
 use crate::app::RegistryApp;
 use crate::types::{Digest, RegistryAction};
 use chrono::Utc;
-use tracing::{debug, info, warn};
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
 use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::select;
 use tokio::sync::mpsc::Receiver;
+use tracing::{debug, info, warn};
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
 pub enum MirrorRequest {
@@ -52,9 +52,7 @@ impl MirrorRequest {
     pub fn storage_path(&self, app: &Arc<RegistryApp>) -> PathBuf {
         match self {
             MirrorRequest::Blob { digest } => app.get_blob_path(digest),
-            MirrorRequest::Manifest { digest } => {
-                app.get_manifest_path(digest)
-            }
+            MirrorRequest::Manifest { digest } => app.get_manifest_path(digest),
         }
     }
 }
