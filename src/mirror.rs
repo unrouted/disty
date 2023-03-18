@@ -62,22 +62,15 @@ async fn do_transfer(
     client: reqwest::Client,
     request: MirrorRequest,
 ) -> MirrorResult {
-    let (digest, repository, locations, object_type) = match request {
+    let (digest, locations, object_type) = match request {
         MirrorRequest::Blob { ref digest } => match app.get_blob(digest).await {
             Some(blob) => {
-                let repository = match blob.repositories.iter().next() {
-                    Some(repository) => repository.clone(),
-                    None => {
-                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                        return MirrorResult::None;
-                    }
-                };
                 if blob.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
 
-                (digest, repository, blob.locations, "blobs")
+                (digest, blob.locations, "blobs")
             }
             None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -86,19 +79,12 @@ async fn do_transfer(
         },
         MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest).await {
             Some(manifest) => {
-                let repository = match manifest.repositories.iter().next() {
-                    Some(repository) => repository.clone(),
-                    None => {
-                        debug!("Mirroring: {digest:?}: Digest pending deletion; nothing to do");
-                        return MirrorResult::None;
-                    }
-                };
                 if manifest.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
 
-                (digest, repository, manifest.locations, "manifests")
+                (digest, manifest.locations, "manifests")
             }
             None => {
                 debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
@@ -113,10 +99,10 @@ async fn do_transfer(
             continue;
         }
 
-        let address = &peer.registry.address;
-        let port = &peer.registry.port;
+        let address = &peer.raft.address;
+        let port = &peer.raft.port;
 
-        let url = format!("http://{address}:{port}/v2/{repository}/{object_type}/{digest}");
+        let url = format!("http://{address}:{port}/{object_type}/{digest}");
         urls.push(url);
     }
 
