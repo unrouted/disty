@@ -36,6 +36,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use sled::transaction::TransactionalTree;
 use sled::Transactional;
+use tokio::sync::watch::channel;
+use tokio::sync::watch::Sender;
 use tokio::sync::RwLock;
 
 use crate::types::Blob;
@@ -104,6 +106,8 @@ pub struct SerializableRegistryStateMachine {
 pub struct RegistryStateMachine {
     /// Application data.
     pub db: Arc<sled::Db>,
+    pub pending_manifests: Arc<Sender<HashSet<Digest>>>,
+    pub pending_blobs: Arc<Sender<HashSet<Digest>>>,
 }
 
 impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
@@ -336,7 +340,14 @@ impl RegistryStateMachine {
         tag_tree.apply_batch(batch).map_err(sm_w_err)?;
         tag_tree.flush_async().await.map_err(s_w_err)?;
 
-        let r = Self { db };
+        let (pending_blobs, _) = channel(HashSet::<Digest>::new());
+        let (pending_manifests, _) = channel(HashSet::<Digest>::new());
+
+        let r = Self {
+            db,
+            pending_blobs: Arc::new(pending_blobs),
+            pending_manifests: Arc::new(pending_manifests),
+        };
         if let Some(log_id) = sm.last_applied_log {
             r.set_last_applied_log(log_id).await?;
         }
@@ -346,7 +357,13 @@ impl RegistryStateMachine {
     }
 
     fn new(db: Arc<sled::Db>) -> RegistryStateMachine {
-        Self { db }
+        let (pending_blobs, _) = channel(HashSet::<Digest>::new());
+        let (pending_manifests, _) = channel(HashSet::<Digest>::new());
+        Self {
+            db,
+            pending_blobs: Arc::new(pending_blobs),
+            pending_manifests: Arc::new(pending_manifests),
+        }
     }
     fn insert_tx(
         &self,
@@ -893,6 +910,10 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         let blob_tree = blobs(&self.db);
         let manifest_tree = manifests(&self.db);
         let tag_tree = tags(&self.db);
+
+        let pending_blobs = sm.pending_blobs.borrow().clone();
+        let pending_manifests = sm.pending_manifests.borrow().clone();
+
         let trans_res = (
             &state_machine,
             &data_tree,
@@ -1189,6 +1210,10 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         self.db.flush_async().await.map_err(|e| {
             StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e))
         })?;
+
+        sm.pending_blobs.send_replace(pending_blobs);
+        sm.pending_manifests.send_replace(pending_manifests);
+
         Ok(result_vec)
     }
 
