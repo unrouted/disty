@@ -8,6 +8,7 @@ use openraft::testing::StoreBuilder;
 use openraft::testing::Suite;
 use openraft::StorageError;
 
+use crate::config::Configuration;
 use crate::RegistryNodeId;
 use crate::RegistryStore;
 use crate::RegistryTypeConfig;
@@ -44,7 +45,7 @@ impl StoreBuilder<RegistryTypeConfig, Arc<RegistryStore>> for SledBuilder {
             let db: sled::Db = sled::open(db_dir)
                 .unwrap_or_else(|_| panic!("could not open: {:?}", db_dir.to_str()));
 
-            let store = RegistryStore::new(Arc::new(db)).await;
+            let store = RegistryStore::new(Arc::new(db), Configuration::default()).await;
             let test_res = t(store).await;
 
             if db_dir.exists() {

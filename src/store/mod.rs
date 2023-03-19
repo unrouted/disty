@@ -40,6 +40,7 @@ use tokio::sync::watch::channel;
 use tokio::sync::watch::Sender;
 use tokio::sync::RwLock;
 
+use crate::config::Configuration;
 use crate::types::Blob;
 use crate::types::Digest;
 use crate::types::Manifest;
@@ -552,6 +553,7 @@ impl RegistryStateMachine {
 #[derive(Debug)]
 pub struct RegistryStore {
     db: Arc<sled::Db>,
+    config: Configuration,
 
     /// The Raft state machine.
     pub state_machine: RwLock<RegistryStateMachine>,
@@ -911,8 +913,8 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         let manifest_tree = manifests(&self.db);
         let tag_tree = tags(&self.db);
 
-        let pending_blobs = sm.pending_blobs.borrow().clone();
-        let pending_manifests = sm.pending_manifests.borrow().clone();
+        let mut pending_blobs = sm.pending_blobs.borrow().clone();
+        let mut pending_manifests = sm.pending_manifests.borrow().clone();
 
         let trans_res = (
             &state_machine,
@@ -1211,6 +1213,50 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e))
         })?;
 
+        for entry in entries {
+            match entry.payload {
+                EntryPayload::Normal(ref req) => match req {
+                    RegistryRequest::Transaction { actions } => {
+                        for action in actions {
+                            match action {
+                                RegistryAction::BlobStored {
+                                    location, digest, ..
+                                } => {
+                                    if location == &self.config.identifier {
+                                        pending_blobs.insert(digest.clone());
+                                    }
+                                }
+                                RegistryAction::BlobUnstored {
+                                    location, digest, ..
+                                } => {
+                                    if location == &self.config.identifier {
+                                        pending_blobs.remove(&digest);
+                                    }
+                                }
+                                RegistryAction::ManifestStored {
+                                    location, digest, ..
+                                } => {
+                                    if location == &self.config.identifier {
+                                        pending_manifests.insert(digest.clone());
+                                    }
+                                }
+                                RegistryAction::ManifestUnstored {
+                                    location, digest, ..
+                                } => {
+                                    if location == &self.config.identifier {
+                                        pending_manifests.remove(&digest);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+
         sm.pending_blobs.send_replace(pending_blobs);
         sm.pending_manifests.send_replace(pending_manifests);
 
@@ -1284,7 +1330,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     }
 }
 impl RegistryStore {
-    pub async fn new(db: Arc<sled::Db>) -> Arc<RegistryStore> {
+    pub async fn new(db: Arc<sled::Db>, config: Configuration) -> Arc<RegistryStore> {
         let _store = store(&db);
         let _state_machine = state_machine(&db);
         let _data = data(&db);
@@ -1294,7 +1340,11 @@ impl RegistryStore {
         let _logs = logs(&db);
 
         let state_machine = RwLock::new(RegistryStateMachine::new(db.clone()));
-        Arc::new(RegistryStore { db, state_machine })
+        Arc::new(RegistryStore {
+            db,
+            config,
+            state_machine,
+        })
     }
 }
 
