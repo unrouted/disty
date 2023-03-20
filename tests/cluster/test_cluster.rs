@@ -375,13 +375,15 @@ async fn configure() -> anyhow::Result<TestCluster> {
         log_panic(panic);
     }));*/
 
+    /*
     tracing_subscriber::fmt()
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_level(true)
-        .with_ansi(false)
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    .with_target(true)
+    .with_thread_ids(true)
+    .with_level(true)
+    .with_ansi(false)
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();
+    */
 
     let address = IP_ADDRESSES.get().await;
 
