@@ -25,7 +25,6 @@ use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::Notify;
-use tracing_subscriber::EnvFilter;
 
 lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
