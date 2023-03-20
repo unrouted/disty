@@ -482,11 +482,18 @@ async fn upload_whole_blob() {
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
-    {
-        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+    cluster
+        .head_all(
+            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -593,11 +600,18 @@ async fn upload_blob_multiple() {
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
-    {
-        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+    cluster
+        .head_all(
+            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -649,11 +663,18 @@ async fn upload_blob_multiple_finish_with_put() {
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
-    {
-        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+    cluster
+        .head_all(
+            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -681,11 +702,18 @@ async fn delete_blob() {
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
     }
 
-    {
-        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
+    cluster
+        .head_all(
+            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::OK {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+                false
+            },
+        )
+        .await;
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -737,11 +765,18 @@ async fn upload_manifest() {
         assert_eq!(value, payload);
     }
 
-    {
-        let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+    cluster
+        .head_all(
+            "foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
 
     {
         let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
@@ -846,11 +881,15 @@ async fn delete_tag() {
     }
 
     // Confirm delete worked
-    {
-        let url = url.join("foo/bar/manifests/latest").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
+    cluster
+        .head_all("foo/bar/manifests/latest", |resp| {
+            if resp.status() == StatusCode::OK {
+                return true;
+            }
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+            false
+        })
+        .await;
 
     // Confirm delete worked
     {
