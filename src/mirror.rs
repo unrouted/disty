@@ -68,7 +68,7 @@ async fn do_transfer(
         MirrorRequest::Blob { ref digest } => match app.get_blob(digest).await {
             Some(blob) => {
                 if blob.locations.contains(&app.config.identifier) {
-                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
+                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do. {:?} {:?}", blob.locations, app.config.identifier);
                     return MirrorResult::None;
                 }
 

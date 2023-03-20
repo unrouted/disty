@@ -399,6 +399,7 @@ impl RegistryStateMachine {
     }
     pub async fn wait_for_blob(&self, digest: &Digest) {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        debug!("distribd::mirror, State: Wait for blob: Insert");
 
         let mut waiters = self.blob_waiters.lock().unwrap();
         let values = waiters
@@ -410,14 +411,14 @@ impl RegistryStateMachine {
         drop(values);
         drop(waiters);
 
-        debug!("State: Wait for blob: Waiting for {digest} to download");
+        debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
 
         match rx.await {
             Ok(_) => {
-                debug!("State: Wait for blob: {digest}: Download complete");
+                debug!("distribd::mirror State: Wait for blob: {digest}: Download complete");
             }
             Err(err) => {
-                warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+                warn!("distribd::mirror State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
             }
         }
     }
@@ -1282,13 +1283,16 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 RegistryAction::BlobStored {
                                     location, digest, ..
                                 } => {
-                                    if location == &self.config.identifier {
+                                    if location != &self.config.identifier {
                                         pending_blobs.insert(digest.clone());
+                                    }
 
+                                    if location == &self.config.identifier {
                                         if let Some(senders) =
                                             sm.blob_waiters.lock().unwrap().remove(digest)
                                         {
                                             for sender in senders {
+                                                tracing::debug!("distribd::mirror SENDER SENDING");
                                                 sender.send(()).unwrap();
                                             }
                                         }

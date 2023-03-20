@@ -11,6 +11,7 @@ use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
 use lazy_static::lazy_static;
 use maplit::btreeset;
+use reqwest::Response;
 use reqwest::StatusCode;
 use reqwest::{
     header::{HeaderMap, CONTENT_TYPE},
@@ -24,6 +25,7 @@ use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::Notify;
+use tracing_subscriber::EnvFilter;
 
 lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
@@ -349,6 +351,16 @@ struct TestCluster {
     peers: Vec<TestNode>,
 }
 
+impl TestCluster {
+    async fn head_all<F: Fn(Response) -> ()>(&self, url: &str, cb: F) {
+        for peer in self.peers.iter() {
+            let full_url = peer.url.clone().join(url).unwrap();
+            let resp = peer.client.head(full_url).send().await.unwrap();
+            cb(resp);
+        }
+    }
+}
+
 impl Drop for TestCluster {
     fn drop(&mut self) {
         // We do this explicitly to make sure the drop of the peers happens before the drop of the resource pool guard
@@ -363,13 +375,13 @@ async fn configure() -> anyhow::Result<TestCluster> {
         log_panic(panic);
     }));*/
 
-    /*tracing_subscriber::fmt()
-    .with_target(true)
-    .with_thread_ids(true)
-    .with_level(true)
-    .with_ansi(false)
-    .with_env_filter(EnvFilter::from_default_env())
-    .init();*/
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     let address = IP_ADDRESSES.get().await;
 
@@ -499,14 +511,26 @@ async fn upload_cross_mount() {
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
-    {
-        let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
-        let resp = client.head(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
+    cluster
+        .head_all(
+            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                assert_eq!(resp.status(), StatusCode::OK);
+            },
+        )
+        .await;
 
     {
         let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+
+    {
+        let url = cluster.peers.get(1).unwrap().url.clone();
+        let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let client = &cluster.peers.get(1).unwrap().client;
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
