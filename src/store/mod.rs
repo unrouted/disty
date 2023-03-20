@@ -1361,7 +1361,7 @@ impl RegistryStore {
         Arc::new(RegistryStore {
             db,
             config,
-            state_machine: state_machine,
+            state_machine,
         })
     }
 }
