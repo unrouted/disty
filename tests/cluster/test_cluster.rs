@@ -602,7 +602,7 @@ async fn upload_blob_multiple() {
 
     cluster
         .head_all(
-            "bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            "foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
             |resp| {
                 if resp.status() == StatusCode::NOT_FOUND {
                     return true;
