@@ -76,6 +76,8 @@ impl RegistryApp {
 
         values.push(tx);
 
+        drop(sm);
+
         debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
 
         match rx.await {
@@ -102,6 +104,8 @@ impl RegistryApp {
             .or_insert_with(std::vec::Vec::new);
 
         values.push(tx);
+
+        drop(sm);
 
         debug!("State: Wait for manifest: Waiting for {digest} to download");
 
