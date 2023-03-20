@@ -401,14 +401,16 @@ impl RegistryStateMachine {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
         debug!("distribd::mirror, State: Wait for blob: Insert");
 
-        let mut waiters = self.blob_waiters.lock().unwrap();
-        let values = waiters
-            .entry(digest.clone())
-            .or_insert_with(std::vec::Vec::new);
+        {
+            let mut waiters = self.blob_waiters.lock().unwrap();
+            let values = waiters
+                .entry(digest.clone())
+                .or_insert_with(std::vec::Vec::new);
 
-        values.push(tx);
+            values.push(tx);
 
-        drop(waiters);
+            drop(waiters);
+        }
 
         debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
 
@@ -434,14 +436,16 @@ impl RegistryStateMachine {
     pub async fn wait_for_manifest(&self, digest: &Digest) {
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
 
-        let mut waiters = self.manifest_waiters.lock().unwrap();
-        let values = waiters
-            .entry(digest.clone())
-            .or_insert_with(std::vec::Vec::new);
+        {
+            let mut waiters = self.manifest_waiters.lock().unwrap();
+            let values = waiters
+                .entry(digest.clone())
+                .or_insert_with(std::vec::Vec::new);
 
-        values.push(tx);
+            values.push(tx);
 
-        drop(waiters);
+            drop(waiters);
+        }
 
         debug!("State: Wait for manifest: Waiting for {digest} to download");
 
@@ -1273,7 +1277,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         })?;
 
         for entry in entries {
-            if let EntryPayload::Normal(RegistryRequest::Transaction { ref actions }) = entry.payload {
+            if let EntryPayload::Normal(RegistryRequest::Transaction { ref actions }) =
+                entry.payload
+            {
                 for action in actions {
                     match action {
                         RegistryAction::BlobStored {
