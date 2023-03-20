@@ -353,16 +353,18 @@ struct TestCluster {
 impl TestCluster {
     async fn head_all<F: Fn(Response) -> bool>(&self, url: &str, cb: F) {
         for peer in self.peers.iter() {
-            let full_url = peer.url.clone().join(url).unwrap();
-            for _i in 1..10 {
-                let resp = peer.client.head(full_url.clone()).send().await.unwrap();
-                if !cb(resp) {
-                    break;
+            'peer: {
+                let full_url = peer.url.clone().join(url).unwrap();
+                for _i in 1..10 {
+                    let resp = peer.client.head(full_url.clone()).send().await.unwrap();
+                    if !cb(resp) {
+                        break 'peer;
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
 
-            assert!(false);
+                panic!("Shouldn't have got here");
+            }
         }
     }
 }
@@ -527,7 +529,7 @@ async fn upload_cross_mount() {
                     return true;
                 }
                 assert_eq!(resp.status(), StatusCode::OK);
-                return false;
+                false
             },
         )
         .await;

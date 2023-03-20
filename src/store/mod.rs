@@ -1233,7 +1233,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 if !blob.locations.contains(&self.config.identifier) {
                                     pending_blobs.insert(digest.clone());
                                 } else {
-                                    pending_blobs.remove(&digest);
+                                    pending_blobs.remove(digest);
                                 }
                             }
                             if location == &self.config.identifier {
@@ -1249,7 +1249,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 if !blob.locations.contains(&self.config.identifier) {
                                     pending_blobs.insert(digest.clone());
                                 } else {
-                                    pending_blobs.remove(&digest);
+                                    pending_blobs.remove(digest);
                                 }
                             }
                         }
