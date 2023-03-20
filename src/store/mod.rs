@@ -1230,7 +1230,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                     location, digest, ..
                                 } => {
                                     if location == &self.config.identifier {
-                                        pending_blobs.remove(&digest);
+                                        pending_blobs.remove(digest);
                                     }
                                 }
                                 RegistryAction::ManifestStored {
@@ -1244,7 +1244,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                     location, digest, ..
                                 } => {
                                     if location == &self.config.identifier {
-                                        pending_manifests.remove(&digest);
+                                        pending_manifests.remove(digest);
                                     }
                                 }
                                 _ => {}

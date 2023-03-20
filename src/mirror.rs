@@ -256,13 +256,13 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         let mut waiters = JoinSet::new();
 
         waiters.spawn(wait_for_change(subscriber.clone()));
-        if pending_blobs.len() > 0 {
+        if !pending_blobs.is_empty() {
             waiters.spawn(wait_for_time());
         }
 
         while let Some(res) = waiters.join_next().await {
             waiters.spawn(wait_for_change(subscriber.clone()));
-            if pending_blobs.len() > 0 {
+            if !pending_blobs.is_empty() {
                 waiters.spawn(wait_for_time());
             }
 
@@ -279,7 +279,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                         )
                         .await;
 
-                        if let MirrorResult::Success { action, request } = result {
+                        if let MirrorResult::Success { action, request: _ } = result {
                             if app1.submit(vec![action]).await {
                                 debug!("Mirroring: Download logged to raft");
                             }
@@ -297,8 +297,8 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         }
     });
 
-    let app1 = app.clone();
-    let client1 = client.clone();
+    let app1 = app;
+    let client1 = client;
 
     tokio::spawn(async move {
         let mut subscriber = app1
@@ -312,13 +312,13 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         let mut waiters = JoinSet::new();
 
         waiters.spawn(wait_for_change(subscriber.clone()));
-        if pending_manifests.len() > 0 {
+        if !pending_manifests.is_empty() {
             waiters.spawn(wait_for_time());
         }
 
         while let Some(res) = waiters.join_next().await {
             waiters.spawn(wait_for_change(subscriber.clone()));
-            if pending_manifests.len() > 0 {
+            if !pending_manifests.is_empty() {
                 waiters.spawn(wait_for_time());
             }
 
@@ -335,7 +335,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                         )
                         .await;
 
-                        if let MirrorResult::Success { action, request } = result {
+                        if let MirrorResult::Success { action, request: _ } = result {
                             if app1.submit(vec![action]).await {
                                 debug!("Mirroring: Download logged to raft");
                             }
@@ -353,5 +353,5 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         }
     });
 
-    return Ok(());
+    Ok(())
 }
