@@ -342,7 +342,7 @@ struct TestNode {
 impl Drop for TestNode {
     fn drop(&mut self) {
         self._thread.notify_one();
-        if let Ok(_) = self._handle.take().unwrap().join() {}
+        if self._handle.take().unwrap().join().is_ok() {}
     }
 }
 
@@ -352,7 +352,7 @@ struct TestCluster {
 }
 
 impl TestCluster {
-    async fn head_all<F: Fn(Response) -> ()>(&self, url: &str, cb: F) {
+    async fn head_all<F: Fn(Response)>(&self, url: &str, cb: F) {
         for peer in self.peers.iter() {
             let full_url = peer.url.clone().join(url).unwrap();
             let resp = peer.client.head(full_url).send().await.unwrap();

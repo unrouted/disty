@@ -408,7 +408,6 @@ impl RegistryStateMachine {
 
         values.push(tx);
 
-        drop(values);
         drop(waiters);
 
         debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
@@ -442,7 +441,6 @@ impl RegistryStateMachine {
 
         values.push(tx);
 
-        drop(values);
         drop(waiters);
 
         debug!("State: Wait for manifest: Waiting for {digest} to download");
@@ -1276,8 +1274,8 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
 
         for entry in entries {
             match entry.payload {
-                EntryPayload::Normal(ref req) => match req {
-                    RegistryRequest::Transaction { actions } => {
+                EntryPayload::Normal(ref req) => {
+                    if let RegistryRequest::Transaction { actions } = req {
                         for action in actions {
                             match action {
                                 RegistryAction::BlobStored {
@@ -1331,8 +1329,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             }
                         }
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
