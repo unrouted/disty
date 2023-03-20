@@ -563,7 +563,7 @@ pub struct RegistryStore {
     config: Configuration,
 
     /// The Raft state machine.
-    pub state_machine: Arc<RwLock<RegistryStateMachine>>,
+    pub state_machine: RwLock<RegistryStateMachine>,
 }
 
 type StorageResult<T> = Result<T, StorageError<RegistryNodeId>>;
@@ -1361,7 +1361,7 @@ impl RegistryStore {
         Arc::new(RegistryStore {
             db,
             config,
-            state_machine: Arc::new(state_machine),
+            state_machine: state_machine,
         })
     }
 }
