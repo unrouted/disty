@@ -86,7 +86,7 @@ pub(crate) async fn put(
             timestamp: Utc::now(),
             digest: query.digest.clone(),
             repository: path.repository.clone(),
-            user: "nobody".to_string(),
+            user: token.sub.clone(),
         },
         RegistryAction::BlobStat {
             timestamp: Utc::now(),
@@ -96,8 +96,8 @@ pub(crate) async fn put(
         RegistryAction::BlobStored {
             timestamp: Utc::now(),
             digest: query.digest.clone(),
-            location: "location".to_string(),
-            user: "nobody".to_string(),
+            location: app.config.identifier.clone(),
+            user: token.sub.clone(),
         },
     ];
 

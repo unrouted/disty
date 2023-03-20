@@ -67,7 +67,9 @@ pub(crate) async fn get(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    // app.wait_for_manifest(&digest).await;
+    if !manifest.locations.contains(&app.config.identifier) {
+        app.wait_for_manifest(&path.digest).await;
+    }
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
@@ -143,7 +145,9 @@ pub(crate) async fn get_by_tag(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    // app.wait_for_manifest(&digest).await;
+    if !manifest.locations.contains(&app.config.identifier) {
+        app.wait_for_manifest(&digest).await;
+    }
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,

@@ -2,12 +2,14 @@
 mod test;
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use bincode::options;
 use bincode::Options;
@@ -39,6 +41,8 @@ use sled::Transactional;
 use tokio::sync::watch::channel;
 use tokio::sync::watch::Sender;
 use tokio::sync::RwLock;
+use tracing::debug;
+use tracing::warn;
 
 use crate::config::Configuration;
 use crate::types::Blob;
@@ -109,6 +113,8 @@ pub struct RegistryStateMachine {
     pub db: Arc<sled::Db>,
     pub pending_manifests: Arc<Sender<HashSet<Digest>>>,
     pub pending_blobs: Arc<Sender<HashSet<Digest>>>,
+    pub manifest_waiters: Arc<Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>>,
+    pub blob_waiters: Arc<Mutex<HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>>>,
 }
 
 impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
@@ -348,6 +354,8 @@ impl RegistryStateMachine {
             db,
             pending_blobs: Arc::new(pending_blobs),
             pending_manifests: Arc::new(pending_manifests),
+            manifest_waiters: Arc::new(Mutex::new(HashMap::new())),
+            blob_waiters: Arc::new(Mutex::new(HashMap::new())),
         };
         if let Some(log_id) = sm.last_applied_log {
             r.set_last_applied_log(log_id).await?;
@@ -364,6 +372,8 @@ impl RegistryStateMachine {
             db,
             pending_blobs: Arc::new(pending_blobs),
             pending_manifests: Arc::new(pending_manifests),
+            manifest_waiters: Arc::new(Mutex::new(HashMap::new())),
+            blob_waiters: Arc::new(Mutex::new(HashMap::new())),
         }
     }
     fn insert_tx(
@@ -387,6 +397,30 @@ impl RegistryStateMachine {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
     }
+    pub async fn wait_for_blob(&self, digest: &Digest) {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let mut waiters = self.blob_waiters.lock().unwrap();
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+
+        values.push(tx);
+
+        drop(values);
+        drop(waiters);
+
+        debug!("State: Wait for blob: Waiting for {digest} to download");
+
+        match rx.await {
+            Ok(_) => {
+                debug!("State: Wait for blob: {digest}: Download complete");
+            }
+            Err(err) => {
+                warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+            }
+        }
+    }
     pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
         let key = bincode::serialize(key).unwrap();
         let manifest_tree = manifests(&self.db);
@@ -396,6 +430,32 @@ impl RegistryStateMachine {
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
+    }
+    pub async fn wait_for_manifest(&self, digest: &Digest) {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let mut waiters = self.manifest_waiters.lock().unwrap();
+        let values = waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+
+        values.push(tx);
+
+        drop(values);
+        drop(waiters);
+
+        debug!("State: Wait for manifest: Waiting for {digest} to download");
+
+        match rx.await {
+            Ok(_) => {
+                debug!("State: Wait for manifest: {digest}: Download complete");
+            }
+            Err(err) => {
+                warn!(
+                    "State: Failure whilst waiting for manifest to be downloaded: {digest}: {err}"
+                );
+            }
+        }
     }
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
         let key = options()
@@ -1224,6 +1284,14 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 } => {
                                     if location == &self.config.identifier {
                                         pending_blobs.insert(digest.clone());
+
+                                        if let Some(senders) =
+                                            sm.blob_waiters.lock().unwrap().remove(digest)
+                                        {
+                                            for sender in senders {
+                                                sender.send(()).unwrap();
+                                            }
+                                        }
                                     }
                                 }
                                 RegistryAction::BlobUnstored {
@@ -1238,6 +1306,14 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 } => {
                                     if location == &self.config.identifier {
                                         pending_manifests.insert(digest.clone());
+
+                                        if let Some(senders) =
+                                            sm.manifest_waiters.lock().unwrap().remove(digest)
+                                        {
+                                            for sender in senders {
+                                                sender.send(()).unwrap();
+                                            }
+                                        }
                                     }
                                 }
                                 RegistryAction::ManifestUnstored {

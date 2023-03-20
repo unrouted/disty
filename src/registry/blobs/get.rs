@@ -48,7 +48,9 @@ pub(crate) async fn get(
         return Err(RegistryError::BlobNotFound {});
     }
 
-    // app.wait_for_blob(&digest).await;
+    if !blob.locations.contains(&app.config.identifier) {
+        app.wait_for_blob(&path.digest).await;
+    }
 
     let content_type = match blob.content_type {
         Some(content_type) => content_type,

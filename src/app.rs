@@ -57,12 +57,18 @@ impl RegistryApp {
         let sm = self.store.state_machine.read().await;
         sm.get_blob(digest).unwrap()
     }
-
+    pub async fn wait_for_blob(&self, digest: &Digest) {
+        let sm = self.store.state_machine.read().await;
+        sm.wait_for_blob(digest).await;
+    }
     pub async fn get_manifest(&self, digest: &Digest) -> Option<Manifest> {
         let sm = self.store.state_machine.read().await;
         sm.get_manifest(digest).unwrap()
     }
-
+    pub async fn wait_for_manifest(&self, digest: &Digest) {
+        let sm = self.store.state_machine.read().await;
+        sm.wait_for_manifest(digest).await;
+    }
     pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         let sm = self.store.state_machine.read().await;
         sm.get_tag(repository, tag).unwrap()
