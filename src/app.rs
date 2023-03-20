@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc::Sender;
+use tracing::debug;
+use tracing::log::warn;
 use uuid::Uuid;
 
 use crate::client::RegistryClient;
@@ -62,16 +64,57 @@ impl RegistryApp {
             "distribd::mirror wait_for_blob id {}",
             self.config.identifier
         );
-        let sm = self.store.state_machine.write().await;
-        sm.wait_for_blob(digest).await;
+        let mut sm = self.store.state_machine.write().await;
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        debug!("distribd::mirror, State: Wait for blob: Insert");
+
+        let values = sm
+            .blob_waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+
+        values.push(tx);
+
+        debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
+
+        match rx.await {
+            Ok(_) => {
+                debug!("distribd::mirror State: Wait for blob: {digest}: Download complete");
+            }
+            Err(err) => {
+                warn!("distribd::mirror State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+            }
+        }
     }
     pub async fn get_manifest(&self, digest: &Digest) -> Option<Manifest> {
         let sm = self.store.state_machine.read().await;
         sm.get_manifest(digest).unwrap()
     }
     pub async fn wait_for_manifest(&self, digest: &Digest) {
-        let sm = self.store.state_machine.write().await;
-        sm.wait_for_manifest(digest).await;
+        let mut sm = self.store.state_machine.write().await;
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+
+        let values = sm
+            .manifest_waiters
+            .entry(digest.clone())
+            .or_insert_with(std::vec::Vec::new);
+
+        values.push(tx);
+
+        debug!("State: Wait for manifest: Waiting for {digest} to download");
+
+        match rx.await {
+            Ok(_) => {
+                debug!("State: Wait for manifest: {digest}: Download complete");
+            }
+            Err(err) => {
+                warn!(
+                    "State: Failure whilst waiting for manifest to be downloaded: {digest}: {err}"
+                );
+            }
+        }
     }
     pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
         let sm = self.store.state_machine.read().await;

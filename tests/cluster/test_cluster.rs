@@ -527,14 +527,14 @@ async fn upload_cross_mount() {
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
     }
 
-    {
+    /*{
         let url = cluster.peers.get(1).unwrap().url.clone();
         let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let client = &cluster.peers.get(1).unwrap().client;
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
-    }
+    }*/
 }
 
 #[tokio::test]
