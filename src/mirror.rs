@@ -4,10 +4,11 @@ use actix_web::web::Data;
 use chrono::Utc;
 use rand::seq::SliceRandom;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 use tokio::io::AsyncWriteExt;
-use tokio::select;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::watch;
+use tokio::task::JoinSet;
 use tracing::debug;
 
 #[derive(Hash, PartialEq, std::cmp::Eq, Debug)]
@@ -212,103 +213,145 @@ async fn do_transfer(
     request.success(app.config.identifier.clone())
 }
 
-fn get_tasks_from_raft_event(actions: Vec<RegistryAction>) -> Vec<MirrorRequest> {
-    let mut tasks = vec![];
-
-    for action in &actions {
-        match action {
-            RegistryAction::BlobStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => tasks.push(MirrorRequest::Blob {
-                digest: digest.clone(),
-            }),
-            RegistryAction::ManifestStored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tasks.push(MirrorRequest::Manifest {
-                    digest: digest.clone(),
-                });
-            }
-            RegistryAction::BlobUnstored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => tasks.push(MirrorRequest::Blob {
-                digest: digest.clone(),
-            }),
-            RegistryAction::ManifestUnstored {
-                timestamp: _,
-                digest,
-                location: _,
-                user: _,
-            } => {
-                tasks.push(MirrorRequest::Manifest {
-                    digest: digest.clone(),
-                });
-            }
-            _ => {}
-        }
-    }
-
-    tasks
+enum MirrorState {
+    Poll,
+    Close,
 }
 
-pub(crate) async fn do_miroring(
-    app: Data<RegistryApp>,
-    mut rx: Receiver<Vec<RegistryAction>>,
-) -> anyhow::Result<()> {
+#[inline]
+async fn wait_for_change(mut subscriber: watch::Receiver<HashSet<Digest>>) -> MirrorState {
+    if let Err(result) = subscriber.changed().await {
+        tracing::debug!("RecvError: Closing mirror: {:?}", result);
+        return MirrorState::Close;
+    }
+
+    MirrorState::Poll
+}
+
+#[inline]
+async fn wait_for_time() -> MirrorState {
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    MirrorState::Poll
+}
+
+pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
     let client = reqwest::Client::builder()
         .user_agent("distribd/mirror")
         .build()
         .unwrap();
 
-    let mut requests = HashSet::<MirrorRequest>::new();
+    let app1 = app.clone();
+    let client1 = client.clone();
 
-    // let mut lifecycle = app.subscribe_lifecycle();
+    tokio::spawn(async move {
+        let mut subscriber = app1
+            .store
+            .state_machine
+            .read()
+            .await
+            .pending_blobs
+            .subscribe();
+        let mut pending_blobs = subscriber.borrow_and_update().clone();
+        let mut waiters = JoinSet::new();
 
-    loop {
-        select! {
-            _ = tokio::time::sleep(core::time::Duration::from_secs(10)) => {},
-            Some(actions) = rx.recv() => {
-                requests.extend(get_tasks_from_raft_event(actions));
+        waiters.spawn(wait_for_change(subscriber.clone()));
+        if pending_blobs.len() > 0 {
+            waiters.spawn(wait_for_time());
+        }
+
+        while let Some(res) = waiters.join_next().await {
+            waiters.spawn(wait_for_change(subscriber.clone()));
+            if pending_blobs.len() > 0 {
+                waiters.spawn(wait_for_time());
             }
-            /*Ok(_ev) = lifecycle.recv() => {
-                info!("Mirroring: Graceful shutdown");
-                break;
-            }*/
-        };
 
-        debug!("Mirroring: There are {} mirroring tasks", requests.len());
+            match res {
+                Ok(MirrorState::Poll) => {
+                    pending_blobs = subscriber.borrow_and_update().clone();
+                    for digest in pending_blobs.iter() {
+                        let result = do_transfer(
+                            app1.clone(),
+                            client1.clone(),
+                            MirrorRequest::Blob {
+                                digest: digest.clone(),
+                            },
+                        )
+                        .await;
 
-        // FIXME: Ideally we'd have some worker pool here are download a bunch
-        // of objects in parallel.
-
-        let tasks: Vec<MirrorRequest> = requests.drain().collect();
-        for task in tasks {
-            let client = client.clone();
-            let result = do_transfer(app.clone(), client, task).await;
-
-            match result {
-                MirrorResult::Retry { request } => {
-                    requests.insert(request);
+                        if let MirrorResult::Success { action, request } = result {
+                            if app1.submit(vec![action]).await {
+                                debug!("Mirroring: Download logged to raft");
+                            }
+                        }
+                    }
                 }
-                MirrorResult::Success { action, request } => {
-                    if !app.submit(vec![action]).await {
-                        requests.insert(request);
-                        debug!("Mirroring: Raft transaction failed");
-                    } else {
-                        debug!("Mirroring: Download logged to raft");
-                    };
+                Ok(MirrorState::Close) => {
+                    break;
                 }
-                MirrorResult::None => {}
+                Err(err) => {
+                    tracing::error!("JoinError during mirror: {:?}", err);
+                    break;
+                }
             }
         }
-    }
+    });
+
+    let app1 = app.clone();
+    let client1 = client.clone();
+
+    tokio::spawn(async move {
+        let mut subscriber = app1
+            .store
+            .state_machine
+            .read()
+            .await
+            .pending_manifests
+            .subscribe();
+        let mut pending_manifests = subscriber.borrow_and_update().clone();
+        let mut waiters = JoinSet::new();
+
+        waiters.spawn(wait_for_change(subscriber.clone()));
+        if pending_manifests.len() > 0 {
+            waiters.spawn(wait_for_time());
+        }
+
+        while let Some(res) = waiters.join_next().await {
+            waiters.spawn(wait_for_change(subscriber.clone()));
+            if pending_manifests.len() > 0 {
+                waiters.spawn(wait_for_time());
+            }
+
+            match res {
+                Ok(MirrorState::Poll) => {
+                    pending_manifests = subscriber.borrow_and_update().clone();
+                    for digest in pending_manifests.iter() {
+                        let result = do_transfer(
+                            app1.clone(),
+                            client1.clone(),
+                            MirrorRequest::Blob {
+                                digest: digest.clone(),
+                            },
+                        )
+                        .await;
+
+                        if let MirrorResult::Success { action, request } = result {
+                            if app1.submit(vec![action]).await {
+                                debug!("Mirroring: Download logged to raft");
+                            }
+                        }
+                    }
+                }
+                Ok(MirrorState::Close) => {
+                    break;
+                }
+                Err(err) => {
+                    tracing::error!("JoinError during mirror: {:?}", err);
+                    break;
+                }
+            }
+        }
+    });
+
+    return Ok(());
 }

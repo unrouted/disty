@@ -14,7 +14,6 @@ use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
 use tokio::sync::Notify;
-use types::RegistryAction;
 use webhook::start_webhook_worker;
 
 use crate::app::RegistryApp;
@@ -124,8 +123,6 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
 
     let webhook_queue = start_webhook_worker(conf.webhooks.clone(), &mut registry);
 
-    let (actions_tx, actions_rx) = tokio::sync::mpsc::channel::<Vec<RegistryAction>>(1000);
-
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.
     let app = Data::new(RegistryApp {
@@ -135,7 +132,6 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         config: conf,
         extractor,
         webhooks: Arc::new(webhook_queue),
-        mirror_tx: actions_tx,
     });
 
     let app1 = app.clone();
@@ -220,7 +216,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     let sender = Arc::new(Notify::new());
     let receiver = sender.clone();
 
-    let _mirrorer = tokio::spawn(crate::mirror::do_miroring(app3.clone(), actions_rx));
+    let _mirrorer = tokio::spawn(crate::mirror::do_miroring(app3.clone()));
 
     tokio::spawn(async move {
         receiver.notified().await;
