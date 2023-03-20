@@ -1229,10 +1229,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         RegistryAction::BlobStored {
                             location, digest, ..
                         } => {
-                            if location != &self.config.identifier {
-                                pending_blobs.insert(digest.clone());
+                            if let Some(blob) = sm.get_blob(digest).unwrap() {
+                                if !blob.locations.contains(&self.config.identifier) {
+                                    pending_blobs.insert(digest.clone());
+                                }
                             }
-
                             if location == &self.config.identifier {
                                 if let Some(senders) = sm.blob_waiters.remove(digest) {
                                     for sender in senders {
@@ -1242,19 +1243,22 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 }
                             }
                         }
-                        RegistryAction::BlobUnstored {
-                            location, digest, ..
-                        } => {
-                            if location == &self.config.identifier {
-                                pending_blobs.remove(digest);
+                        RegistryAction::BlobUnstored { digest, .. } => {
+                            if let Some(blob) = sm.get_blob(digest).unwrap() {
+                                if blob.locations.contains(&self.config.identifier) {
+                                    pending_blobs.remove(digest);
+                                }
                             }
                         }
                         RegistryAction::ManifestStored {
                             location, digest, ..
                         } => {
+                            if let Some(blob) = sm.get_manifest(digest).unwrap() {
+                                if !blob.locations.contains(&self.config.identifier) {
+                                    pending_manifests.insert(digest.clone());
+                                }
+                            }
                             if location == &self.config.identifier {
-                                pending_manifests.insert(digest.clone());
-
                                 if let Some(senders) = sm.manifest_waiters.remove(digest) {
                                     for sender in senders {
                                         sender.send(()).unwrap();
@@ -1262,11 +1266,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                 }
                             }
                         }
-                        RegistryAction::ManifestUnstored {
-                            location, digest, ..
-                        } => {
-                            if location == &self.config.identifier {
-                                pending_manifests.remove(digest);
+                        RegistryAction::ManifestUnstored { digest, .. } => {
+                            if let Some(blob) = sm.get_manifest(digest).unwrap() {
+                                if blob.locations.contains(&self.config.identifier) {
+                                    pending_manifests.remove(digest);
+                                }
                             }
                         }
                         _ => {}
