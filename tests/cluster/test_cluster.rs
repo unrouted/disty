@@ -462,6 +462,12 @@ async fn upload_whole_blob() {
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
@@ -491,6 +497,12 @@ async fn upload_cross_mount() {
         let url = url.clone().join("bar/foo/blobs/uploads?from=foo%2Fbar&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.post(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    {
+        let url = url.join("bar/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     {
@@ -545,6 +557,12 @@ async fn upload_blob_multiple() {
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
@@ -595,6 +613,12 @@ async fn upload_blob_multiple_finish_with_put() {
 
     {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
@@ -617,6 +641,12 @@ async fn delete_blob() {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.delete(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     {
@@ -667,6 +697,12 @@ async fn upload_manifest() {
 
         let value: Value = resp.json().await.unwrap();
         assert_eq!(value, payload);
+    }
+
+    {
+        let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     {
@@ -769,6 +805,13 @@ async fn delete_tag() {
         let url = url.join("foo/bar/manifests/latest").unwrap();
         let resp = client.delete(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    }
+
+    // Confirm delete worked
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
+        let resp = client.head(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     // Confirm delete worked
