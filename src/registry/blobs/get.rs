@@ -38,8 +38,6 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    tracing::debug!("WAIT FOR BLOB distribd::mirror: about to get_blob");
-
     let blob = match app.get_blob(&path.digest).await {
         Some(blob) => blob,
         None => return Err(RegistryError::BlobNotFound {}),
@@ -50,12 +48,8 @@ pub(crate) async fn get(
         return Err(RegistryError::BlobNotFound {});
     }
 
-    tracing::debug!("WAIT FOR BLOB distribd::mirror {:?}", blob);
-
     if !blob.locations.contains(&app.config.identifier) {
-        tracing::debug!("WAIT FOR BLOB distribd::mirror");
         app.wait_for_blob(&path.digest).await;
-        tracing::debug!("WAIT FOR BLOB 2 distribd::mirror");
     }
 
     let content_type = match blob.content_type {

@@ -92,13 +92,6 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         }
     };
 
-    tracing::debug!(
-        "distribd::mirror; {} {:?} {}",
-        node_id,
-        _this_node,
-        conf.identifier
-    );
-
     // Create a configuration for the raft instance.
     let config = Config {
         heartbeat_interval: 500,

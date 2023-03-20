@@ -1237,7 +1237,6 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             if location == &self.config.identifier {
                                 if let Some(senders) = sm.blob_waiters.remove(digest) {
                                     for sender in senders {
-                                        tracing::debug!("distribd::mirror SENDER SENDING");
                                         sender.send(()).unwrap();
                                     }
                                 }

@@ -60,14 +60,9 @@ impl RegistryApp {
         sm.get_blob(digest).unwrap()
     }
     pub async fn wait_for_blob(&self, digest: &Digest) {
-        tracing::debug!(
-            "distribd::mirror wait_for_blob id {}",
-            self.config.identifier
-        );
         let mut sm = self.store.state_machine.write().await;
 
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        debug!("distribd::mirror, State: Wait for blob: Insert");
 
         let values = sm
             .blob_waiters
@@ -78,14 +73,14 @@ impl RegistryApp {
 
         drop(sm);
 
-        debug!("distribd::mirror, State: Wait for blob: Waiting for {digest} to download");
+        debug!("State: Wait for blob: Waiting for {digest} to download");
 
         match rx.await {
             Ok(_) => {
-                debug!("distribd::mirror State: Wait for blob: {digest}: Download complete");
+                debug!("State: Wait for blob: {digest}: Download complete");
             }
             Err(err) => {
-                warn!("distribd::mirror State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
+                warn!("State: Failure whilst waiting for blob to be downloaded: {digest}: {err}");
             }
         }
     }
