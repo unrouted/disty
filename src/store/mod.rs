@@ -1273,59 +1273,57 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         })?;
 
         for entry in entries {
-            if let EntryPayload::Normal(ref req) = entry.payload {
-                if let RegistryRequest::Transaction { actions } = req {
-                    for action in actions {
-                        match action {
-                            RegistryAction::BlobStored {
-                                location, digest, ..
-                            } => {
-                                if location != &self.config.identifier {
-                                    pending_blobs.insert(digest.clone());
-                                }
+            if let EntryPayload::Normal(RegistryRequest::Transaction { ref actions }) = entry.payload {
+                for action in actions {
+                    match action {
+                        RegistryAction::BlobStored {
+                            location, digest, ..
+                        } => {
+                            if location != &self.config.identifier {
+                                pending_blobs.insert(digest.clone());
+                            }
 
-                                if location == &self.config.identifier {
-                                    if let Some(senders) =
-                                        sm.blob_waiters.lock().unwrap().remove(digest)
-                                    {
-                                        for sender in senders {
-                                            tracing::debug!("distribd::mirror SENDER SENDING");
-                                            sender.send(()).unwrap();
-                                        }
+                            if location == &self.config.identifier {
+                                if let Some(senders) =
+                                    sm.blob_waiters.lock().unwrap().remove(digest)
+                                {
+                                    for sender in senders {
+                                        tracing::debug!("distribd::mirror SENDER SENDING");
+                                        sender.send(()).unwrap();
                                     }
                                 }
                             }
-                            RegistryAction::BlobUnstored {
-                                location, digest, ..
-                            } => {
-                                if location == &self.config.identifier {
-                                    pending_blobs.remove(digest);
-                                }
-                            }
-                            RegistryAction::ManifestStored {
-                                location, digest, ..
-                            } => {
-                                if location == &self.config.identifier {
-                                    pending_manifests.insert(digest.clone());
-
-                                    if let Some(senders) =
-                                        sm.manifest_waiters.lock().unwrap().remove(digest)
-                                    {
-                                        for sender in senders {
-                                            sender.send(()).unwrap();
-                                        }
-                                    }
-                                }
-                            }
-                            RegistryAction::ManifestUnstored {
-                                location, digest, ..
-                            } => {
-                                if location == &self.config.identifier {
-                                    pending_manifests.remove(digest);
-                                }
-                            }
-                            _ => {}
                         }
+                        RegistryAction::BlobUnstored {
+                            location, digest, ..
+                        } => {
+                            if location == &self.config.identifier {
+                                pending_blobs.remove(digest);
+                            }
+                        }
+                        RegistryAction::ManifestStored {
+                            location, digest, ..
+                        } => {
+                            if location == &self.config.identifier {
+                                pending_manifests.insert(digest.clone());
+
+                                if let Some(senders) =
+                                    sm.manifest_waiters.lock().unwrap().remove(digest)
+                                {
+                                    for sender in senders {
+                                        sender.send(()).unwrap();
+                                    }
+                                }
+                            }
+                        }
+                        RegistryAction::ManifestUnstored {
+                            location, digest, ..
+                        } => {
+                            if location == &self.config.identifier {
+                                pending_manifests.remove(digest);
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }

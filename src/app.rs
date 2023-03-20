@@ -58,7 +58,6 @@ impl RegistryApp {
         sm.get_blob(digest).unwrap()
     }
     pub async fn wait_for_blob(&self, digest: &Digest) {
-        return;
         tracing::debug!(
             "distribd::mirror wait_for_blob id {}",
             self.config.identifier
@@ -71,7 +70,6 @@ impl RegistryApp {
         sm.get_manifest(digest).unwrap()
     }
     pub async fn wait_for_manifest(&self, digest: &Digest) {
-        return;
         let sm = self.store.state_machine.write().await;
         sm.wait_for_manifest(digest).await;
     }
