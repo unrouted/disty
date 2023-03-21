@@ -451,7 +451,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let leader = &peers.get(0).unwrap().backend;
-    leader.init().await?;
+    leader.init(peers.get(0).unwrap().address.clone()).await?;
     leader
         .add_learner((2, peers.get(1).unwrap().address.clone()))
         .await?;

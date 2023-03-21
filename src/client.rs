@@ -82,8 +82,8 @@ impl RegistryClient {
     /// With a initialized cluster, new node can be added with [`write`].
     /// Then setup replication with [`add_learner`].
     /// Then make the new node a member with [`change_membership`].
-    pub async fn init(&self) -> Result<(), typ::RPCError<typ::InitializeError>> {
-        self.do_send_rpc_to_leader("init", Some(&Empty {})).await
+    pub async fn init(&self, req: String) -> Result<(), typ::RPCError<typ::InitializeError>> {
+        self.do_send_rpc_to_leader("init", Some(&req)).await
     }
 
     /// Add a node as learner.

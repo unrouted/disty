@@ -56,14 +56,17 @@ pub async fn change_membership(
 
 /// Initialize a single-node cluster.
 #[post("/init")]
-pub async fn init(app: Data<RegistryApp>) -> actix_web::Result<impl Responder> {
-    let peer = app.config.peers.get((app.id - 1) as usize).unwrap();
+pub async fn init(
+    app: Data<RegistryApp>,
+    req: Json<String>,
+) -> actix_web::Result<impl Responder> {
+    let node = BasicNode {
+        addr: req.0 .clone(),
+    };
     let mut nodes = BTreeMap::new();
     nodes.insert(
         app.id,
-        BasicNode {
-            addr: format!("{}:{}", &peer.raft.address, &peer.raft.port),
-        },
+        node
     );
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
