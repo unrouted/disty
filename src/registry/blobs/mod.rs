@@ -1,3 +1,4 @@
-pub(crate) mod delete;
-pub(crate) mod get;
+pub mod delete;
+pub mod get;
+pub mod head;
 pub(crate) mod uploads;

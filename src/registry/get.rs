@@ -1,50 +1,19 @@
-use crate::headers::Token;
-use rocket::get;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use std::io::Cursor;
+use actix_web::http::StatusCode;
+use actix_web::{get, HttpResponse, HttpResponseBuilder};
 
-pub(crate) enum Responses {
-    MustAuthenticate { challenge: String },
-    Ok {},
-}
+use crate::extractors::Token;
 
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::Ok {} => Response::build()
-                .header(Header::new("Content-Length", "0"))
-                .header(Header::new(
-                    "Docker-Distribution-Api-Version",
-                    "registry/2.0",
-                ))
-                .status(Status::Ok)
-                .ok(),
-        }
-    }
-}
+use super::errors::RegistryError;
 
 #[get("/")]
-pub(crate) async fn get(token: Token) -> Responses {
+pub(crate) async fn get(token: Token) -> Result<HttpResponse, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
+        return Err(RegistryError::MustAuthenticate {
             challenge: token.get_general_challenge(),
-        };
+        });
     }
 
-    Responses::Ok {}
+    Ok(HttpResponseBuilder::new(StatusCode::OK)
+        .append_header(("Docker-Distribution-Api-Version", "registry/2.0"))
+        .finish())
 }

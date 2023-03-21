@@ -1,30 +1,31 @@
 use crate::types::Digest;
-use rocket::data::ByteUnit;
-use rocket::data::Data;
-use rocket::tokio::fs::File;
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncReadExt;
+use actix_web::web::Payload;
+use futures_util::StreamExt;
+use tokio::fs::{File, OpenOptions};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub(crate) async fn upload_part(filename: &std::path::Path, body: Data<'_>) -> bool {
+pub(crate) async fn upload_part(filename: &std::path::Path, mut body: Payload) -> bool {
     let result = OpenOptions::new()
         .append(true)
         .create(true)
         .open(&filename)
         .await;
 
-    let file = match result {
+    let mut file = match result {
         Ok(file) => file,
         _ => {
             return false;
         }
     };
 
-    let result = body
-        .open(ByteUnit::Megabyte(500))
-        .stream_to(&mut tokio::io::BufWriter::new(file))
-        .await;
+    while let Some(item) = body.next().await {
+        let item = item.unwrap();
+        if file.write_all(&item).await.is_err() {
+            return false;
+        };
+    }
 
-    matches!(result, Ok(_))
+    true
 }
 
 pub(crate) async fn get_hash(filename: &std::path::Path) -> Option<Digest> {

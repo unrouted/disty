@@ -1,196 +1,121 @@
 use crate::app::RegistryApp;
-use crate::headers::ContentRange;
-use crate::headers::Token;
-
+use crate::extractors::Token;
+use crate::registry::errors::RegistryError;
+use crate::registry::utils::upload_part;
 use crate::types::RepositoryName;
-use crate::utils::get_upload_path;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::patch;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use actix_web::http::StatusCode;
+use actix_web::web::Payload;
+use actix_web::{
+    patch,
+    web::{Data, Path},
+    HttpResponseBuilder,
+};
+use actix_web::{HttpRequest, Responder};
+use serde::Deserialize;
 
-pub(crate) enum Responses {
-    MustAuthenticate {
-        challenge: String,
-    },
-    AccessDenied {},
-    UploadInvalid {},
-    RangeNotSatisfiable {
-        repository: RepositoryName,
-        upload_id: String,
-        size: u64,
-    },
-    Ok {
-        repository: RepositoryName,
-        upload_id: String,
-        size: u64,
-    },
-}
-
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::AccessDenied {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DENIED",
-                    "requested access to the resource is denied",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
-            }
-            Responses::UploadInvalid {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "BLOB_UPLOAD_INVALID",
-                    "the upload was invalid",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
-            }
-            Responses::RangeNotSatisfiable {
-                repository,
-                upload_id,
-                size,
-            } => {
-                /*
-                416 Range Not Satisfiable
-                Location: /v2/<name>/blobs/uploads/<uuid>
-                Range: 0-<offset>
-                Content-Length: 0
-                Docker-Upload-UUID: <uuid>
-                */
-
-                let range_end = if size > 0 { size - 1 } else { 0 };
-
-                Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/uploads/{upload_id}"),
-                    ))
-                    .header(Header::new("Range", format!("0-{range_end}")))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
-                    .header(Header::new("Docker-Upload-UUID", upload_id))
-                    .status(Status::RangeNotSatisfiable)
-                    .ok()
-            }
-            Responses::Ok {
-                repository,
-                upload_id,
-                size,
-            } => {
-                /*
-                204 No Content
-                Location: /v2/<name>/blobs/uploads/<uuid>
-                Range: 0-<offset>
-                Content-Length: 0
-                Docker-Upload-UUID: <uuid>
-                */
-
-                let range_end = size - 1;
-
-                Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/uploads/{upload_id}"),
-                    ))
-                    .header(Header::new("Range", format!("0-{range_end}")))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Blob-Upload-Session-ID", upload_id.clone()))
-                    .header(Header::new("Docker-Upload-UUID", upload_id))
-                    .status(Status::Accepted)
-                    .ok()
-            }
-        }
-    }
-}
-
-#[patch("/<repository>/blobs/uploads/<upload_id>", data = "<body>")]
-pub(crate) async fn patch(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
-    range: Option<ContentRange>,
-    app: &State<Arc<RegistryApp>>,
+}
+
+fn get_http_range(req: &HttpRequest) -> Option<(u64, u64)> {
+    let token = req.headers().get("content-range");
+    match token {
+        Some(token) => match token.to_str().unwrap().split_once('-') {
+            Some((start, stop)) => {
+                let start: u64 = match start.parse() {
+                    Ok(value) => value,
+                    _ => return None,
+                };
+                let stop: u64 = match stop.parse() {
+                    Ok(value) => value,
+                    _ => return None,
+                };
+                Some((start, stop))
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+#[patch("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn patch(
+    app: Data<RegistryApp>,
+    req: HttpRequest,
+    path: Path<BlobUploadRequest>,
+    body: Payload,
     token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &RegistryApp = app.inner();
-
+) -> Result<impl Responder, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
-        };
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_push_challenge(&path.repository),
+        });
     }
 
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
+    if !token.has_permission(&path.repository, "push") {
+        return Err(RegistryError::AccessDenied {});
     }
 
-    let filename = get_upload_path(&app.settings.storage, &upload_id);
+    let filename = app.get_upload_path(&path.upload_id);
 
     if !filename.is_file() {
-        return Responses::UploadInvalid {};
+        return Err(RegistryError::UploadInvalid {});
     }
 
-    if let Some(range) = range {
+    if let Some((start, stop)) = get_http_range(&req) {
         let size = match tokio::fs::metadata(&filename).await {
             Ok(value) => value.len(),
             _ => 0,
         };
 
-        if range.stop < range.start {
-            return Responses::RangeNotSatisfiable {
-                repository,
-                upload_id,
+        if stop < start {
+            return Err(RegistryError::RangeNotSatisfiable {
+                repository: path.repository.clone(),
+                upload_id: path.upload_id.clone(),
                 size,
-            };
+            });
         }
 
-        if range.start != size {
-            return Responses::RangeNotSatisfiable {
-                repository,
-                upload_id,
+        if start != size {
+            return Err(RegistryError::RangeNotSatisfiable {
+                repository: path.repository.clone(),
+                upload_id: path.upload_id.clone(),
                 size,
-            };
+            });
         }
     }
 
-    if !crate::registry::utils::upload_part(&filename, body).await {
-        return Responses::UploadInvalid {};
+    if !upload_part(&filename, body).await {
+        return Err(RegistryError::UploadInvalid {});
     }
 
     let size = match tokio::fs::metadata(filename).await {
         Ok(result) => result.len(),
         Err(_) => {
-            return Responses::UploadInvalid {};
+            return Err(RegistryError::UploadInvalid {});
         }
     };
 
-    Responses::Ok {
-        repository,
-        upload_id,
-        size,
-    }
+    /*
+    204 No Content
+    Location: /v2/<name>/blobs/uploads/<uuid>
+    Range: 0-<offset>
+    Content-Length: 0
+    Docker-Upload-UUID: <uuid>
+    */
+
+    let range_end = if size > 0 { size - 1 } else { 0 };
+
+    Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED)
+        .append_header((
+            "Location",
+            format!("/v2/{}/blobs/uploads/{}", path.repository, path.upload_id),
+        ))
+        .append_header(("Range", format!("0-{range_end}")))
+        .append_header(("Content-Length", "0"))
+        .append_header(("Blob-Upload-Session-ID", path.upload_id.clone()))
+        .append_header(("Docker-Upload-UUID", path.upload_id.clone()))
+        .finish())
 }

@@ -1,185 +1,124 @@
-use crate::headers::Token;
+use crate::extractors::Token;
+use crate::registry::errors::RegistryError;
+use crate::registry::utils::upload_part;
+use crate::registry::utils::validate_hash;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
-use crate::utils::get_blob_path;
-use crate::utils::get_upload_path;
 use crate::RegistryApp;
-use chrono::prelude::*;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::put;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
+use actix_web::http::StatusCode;
+use actix_web::put;
+use actix_web::web::Data;
+use actix_web::web::Path;
+use actix_web::web::Payload;
+use actix_web::web::Query;
+use actix_web::HttpResponse;
+use actix_web::HttpResponseBuilder;
+use chrono::Utc;
+use serde::Deserialize;
 
-pub(crate) enum Responses {
-    MustAuthenticate {
-        challenge: String,
-    },
-    AccessDenied {},
-    DigestInvalid {},
-    UploadInvalid {},
-    Ok {
-        repository: RepositoryName,
-        digest: Digest,
-    },
-}
-
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::AccessDenied {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DENIED",
-                    "requested access to the resource is denied",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
-            }
-            Responses::DigestInvalid {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DIGEST_INVALID",
-                    "provided digest did not match uploaded content",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
-            }
-            Responses::UploadInvalid {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "BLOB_UPLOAD_INVALID",
-                    "the upload was invalid",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
-            }
-            Responses::Ok { repository, digest } => {
-                /*
-                201 Created
-                Location: <blob location>
-                Content-Range: <start of range>-<end of range, inclusive>
-                Content-Length: 0
-                Docker-Content-Digest: <digest>
-                */
-
-                Response::build()
-                    .header(Header::new(
-                        "Location",
-                        format!("/v2/{repository}/blobs/{digest}"),
-                    ))
-                    .header(Header::new("Range", "0-0"))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Docker-Content-Digest", digest.to_string()))
-                    .status(Status::Created)
-                    .ok()
-            }
-        }
-    }
-}
-
-#[put("/<repository>/blobs/uploads/<upload_id>?<digest>", data = "<body>")]
-pub(crate) async fn put(
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
     repository: RepositoryName,
     upload_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadPutQuery {
     digest: Digest,
-    app: &State<Arc<RegistryApp>>,
+}
+
+#[put("/{repository:[^{}]+}/blobs/uploads/{upload_id}")]
+pub(crate) async fn put(
+    app: Data<RegistryApp>,
+    path: Path<BlobUploadRequest>,
+    query: Query<BlobUploadPutQuery>,
+    body: Payload,
     token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &Arc<RegistryApp> = app.inner();
-
+) -> Result<HttpResponse, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
-        };
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_push_challenge(&path.repository),
+        });
     }
 
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
+    if !token.has_permission(&path.repository, "push") {
+        return Err(RegistryError::AccessDenied {});
     }
 
-    if digest.algo != "sha256" {
-        return Responses::UploadInvalid {};
+    if query.digest.algo != "sha256" {
+        return Err(RegistryError::UploadInvalid {});
     }
 
-    let filename = get_upload_path(&app.settings.storage, &upload_id);
+    let filename = app.get_upload_path(&path.upload_id);
 
     if !filename.is_file() {
-        return Responses::UploadInvalid {};
+        return Err(RegistryError::UploadInvalid {});
     }
 
-    if !crate::registry::utils::upload_part(&filename, body).await {
-        return Responses::UploadInvalid {};
+    if !upload_part(&filename, body).await {
+        return Err(RegistryError::UploadInvalid {});
     }
 
     // Validate upload
-    if !crate::registry::utils::validate_hash(&filename, &digest).await {
-        return Responses::DigestInvalid {};
+    if !validate_hash(&filename, &query.digest).await {
+        return Err(RegistryError::DigestInvalid {});
     }
 
-    let dest = get_blob_path(&app.settings.storage, &digest);
+    let dest = app.get_blob_path(&query.digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,
         Err(_) => {
-            return Responses::UploadInvalid {};
+            return Err(RegistryError::UploadInvalid {});
         }
     };
 
     match std::fs::rename(filename.clone(), dest.clone()) {
         Ok(_) => {}
         Err(_e) => {
-            return Responses::UploadInvalid {};
+            return Err(RegistryError::UploadInvalid {});
         }
     }
 
     let actions = vec![
         RegistryAction::BlobMounted {
             timestamp: Utc::now(),
-            digest: digest.clone(),
-            repository: repository.clone(),
+            digest: query.digest.clone(),
+            repository: path.repository.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::BlobStat {
             timestamp: Utc::now(),
-            digest: digest.clone(),
+            digest: query.digest.clone(),
             size: stat.len(),
         },
         RegistryAction::BlobStored {
             timestamp: Utc::now(),
-            digest: digest.clone(),
-            location: app.settings.identifier.clone(),
+            digest: query.digest.clone(),
+            location: app.config.identifier.clone(),
             user: token.sub.clone(),
         },
     ];
 
     if !app.submit(actions).await {
-        return Responses::UploadInvalid {};
+        return Err(RegistryError::UploadInvalid {});
     }
 
-    Responses::Ok { repository, digest }
+    /*
+    201 Created
+    Location: <blob location>
+    Content-Range: <start of range>-<end of range, inclusive>
+    Content-Length: 0
+    Docker-Content-Digest: <digest>
+    */
+    Ok(HttpResponseBuilder::new(StatusCode::CREATED)
+        .append_header((
+            "Location",
+            format!("/v2/{}/blobs/{}", path.repository, query.digest),
+        ))
+        .append_header(("Range", "0-0"))
+        .append_header(("Content-Length", "0"))
+        .append_header(("Docker-Content-Digest", query.digest.to_string()))
+        .finish())
 }

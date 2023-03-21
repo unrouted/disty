@@ -1,107 +1,60 @@
 use crate::app::RegistryApp;
-use crate::headers::Token;
+use crate::extractors::Token;
 
+use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use actix_web::delete;
+use actix_web::http::StatusCode;
+use actix_web::web::Data;
+use actix_web::web::Path;
+use actix_web::HttpResponse;
+use actix_web::HttpResponseBuilder;
 use chrono::prelude::*;
+use serde::Deserialize;
 
-use rocket::delete;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
-use std::io::Cursor;
-use std::sync::Arc;
-
-pub(crate) enum Responses {
-    MustAuthenticate { challenge: String },
-    ServiceUnavailable {},
-    AccessDenied {},
-    NotFound {},
-    Failed {},
-    Ok {},
-}
-
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::ServiceUnavailable {} => {
-                Response::build().status(Status::ServiceUnavailable).ok()
-            }
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::AccessDenied {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DENIED",
-                    "requested access to the resource is denied",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
-            }
-            Responses::NotFound {} => Response::build().status(Status::NotFound).ok(),
-            Responses::Failed {} => Response::build().status(Status::InternalServerError).ok(),
-            Responses::Ok {} => Response::build()
-                .header(Header::new("Content-Length", "0"))
-                .status(Status::Accepted)
-                .ok(),
-        }
-    }
-}
-
-#[delete("/<repository>/blobs/<digest>")]
-pub(crate) async fn delete(
+#[derive(Debug, Deserialize)]
+pub struct BlobRequest {
     repository: RepositoryName,
     digest: Digest,
-    app: &State<Arc<RegistryApp>>,
+}
+
+#[delete("/{repository:[^{}]+}/blobs/{digest}")]
+pub(crate) async fn delete(
+    app: Data<RegistryApp>,
+    path: Path<BlobRequest>,
     token: Token,
-) -> Responses {
-    let app: &Arc<RegistryApp> = app.inner();
-
+) -> Result<HttpResponse, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_push_challenge(repository),
-        };
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_push_challenge(&path.repository),
+        });
     }
 
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
+    if !token.has_permission(&path.repository, "push") {
+        return Err(RegistryError::AccessDenied {});
     }
 
-    match app.is_blob_available(&repository, &digest).await {
-        Ok(false) => {
-            return Responses::NotFound {};
+    if let Some(blob) = app.get_blob(&path.digest).await {
+        if !blob.repositories.contains(&path.repository) {
+            return Err(RegistryError::BlobNotFound {});
         }
-        Ok(true) => {}
-        Err(_) => {
-            return Responses::ServiceUnavailable {};
-        }
+    } else {
+        return Err(RegistryError::BlobNotFound {});
     }
 
     let actions = vec![RegistryAction::BlobUnmounted {
         timestamp: Utc::now(),
-        digest,
-        repository,
+        digest: path.digest.clone(),
+        repository: path.repository.clone(),
         user: token.sub.clone(),
     }];
 
     if !app.submit(actions).await {
-        return Responses::Failed {};
+        // FIXME
+        return Err(RegistryError::BlobNotFound {});
     }
 
-    Responses::Ok {}
+    Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED).finish())
 }

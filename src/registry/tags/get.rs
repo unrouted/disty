@@ -1,158 +1,96 @@
 use crate::app::RegistryApp;
-use crate::headers::Token;
+use crate::extractors::Token;
+use crate::registry::errors::RegistryError;
 use crate::types::RepositoryName;
-use rocket::get;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
+use actix_web::http::StatusCode;
+use actix_web::web::{Data, Path};
+use actix_web::{get, HttpRequest, HttpResponse, HttpResponseBuilder};
+use serde::Deserialize;
 use serde_json::json;
-use std::io::Cursor;
-use std::sync::Arc;
 
-pub(crate) enum Responses {
-    MustAuthenticate {
-        challenge: String,
-    },
-    AccessDenied {},
-    ServiceUnavailable {},
-    NoSuchRepository {},
-    Ok {
-        repository: RepositoryName,
-        n: Option<usize>,
-        include_link: bool,
-        tags: Vec<String>,
-    },
-}
-
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::AccessDenied {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DENIED",
-                    "requested access to the resource is denied",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
-            }
-            Responses::ServiceUnavailable {} => {
-                Response::build().status(Status::ServiceUnavailable).ok()
-            }
-            Responses::NoSuchRepository {} => Response::build().status(Status::NotFound).ok(),
-            Responses::Ok {
-                repository,
-                include_link,
-                n,
-                tags,
-            } => {
-                let mut builder = Response::build();
-
-                let body = json!(
-                    {
-                        "name": repository,
-                        "tags": tags,
-                    }
-                )
-                .to_string();
-
-                builder.header(Header::new("Content-Length", body.len().to_string()));
-
-                if include_link {
-                    let mut fragments = vec![];
-
-                    if let Some(tag) = tags.last() {
-                        fragments.push(format!("last={tag}"))
-                    }
-
-                    if let Some(n) = n {
-                        fragments.push(format!("n={n}"))
-                    }
-
-                    let suffix = if !fragments.is_empty() {
-                        let joined = fragments.join("&");
-                        format!("?{joined}")
-                    } else {
-                        "".to_string()
-                    };
-
-                    builder.header(Header::new(
-                        "Link",
-                        format!("/v2/{repository}/tags/list{suffix}; rel=\"next\""),
-                    ));
-                }
-
-                builder
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Ok)
-                    .ok()
-            }
-        }
-    }
-}
-
-#[get("/<repository>/tags/list?<last>&<n>")]
-pub(crate) async fn get(
+#[derive(Debug, Deserialize)]
+pub struct TagRequest {
     repository: RepositoryName,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TagQuery {
     last: Option<String>,
     n: Option<usize>,
-    app: &State<Arc<RegistryApp>>,
+}
+
+#[get("/{repository:[^{}]+}/tags/list")]
+pub(crate) async fn get(
+    app: Data<RegistryApp>,
+    _req: HttpRequest,
+    path: Path<TagRequest>,
+    query: actix_web::web::Query<TagQuery>,
     token: Token,
-) -> Responses {
-    let app: &RegistryApp = app.inner();
-
+) -> Result<HttpResponse, RegistryError> {
     if !token.validated_token {
-        return Responses::MustAuthenticate {
-            challenge: token.get_pull_challenge(repository),
-        };
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_pull_challenge(&path.repository),
+        });
     }
 
-    if !token.has_permission(&repository, "pull") {
-        return Responses::AccessDenied {};
+    if !token.has_permission(&path.repository, "pull") {
+        return Err(RegistryError::AccessDenied {});
     }
 
-    match app.get_tags(&repository).await {
-        Err(_) => Responses::ServiceUnavailable {},
-        Ok(Some(mut tags)) => {
+    match app.get_tags(&path.repository).await {
+        Some(mut tags) => {
             tags.sort();
 
-            if let Some(last) = last {
-                let index = tags.iter().position(|r| r == &last).unwrap();
+            if let Some(last) = &query.last {
+                let index = tags.iter().position(|r| r == last).unwrap();
                 tags = tags[index..].to_vec();
             }
 
             let mut include_link = false;
 
-            if let Some(n) = n {
+            if let Some(n) = query.n {
                 if n < tags.len() {
                     include_link = true;
                 }
                 tags = tags[..n].to_vec();
             }
 
-            Responses::Ok {
-                repository,
-                include_link,
-                n,
-                tags,
+            let body = json!(
+                {
+                    "name": path.repository.clone(),
+                    "tags": tags,
+                }
+            )
+            .to_string();
+
+            let mut builder = HttpResponseBuilder::new(StatusCode::OK);
+
+            if include_link {
+                let mut fragments = vec![];
+
+                if let Some(tag) = tags.last() {
+                    fragments.push(format!("last={tag}"))
+                }
+
+                if let Some(n) = query.n {
+                    fragments.push(format!("n={n}"))
+                }
+
+                let suffix = if !fragments.is_empty() {
+                    let joined = fragments.join("&");
+                    format!("?{joined}")
+                } else {
+                    "".to_string()
+                };
+
+                builder.append_header((
+                    "Link",
+                    format!("/v2/{}/tags/list{}; rel=\"next\"", path.repository, suffix),
+                ));
             }
+
+            Ok(builder.body(body))
         }
-        Ok(None) => Responses::NoSuchRepository {},
+        None => Err(RegistryError::RepositoryNotFound {}),
     }
 }

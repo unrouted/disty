@@ -3,12 +3,10 @@ use crate::extractors::Token;
 use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RepositoryName;
-use actix_files::NamedFile;
-use actix_web::get;
+use actix_web::head;
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
-use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
 use serde::Deserialize;
@@ -40,10 +38,9 @@ pub struct ManifestGetRequestDigest {
     digest: Digest,
 }
 
-#[get("/{repository:[^{}]+}/manifests/{digest:sha256:.*}")]
-pub(crate) async fn get(
+#[head("/{repository:[^{}]+}/manifests/{digest:sha256:.*}")]
+pub(crate) async fn head(
     app: Data<RegistryApp>,
-    req: HttpRequest,
     path: Path<ManifestGetRequestDigest>,
     token: Token,
 ) -> Result<HttpResponse, RegistryError> {
@@ -67,10 +64,6 @@ pub(crate) async fn get(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if !manifest.locations.contains(&app.config.identifier) {
-        app.wait_for_manifest(&path.digest).await;
-    }
-
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
         _ => {
@@ -79,7 +72,7 @@ pub(crate) async fn get(
         }
     };
 
-    let _content_length = match manifest.size {
+    let content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");
@@ -87,21 +80,11 @@ pub(crate) async fn get(
         }
     };
 
-    let manifest_path = app.get_manifest_path(&path.digest);
-    if !manifest_path.is_file() {
-        debug!("Expected manifest file does not exist");
-        return Err(RegistryError::ManifestNotFound {});
-    }
-
-    let manifest = NamedFile::open_async(manifest_path)
-        .await
-        .unwrap()
-        .into_response(&req);
-
     Ok(HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
+        .append_header(("Content-Length", content_length))
         .append_header(("Docker-Content-Digest", path.digest.to_string()))
-        .body(manifest.into_body()))
+        .finish())
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,10 +93,9 @@ pub struct ManifestGetRequestTag {
     tag: String,
 }
 
-#[get("/{repository:[^{}]+}/manifests/{tag}")]
-pub(crate) async fn get_by_tag(
+#[head("/{repository:[^{}]+}/manifests/{tag}")]
+pub(crate) async fn head_by_tag(
     app: Data<RegistryApp>,
-    req: HttpRequest,
     path: Path<ManifestGetRequestTag>,
     token: Token,
 ) -> Result<HttpResponse, RegistryError> {
@@ -145,10 +127,6 @@ pub(crate) async fn get_by_tag(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if !manifest.locations.contains(&app.config.identifier) {
-        app.wait_for_manifest(&digest).await;
-    }
-
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
         _ => {
@@ -157,7 +135,7 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let _content_length = match manifest.size {
+    let content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");
@@ -165,19 +143,9 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let manifest_path = app.get_manifest_path(&digest);
-    if !manifest_path.is_file() {
-        debug!("Expected manifest file does not exist");
-        return Err(RegistryError::ManifestNotFound {});
-    }
-
-    let manifest = NamedFile::open_async(manifest_path)
-        .await
-        .unwrap()
-        .into_response(&req);
-
     Ok(HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
+        .append_header(("Content-Length", content_length))
         .append_header(("Docker-Content-Digest", digest.to_string()))
-        .body(manifest.into_body()))
+        .finish())
 }

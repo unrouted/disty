@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RaftConfig {
     pub address: String,
-    pub port: u32,
+    pub port: u16,
 }
 
 impl Default for RaftConfig {
@@ -27,7 +27,7 @@ impl Default for RaftConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RegistryConfig {
     pub address: String,
-    pub port: u32,
+    pub port: u16,
 }
 
 impl Default for RegistryConfig {
@@ -42,7 +42,7 @@ impl Default for RegistryConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PrometheusConfig {
     pub address: String,
-    pub port: u32,
+    pub port: u16,
 }
 
 impl Default for PrometheusConfig {

@@ -1,95 +1,85 @@
-use crate::app::RegistryApp;
-use crate::headers::Access;
-use crate::headers::Token;
-use crate::types::Digest;
-use crate::types::RegistryAction;
-use crate::types::RepositoryName;
-use crate::utils::get_blob_path;
-use crate::utils::get_upload_path;
-use chrono::prelude::*;
-use rocket::data::Data;
-use rocket::http::Header;
-use rocket::http::Status;
-use rocket::post;
-use rocket::request::Request;
-use rocket::response::{Responder, Response};
-use rocket::State;
 use std::collections::HashSet;
-use std::io::Cursor;
-use std::sync::Arc;
+
+use crate::extractors::token::Access;
+use crate::extractors::Token;
+use crate::registry::errors::RegistryError;
+use crate::registry::utils::{upload_part, validate_hash};
+use crate::types::{Digest, RegistryAction};
+use crate::{app::RegistryApp, types::RepositoryName};
+use actix_web::http::StatusCode;
+use actix_web::post;
+use actix_web::web::{Payload, Query};
+use actix_web::{
+    web::{Data, Path},
+    HttpResponse, HttpResponseBuilder,
+};
+use chrono::Utc;
+use serde::Deserialize;
 use uuid::Uuid;
 
-pub(crate) enum Responses {
-    MustAuthenticate {
-        challenge: String,
-    },
-    AccessDenied {},
-    UploadInvalid {},
-    ServiceUnavailable {},
-    DigestInvalid {},
-    UploadComplete {
-        repository: RepositoryName,
-        digest: Digest,
-    },
-    Ok {
-        repository: RepositoryName,
-        uuid: String,
-        size: u64,
-    },
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadRequest {
+    repository: RepositoryName,
+}
+#[derive(Debug, Deserialize)]
+pub struct BlobUploadPostQuery {
+    mount: Option<Digest>,
+    from: Option<RepositoryName>,
+    digest: Option<Digest>,
 }
 
-impl<'r> Responder<'r, 'static> for Responses {
-    fn respond_to(self, _req: &Request) -> Result<Response<'static>, Status> {
-        match self {
-            Responses::ServiceUnavailable {} => {
-                Response::build().status(Status::ServiceUnavailable).ok()
-            }
-            Responses::MustAuthenticate { challenge } => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "UNAUTHORIZED",
-                    "authentication required",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .header(Header::new("Www-Authenticate", challenge))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Unauthorized)
-                    .ok()
-            }
-            Responses::AccessDenied {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DENIED",
-                    "requested access to the resource is denied",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::Forbidden)
-                    .ok()
-            }
-            Responses::DigestInvalid {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "DIGEST_INVALID",
-                    "provided digest did not match uploaded content",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
-            }
-            Responses::UploadInvalid {} => {
-                let body = crate::registry::utils::simple_oci_error(
-                    "BLOB_UPLOAD_INVALID",
-                    "the upload was invalid",
-                );
-                Response::build()
-                    .header(Header::new("Content-Length", body.len().to_string()))
-                    .sized_body(body.len(), Cursor::new(body))
-                    .status(Status::BadRequest)
-                    .ok()
-            }
-            Responses::UploadComplete { repository, digest } => {
+#[post("/{repository:[^{}]+}/blobs/uploads")]
+pub(crate) async fn post(
+    app: Data<RegistryApp>,
+    path: Path<BlobUploadRequest>,
+    query: Query<BlobUploadPostQuery>,
+    body: Payload,
+    token: Token,
+) -> Result<HttpResponse, RegistryError> {
+    if !token.validated_token {
+        let mut access = vec![Access {
+            repository: path.repository.clone(),
+            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
+        }];
+
+        if let Some(from) = &query.from {
+            access.push(Access {
+                repository: from.clone(),
+                permissions: HashSet::from(["pull".to_string()]),
+            });
+        }
+
+        return Err(RegistryError::MustAuthenticate {
+            challenge: token.get_challenge(access),
+        });
+    }
+
+    if !token.has_permission(&path.repository, "push") {
+        return Err(RegistryError::AccessDenied {});
+    }
+
+    if let (Some(mount), Some(from)) = (&query.mount, &query.from) {
+        if from == &path.repository {
+            return Err(RegistryError::UploadInvalid {});
+        }
+
+        if !token.has_permission(from, "pull") {
+            return Err(RegistryError::UploadInvalid {});
+        }
+
+        if let Some(blob) = app.get_blob(mount).await {
+            if blob.repositories.contains(from) {
+                let actions = vec![RegistryAction::BlobMounted {
+                    timestamp: Utc::now(),
+                    digest: mount.clone(),
+                    repository: path.repository.clone(),
+                    user: token.sub.clone(),
+                }];
+
+                if !app.submit(actions).await {
+                    return Err(RegistryError::UploadInvalid {});
+                }
+
                 /*
                 201 Created
                 Location: <blob location>
@@ -97,139 +87,46 @@ impl<'r> Responder<'r, 'static> for Responses {
                 Content-Length: 0
                 Docker-Content-Digest: <digest>
                 */
-
-                Response::build()
-                    .header(Header::new(
+                return Ok(HttpResponseBuilder::new(StatusCode::CREATED)
+                    .append_header((
                         "Location",
-                        format!("/v2/{repository}/blobs/{digest}"),
+                        format!("/v2/{}/blobs/{}", path.repository, mount),
                     ))
-                    .header(Header::new("Range", "0-0"))
-                    .header(Header::new("Content-Length", "0"))
-                    .header(Header::new("Docker-Content-Digest", digest.to_string()))
-                    .status(Status::Created)
-                    .ok()
-            }
-            Responses::Ok {
-                repository,
-                uuid,
-                size,
-            } => {
-                let location = Header::new(
-                    "Location",
-                    format!("/v2/{}/blobs/uploads/{}", repository, uuid),
-                );
-                let range = Header::new("Range", format!("0-{size}"));
-                let length = Header::new("Content-Length", "0");
-                let upload_uuid = Header::new("Docker-Upload-UUID", uuid);
-
-                Response::build()
-                    .header(location)
-                    .header(range)
-                    .header(length)
-                    .header(upload_uuid)
-                    .status(Status::Accepted)
-                    .ok()
+                    .append_header(("Range", "0-0"))
+                    .append_header(("Content-Length", "0"))
+                    .append_header(("Docker-Content-Digest", mount.to_string()))
+                    .finish());
             }
         }
     }
-}
-
-#[post("/<repository>/blobs/uploads?<mount>&<from>&<digest>", data = "<body>")]
-pub(crate) async fn post(
-    repository: RepositoryName,
-    mount: Option<Digest>,
-    from: Option<RepositoryName>,
-    digest: Option<Digest>,
-    app: &State<Arc<RegistryApp>>,
-    token: Token,
-    body: Data<'_>,
-) -> Responses {
-    let app: &Arc<RegistryApp> = app.inner();
-
-    if !token.validated_token {
-        let mut access = vec![Access {
-            repository,
-            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
-        }];
-
-        if let Some(from) = from {
-            access.push(Access {
-                repository: from,
-                permissions: HashSet::from(["pull".to_string()]),
-            });
-        }
-
-        return Responses::MustAuthenticate {
-            challenge: token.get_challenge(access),
-        };
-    }
-
-    if !token.has_permission(&repository, "push") {
-        return Responses::AccessDenied {};
-    }
-
-    if let (Some(mount), Some(from)) = (mount, from) {
-        if from == repository {
-            return Responses::UploadInvalid {};
-        }
-
-        if !token.has_permission(&from, "pull") {
-            return Responses::UploadInvalid {};
-        }
-
-        match app.is_blob_available(&from, &mount).await {
-            Err(_) => {
-                return Responses::ServiceUnavailable {};
-            }
-            Ok(false) => {}
-            Ok(true) => {
-                let actions = vec![RegistryAction::BlobMounted {
-                    timestamp: Utc::now(),
-                    digest: mount.clone(),
-                    repository: repository.clone(),
-                    user: token.sub.clone(),
-                }];
-
-                if !app.submit(actions).await {
-                    return Responses::UploadInvalid {};
-                }
-
-                return Responses::UploadComplete {
-                    repository,
-                    digest: mount,
-                };
-            }
-        }
-    }
-
     let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
-    match digest {
+    match &query.digest {
         Some(digest) => {
-            let filename = get_upload_path(&app.settings.storage, &upload_id);
+            let filename = app.get_upload_path(&upload_id);
 
-            if !crate::registry::utils::upload_part(&filename, body).await {
-                return Responses::UploadInvalid {};
+            if !upload_part(&filename, body).await {
+                return Err(RegistryError::UploadInvalid {});
             }
 
             // Validate upload
-            if !crate::registry::utils::validate_hash(&filename, &digest).await {
-                return Responses::DigestInvalid {};
+            if !validate_hash(&filename, digest).await {
+                return Err(RegistryError::DigestInvalid {});
             }
 
-            let dest = get_blob_path(&app.settings.storage, &digest);
+            let dest = app.get_blob_path(digest);
 
             let stat = match tokio::fs::metadata(&filename).await {
                 Ok(result) => result,
                 Err(_) => {
-                    return Responses::UploadInvalid {};
+                    return Err(RegistryError::UploadInvalid {});
                 }
             };
 
             match std::fs::rename(filename, dest) {
                 Ok(_) => {}
                 Err(_) => {
-                    return Responses::UploadInvalid {};
+                    return Err(RegistryError::UploadInvalid {});
                 }
             }
 
@@ -237,7 +134,7 @@ pub(crate) async fn post(
                 RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     digest: digest.clone(),
-                    repository: repository.clone(),
+                    repository: path.repository.clone(),
                     user: token.sub.clone(),
                 },
                 RegistryAction::BlobStat {
@@ -248,20 +145,35 @@ pub(crate) async fn post(
                 RegistryAction::BlobStored {
                     timestamp: Utc::now(),
                     digest: digest.clone(),
-                    location: app.settings.identifier.clone(),
+                    location: app.config.identifier.clone(),
                     user: token.sub.clone(),
                 },
             ];
 
             if !app.submit(actions).await {
-                return Responses::UploadInvalid {};
+                return Err(RegistryError::UploadInvalid {});
             }
 
-            return Responses::UploadComplete { repository, digest };
+            /*
+            201 Created
+            Location: <blob location>
+            Content-Range: <start of range>-<end of range, inclusive>
+            Content-Length: 0
+            Docker-Content-Digest: <digest>
+            */
+            return Ok(HttpResponseBuilder::new(StatusCode::CREATED)
+                .append_header((
+                    "Location",
+                    format!("/v2/{}/blobs/{}", path.repository, digest),
+                ))
+                .append_header(("Range", "0-0"))
+                .append_header(("Content-Length", "0"))
+                .append_header(("Docker-Content-Digest", digest.to_string()))
+                .finish());
         }
         _ => {
             // Nothing was uploaded, but a session was started...
-            let filename = get_upload_path(&app.settings.storage, &upload_id);
+            let filename = app.get_upload_path(&upload_id);
 
             match tokio::fs::OpenOptions::new()
                 .create(true)
@@ -270,14 +182,18 @@ pub(crate) async fn post(
                 .await
             {
                 Ok(file) => drop(file),
-                _ => return Responses::UploadInvalid {},
+                _ => return Err(RegistryError::UploadInvalid {}),
             }
         }
     }
 
-    Responses::Ok {
-        repository,
-        uuid: upload_id,
-        size: 0,
-    }
+    return Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED)
+        .append_header((
+            "Location",
+            format!("/v2/{}/blobs/uploads/{}", path.repository, upload_id),
+        ))
+        .append_header(("Range", "0-{size}"))
+        .append_header(("Content-Length", "0"))
+        .append_header(("Docker-Upload-UUID", upload_id))
+        .finish());
 }

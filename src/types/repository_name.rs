@@ -3,38 +3,12 @@ use std::fmt;
 
 use std::str::FromStr;
 
-use rocket::form::{FromFormField, ValueField};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(try_from = "String", into = "String")]
 pub struct RepositoryName {
     pub name: String,
-}
-
-use rocket::request::FromParam;
-
-impl<'r> FromParam<'r> for RepositoryName {
-    type Error = &'r str;
-
-    fn from_param(param: &'r str) -> Result<Self, Self::Error> {
-        let param = param.to_string();
-
-        Ok(Self {
-            name: urlencoding::decode(&param).unwrap().into_owned(),
-        })
-    }
-}
-
-impl<'v> FromFormField<'v> for RepositoryName {
-    fn from_value(field: ValueField<'v>) -> rocket::form::Result<'v, Self> {
-        match field.value.parse() {
-            Ok(value) => Ok(value),
-            _ => std::result::Result::Err(
-                rocket::form::Error::validation("Invalid repository name").into(),
-            ),
-        }
-    }
 }
 
 impl FromStr for RepositoryName {
