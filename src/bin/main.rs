@@ -12,11 +12,13 @@ pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[derive(Parser, Clone, Debug)]
+#[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Opt {
-    #[clap(long)]
+    #[clap(short, long, value_parser)]
     pub config: Option<std::path::PathBuf>,
+    #[clap(short, long, value_parser)]
+    pub name: Option<String>,
 }
 
 #[actix_web::main]
@@ -33,7 +35,10 @@ async fn main() -> std::io::Result<()> {
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
 
-    let config = distribd::config::config(options.config);
+    let mut config = distribd::config::config(options.config);
+    if let Some(name) = options.name {
+        config.identifier = name;
+    }
 
     let tasks = start_raft_node(config).await.unwrap();
 
