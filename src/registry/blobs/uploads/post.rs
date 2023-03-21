@@ -161,7 +161,7 @@ pub(crate) async fn post(
             Content-Length: 0
             Docker-Content-Digest: <digest>
             */
-            return Ok(HttpResponseBuilder::new(StatusCode::CREATED)
+            Ok(HttpResponseBuilder::new(StatusCode::CREATED)
                 .append_header((
                     "Location",
                     format!("/v2/{}/blobs/{}", path.repository, digest),
@@ -169,7 +169,7 @@ pub(crate) async fn post(
                 .append_header(("Range", "0-0"))
                 .append_header(("Content-Length", "0"))
                 .append_header(("Docker-Content-Digest", digest.to_string()))
-                .finish());
+                .finish())
         }
         _ => {
             // Nothing was uploaded, but a session was started...
@@ -184,16 +184,16 @@ pub(crate) async fn post(
                 Ok(file) => drop(file),
                 _ => return Err(RegistryError::UploadInvalid {}),
             }
+
+            Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED)
+                .append_header((
+                    "Location",
+                    format!("/v2/{}/blobs/uploads/{}", path.repository, upload_id),
+                ))
+                .append_header(("Range", format!("0-{}", 0)))
+                .append_header(("Content-Length", "0"))
+                .append_header(("Docker-Upload-UUID", upload_id))
+                .finish())
         }
     }
-
-    return Ok(HttpResponseBuilder::new(StatusCode::ACCEPTED)
-        .append_header((
-            "Location",
-            format!("/v2/{}/blobs/uploads/{}", path.repository, upload_id),
-        ))
-        .append_header(("Range", "0-{size}"))
-        .append_header(("Content-Length", "0"))
-        .append_header(("Docker-Upload-UUID", upload_id))
-        .finish());
 }

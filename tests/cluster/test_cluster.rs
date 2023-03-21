@@ -628,6 +628,81 @@ async fn upload_blob_multiple() {
 }
 
 #[tokio::test]
+async fn upload_blob_multiple_kaniko() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+    let url = cluster.peers.get(0).unwrap().url.clone();
+
+    let upload_id = {
+        let url = url.clone().join("foo/bar/blobs/uploads/").unwrap();
+        let resp = client
+            .post(url)
+            .header("Host", "10.192.170.146:9080")
+            .header(
+                "User-Agent",
+                "go-containerregistry/v0.8.1-0.20220507185902-82405e5dfa82",
+            )
+            .header("Content-Length", "0")
+            .header("Content-Type", "application/json")
+            .header("Accept-Encoding", "gzip")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+
+        resp.headers().get("Docker-Upload-UUID").unwrap().clone()
+    };
+
+    {
+        let url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+
+        for chonk in ["FO", "OB", "AR"] {
+            let resp = client.patch(url.clone()).body(chonk).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        }
+    }
+
+    {
+        let mut url = url
+            .join("foo/bar/blobs/uploads/")
+            .unwrap()
+            .join(upload_id.to_str().unwrap())
+            .unwrap();
+        url.query_pairs_mut().append_pair(
+            "digest",
+            "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+        );
+
+        let resp = client.put(url.clone()).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    cluster
+        .head_all(
+            "foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
+
+    {
+        let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
+    }
+}
+
+#[tokio::test]
 async fn upload_blob_multiple_finish_with_put() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;

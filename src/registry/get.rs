@@ -5,7 +5,7 @@ use crate::extractors::Token;
 
 use super::errors::RegistryError;
 
-#[get("/")]
+#[get("")]
 pub(crate) async fn get(token: Token) -> Result<HttpResponse, RegistryError> {
     if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
