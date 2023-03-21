@@ -778,8 +778,27 @@ async fn upload_manifest() {
         )
         .await;
 
+    cluster
+        .head_all("foo/bar/manifests/latest", |resp| {
+            if resp.status() == StatusCode::NOT_FOUND {
+                return true;
+            }
+            assert_eq!(resp.status(), StatusCode::OK);
+            false
+        })
+        .await;
+
     {
         let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
+        let resp = client.get(url).send().await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let value: Value = resp.json().await.unwrap();
+        assert_eq!(value, payload);
+    }
+
+    {
+        let url = url.join("foo/bar/manifests/latest").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
