@@ -56,18 +56,12 @@ pub async fn change_membership(
 
 /// Initialize a single-node cluster.
 #[post("/init")]
-pub async fn init(
-    app: Data<RegistryApp>,
-    req: Json<String>,
-) -> actix_web::Result<impl Responder> {
+pub async fn init(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
     let node = BasicNode {
-        addr: req.0 .clone(),
+        addr: req.0.clone(),
     };
     let mut nodes = BTreeMap::new();
-    nodes.insert(
-        app.id,
-        node
-    );
+    nodes.insert(app.id, node);
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
 }
