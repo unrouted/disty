@@ -156,6 +156,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(management::add_learner)
             .service(management::change_membership)
             .service(management::metrics)
+            .service(management::import)
             // application API
             .service(api::write)
             .service(api::read)

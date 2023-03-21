@@ -952,3 +952,83 @@ async fn delete_upload() {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
+
+#[tokio::test]
+async fn import_old_snapshot() {
+    let cluster = configure().await.unwrap();
+    let client = &cluster.peers.get(0).unwrap().client;
+
+    let payload = json!({
+        "blobs": {
+            "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5": {
+                "repositories": ["foo/bar"],
+                "locations": ["registry1"],
+                "size": 9,
+                "content_type": "application/octet-stream",
+                "dependencies": [],
+                "created": "2022-07-11T13:51:00.759548Z",
+                "updated": "2022-07-11T13:51:00.759548Z"
+            }
+        },
+        "manifests": {
+            "sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1": {
+                "repositories": ["foo/bar"],
+                "locations": ["registry1"],
+                "size": 9,
+                "content_type": "application/octet-stream",
+                "dependencies": ["sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"],
+                "created": "2022-07-11T13:51:00.759548Z",
+                "updated": "2022-07-11T13:51:00.759548Z"
+            }
+        },
+        "tags": {
+            "foo/bar": {
+                "latest": "sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1"
+            }
+        },
+    });
+
+    let url = Url::parse(&format!(
+        "http://{}/import",
+        cluster.peers.get(0).unwrap().address
+    ))
+    .unwrap();
+    let resp = client.post(url).json(&payload).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    cluster
+        .head_all(
+            "foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
+
+    cluster
+        .head_all(
+            "foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1",
+            |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                false
+            },
+        )
+        .await;
+
+    cluster
+        .head_all("foo/bar/manifests/latest", |resp| {
+            if resp.status() == StatusCode::NOT_FOUND {
+                return true;
+            }
+            assert_eq!(resp.status(), StatusCode::OK);
+            false
+        })
+        .await;
+}
