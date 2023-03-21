@@ -229,8 +229,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(prometheus::healthz)
     })
     .bind((
-        app2.config.registry.address.clone().as_str(),
-        app2.config.registry.port,
+        app2.config.prometheus.address.clone().as_str(),
+        app2.config.prometheus.port,
     ))?
     .disable_signals()
     .run();

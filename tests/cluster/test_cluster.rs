@@ -6,6 +6,7 @@ use std::time::Duration;
 use distribd::client::RegistryClient;
 use distribd::config::Configuration;
 use distribd::config::PeerConfig;
+use distribd::config::PrometheusConfig;
 use distribd::config::RaftConfig;
 use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
@@ -55,6 +56,11 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
     config.registry = RegistryConfig {
         address: addr.clone(),
         port: (9079 + node_id) as u16,
+    };
+
+    config.prometheus = PrometheusConfig {
+        address: addr.clone(),
+        port: (7079 + node_id) as u16,
     };
 
     config.peers.push(PeerConfig {
