@@ -22,7 +22,7 @@ actix-web = "4.0.0-rc.2"
 actix-files = "0.6.2"
 async-trait = "0.1.36"
 clap = { version = "3.0.13", features = ["derive", "env"] }
-reqwest = { version = "0.11.9", features = ["json"] }
+reqwest = { version = "0.11.9", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1.0", default-features = false, features = ["sync"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
@@ -46,16 +46,16 @@ anyhow = "1.0.63"
 sled = "0.34.7"
 bincode = "1.3.3"
 mimalloc = { version = "0.1.32" }
-futures-util = "*"
+futures-util = "0.3.27"
 
 [dev-dependencies]
 maplit = "1.0.2"
 tempfile = { version = "3.4.0" }
-rstest = "*"
-reqwest-retry = "*" 
-reqwest-middleware = "*"
-lazy_static = "*"
-simple-pool = "*"
+rstest = "0.16.0"
+reqwest-retry = "0.2.2"
+reqwest-middleware = "0.2.1"
+lazy_static = "1.4.0"
+simple-pool = "0.0.11"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
