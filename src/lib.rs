@@ -1,6 +1,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use actix_web::middleware;
 use actix_web::middleware::Logger;
@@ -32,6 +33,7 @@ pub mod extractor;
 pub mod extractors;
 pub mod mirror;
 pub mod network;
+pub mod prometheus;
 pub mod registry;
 pub mod store;
 pub mod types;
@@ -132,11 +134,13 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         config: conf,
         extractor,
         webhooks: Arc::new(webhook_queue),
+        registry: Mutex::new(registry),
     });
 
     let app1 = app.clone();
     let app2 = app.clone();
     let app3 = app.clone();
+    let app4 = app.clone();
 
     // Start the actix-web server.
     let server = HttpServer::new(move || {
@@ -214,6 +218,26 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     let registry_handle = registry.handle();
     let _handle2 = tokio::spawn(registry);
 
+    // Start the actix-web server.
+    let prometheus = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .wrap(Logger::new("%a %{User-Agent}i"))
+            .wrap(middleware::Compress::default())
+            .app_data(app4.clone())
+            .service(prometheus::metrics)
+            .service(prometheus::healthz)
+    })
+    .bind((
+        app2.config.registry.address.clone().as_str(),
+        app2.config.registry.port,
+    ))?
+    .disable_signals()
+    .run();
+
+    let prometheus_handle = prometheus.handle();
+    let _handle3 = tokio::spawn(prometheus);
+
     let sender = Arc::new(Notify::new());
     let receiver = sender.clone();
 
@@ -225,6 +249,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         app3.raft.shutdown().await.unwrap();
         registry_handle.stop(false).await;
         raft_handle.stop(false).await;
+        prometheus_handle.stop(false).await;
     });
 
     Ok(sender)

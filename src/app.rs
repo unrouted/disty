@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 
+use prometheus_client::registry::Registry;
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
 use tracing::log::warn;
@@ -28,6 +30,7 @@ pub struct RegistryApp {
     pub config: Configuration,
     pub extractor: Arc<Extractor>,
     pub webhooks: Arc<Sender<Event>>,
+    pub registry: Mutex<Registry>,
 }
 
 impl RegistryApp {
