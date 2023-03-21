@@ -10,8 +10,8 @@ use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
-use bincode::options;
-use bincode::Options;
+use options().with_big_endian().options;
+use options().with_big_endian().Options;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
@@ -132,8 +132,8 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
         for entry_res in blobs(&state.db).iter() {
             let entry = entry_res.expect("read db failed");
 
-            let key = bincode::deserialize::<Digest>(&entry.0).expect("invalid data");
-            let value = bincode::deserialize::<Blob>(&entry.1).expect("invalid data");
+            let key = options().with_big_endian().deserialize::<Digest>(&entry.0).expect("invalid data");
+            let value = options().with_big_endian().deserialize::<Blob>(&entry.1).expect("invalid data");
             blob_tree.insert(key, value);
         }
 
@@ -141,8 +141,8 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
         for entry_res in manifests(&state.db).iter() {
             let entry = entry_res.expect("read db failed");
 
-            let key = bincode::deserialize::<Digest>(&entry.0).expect("invalid data");
-            let value = bincode::deserialize::<Manifest>(&entry.1).expect("invalid data");
+            let key = options().with_big_endian().deserialize::<Digest>(&entry.0).expect("invalid data");
+            let value = options().with_big_endian().deserialize::<Manifest>(&entry.1).expect("invalid data");
             manifest_tree.insert(key, value);
         }
 
@@ -154,7 +154,7 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
                 .with_big_endian()
                 .deserialize::<TagKey>(&entry.0)
                 .expect("invalid data");
-            let value = bincode::deserialize::<Digest>(&entry.1).expect("invalid data");
+            let value = options().with_big_endian().deserialize::<Digest>(&entry.1).expect("invalid data");
 
             let repo = tag_tree.entry(key.repository).or_insert_with(BTreeMap::new);
             repo.insert(key.tag, value);
@@ -309,8 +309,8 @@ impl RegistryStateMachine {
         let mut batch = sled::Batch::default();
         for (key, value) in sm.blobs {
             batch.insert(
-                bincode::serialize(&key).unwrap(),
-                bincode::serialize(&value).unwrap(),
+                options().with_big_endian().serialize(&key).unwrap(),
+                options().with_big_endian().serialize(&value).unwrap(),
             )
         }
         blob_tree.apply_batch(batch).map_err(sm_w_err)?;
@@ -320,8 +320,8 @@ impl RegistryStateMachine {
         let mut batch = sled::Batch::default();
         for (key, value) in sm.manifests {
             batch.insert(
-                bincode::serialize(&key).unwrap(),
-                bincode::serialize(&value).unwrap(),
+                options().with_big_endian().serialize(&key).unwrap(),
+                options().with_big_endian().serialize(&value).unwrap(),
             )
         }
         manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
@@ -337,7 +337,7 @@ impl RegistryStateMachine {
                 };
                 batch.insert(
                     options().with_big_endian().serialize(&real_key).unwrap(),
-                    bincode::serialize(&digest).unwrap(),
+                    options().with_big_endian().serialize(&digest).unwrap(),
                 )
             }
         }
@@ -385,21 +385,21 @@ impl RegistryStateMachine {
         Ok(())
     }
     pub fn get_blob(&self, key: &Digest) -> StorageResult<Option<Blob>> {
-        let key = bincode::serialize(key).unwrap();
+        let key = options().with_big_endian().serialize(key).unwrap();
         let blob_tree = blobs(&self.db);
         blob_tree
             .get(key)
-            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map(|value| value.map(|value| options().with_big_endian().deserialize(&value).expect("invalid data")))
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
     }
     pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
-        let key = bincode::serialize(key).unwrap();
+        let key = options().with_big_endian().serialize(key).unwrap();
         let manifest_tree = manifests(&self.db);
         manifest_tree
             .get(key)
-            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map(|value| value.map(|value| options().with_big_endian().deserialize(&value).expect("invalid data")))
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
@@ -415,7 +415,7 @@ impl RegistryStateMachine {
         let tag_tree = tags(&self.db);
         tag_tree
             .get(key)
-            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map(|value| value.map(|value| options().with_big_endian().deserialize(&value).expect("invalid data")))
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
@@ -482,10 +482,10 @@ impl RegistryStateMachine {
         blobs: &TransactionalTree,
         digest: &Digest,
     ) -> StorageResult<Option<Blob>> {
-        let key = bincode::serialize(digest).unwrap();
+        let key = options().with_big_endian().serialize(digest).unwrap();
         blobs
             .get(key)
-            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map(|value| value.map(|value| options().with_big_endian().deserialize(&value).expect("invalid data")))
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
@@ -497,9 +497,9 @@ impl RegistryStateMachine {
         digest: &Digest,
         blob: &Blob,
     ) -> StorageResult<()> {
-        let key = bincode::serialize(digest).unwrap();
+        let key = options().with_big_endian().serialize(digest).unwrap();
         blobs
-            .insert(key, bincode::serialize(blob).expect("invalid data"))
+            .insert(key, options().with_big_endian().serialize(blob).expect("invalid data"))
             .map(|_value| ())
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
@@ -511,10 +511,10 @@ impl RegistryStateMachine {
         manifests: &TransactionalTree,
         digest: &Digest,
     ) -> StorageResult<Option<Manifest>> {
-        let key = bincode::serialize(digest).unwrap();
+        let key = options().with_big_endian().serialize(digest).unwrap();
         manifests
             .get(key)
-            .map(|value| value.map(|value| bincode::deserialize(&value).expect("invalid data")))
+            .map(|value| value.map(|value| options().with_big_endian().deserialize(&value).expect("invalid data")))
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
@@ -526,9 +526,9 @@ impl RegistryStateMachine {
         digest: &Digest,
         blob: &Manifest,
     ) -> StorageResult<()> {
-        let key = bincode::serialize(digest).unwrap();
+        let key = options().with_big_endian().serialize(digest).unwrap();
         manifests
-            .insert(key, bincode::serialize(blob).expect("invalid data"))
+            .insert(key, options().with_big_endian().serialize(blob).expect("invalid data"))
             .map(|_value| ())
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
@@ -549,7 +549,7 @@ impl RegistryStateMachine {
                 tag: tag.to_owned(),
             })
             .unwrap();
-        tags.insert(key, bincode::serialize(digest).expect("invalid data"))
+        tags.insert(key, options().with_big_endian().serialize(digest).expect("invalid data"))
             .map(|_value| ())
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
