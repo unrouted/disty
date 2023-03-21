@@ -13,10 +13,7 @@ pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>
 #[clap(author, version, about, long_about = None)]
 pub struct Opt {
     #[clap(long)]
-    pub id: u64,
-
-    #[clap(long)]
-    pub http_addr: String,
+    pub config: Option<std::path::PathBuf>,
 }
 
 #[actix_web::main]
@@ -31,9 +28,9 @@ async fn main() -> std::io::Result<()> {
         .init();
 
     // Parse the parameters passed by arguments.
-    let _options = Opt::parse();
+    let options = Opt::parse();
 
-    let config = distribd::config::config(None);
+    let config = distribd::config::config(options.config);
 
     let tasks = start_raft_node(config).await.unwrap();
 
