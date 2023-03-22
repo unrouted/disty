@@ -16,6 +16,7 @@ use crate::types::Digest;
 use crate::types::Manifest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use crate::utils;
 use crate::webhook::Event;
 use crate::RegistryNodeId;
 use crate::RegistryRaft;
@@ -129,62 +130,22 @@ impl RegistryApp {
     }
 
     pub fn get_blob_path(&self, digest: &Digest) -> std::path::PathBuf {
-        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
-        let digest_string = &digest.hash;
-
-        path.push("blobs");
-        path.push(&digest_string[0..2]);
-        path.push(&digest_string[2..4]);
-        path.push(&digest_string[4..6]);
-
-        std::fs::create_dir_all(path.clone()).unwrap();
-
-        path.push(&digest_string[6..]);
-
-        path
+        utils::get_blob_path(&self.config.storage, digest)
     }
 
     pub fn get_manifest_path(&self, digest: &Digest) -> std::path::PathBuf {
-        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
-        let digest_string = &digest.hash;
-
-        path.push("manifests");
-        path.push(&digest_string[0..2]);
-        path.push(&digest_string[2..4]);
-        path.push(&digest_string[4..6]);
-
-        std::fs::create_dir_all(path.clone()).unwrap();
-
-        path.push(&digest_string[6..]);
-
-        path
+        utils::get_manifest_path(&self.config.storage, digest)
     }
 
     pub fn get_upload_path(&self, upload_id: &str) -> std::path::PathBuf {
-        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
-        path.push("uploads");
-        path.push(format!("blob-{upload_id}"));
-
-        path
+        utils::get_upload_path(&self.config.storage, upload_id)
     }
 
     pub fn get_temp_path(&self) -> std::path::PathBuf {
-        let upload_id = Uuid::new_v4().as_hyphenated().to_string();
-
-        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
-        path.push("uploads");
-        path.push(format!("manifest-{upload_id}"));
-
-        path
+        utils::get_temp_path(&self.config.storage)
     }
 
     pub fn get_temp_mirror_path(&self) -> std::path::PathBuf {
-        let upload_id = Uuid::new_v4().as_hyphenated().to_string();
-
-        let mut path = std::path::Path::new(&self.config.storage).to_path_buf();
-        path.push("uploads");
-        path.push(format!("mirror-{upload_id}"));
-
-        path
+        utils::get_temp_mirror_path(&self.config.storage)
     }
 }

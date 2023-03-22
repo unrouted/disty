@@ -37,6 +37,7 @@ pub mod prometheus;
 pub mod registry;
 pub mod store;
 pub mod types;
+pub mod utils;
 pub mod webhook;
 
 pub type RegistryNodeId = u64;

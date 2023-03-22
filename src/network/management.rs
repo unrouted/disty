@@ -76,9 +76,9 @@ pub async fn metrics(app: Data<RegistryApp>) -> actix_web::Result<impl Responder
 
 #[derive(Serialize, Deserialize)]
 pub struct ImportBody {
-    blobs: BTreeMap<Digest, Blob>,
-    manifests: BTreeMap<Digest, Manifest>,
-    tags: BTreeMap<RepositoryName, BTreeMap<String, Digest>>,
+    pub blobs: BTreeMap<Digest, Blob>,
+    pub manifests: BTreeMap<Digest, Manifest>,
+    pub tags: BTreeMap<RepositoryName, BTreeMap<String, Digest>>,
 }
 
 /// Import a v2 snapshot

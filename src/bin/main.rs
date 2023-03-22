@@ -6,6 +6,7 @@ use distribd::network::management::ImportBody;
 use distribd::network::raft_network_impl::RegistryNetwork;
 use distribd::start_raft_node;
 use distribd::store::RegistryStore;
+use distribd::utils::{get_blob_path, get_manifest_path};
 use distribd::RegistryTypeConfig;
 use openraft::Raft;
 use serde_json::from_str;
@@ -109,7 +110,47 @@ async fn main() -> anyhow::Result<()> {
             let metrics = client.metrics().await?;
             println!("{:?}", metrics);
         }
-        Action::Fsck {} => todo!(),
+        Action::Fsck {} => {
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let body = client.export().await?;
+
+            println!("Checking {} blobs...", body.blobs.len());
+            for (digest, blob) in body.blobs.iter() {
+                if blob.locations.contains(&config.identifier) {
+                    let path = get_blob_path(&config.identifier, digest);
+
+                    if !path.exists() {
+                        println!("BLOB: {}: Does not exist on disk", digest);
+                        continue;
+                    }
+
+                    // check size is correct
+                    // chck hash is correct
+                }
+            }
+
+            println!("Checking {} manifests...", body.manifests.len());
+            for (digest, manifest) in body.manifests.iter() {
+                if manifest.locations.contains(&config.identifier) {
+                    let path = get_manifest_path(&config.identifier, digest);
+
+                    if !path.exists() {
+                        println!("MANIFEST: {}: Does not exist on disk", digest);
+                        continue;
+                    }
+
+                    // check size is correct
+                    // chck hash is correct
+                }
+            }
+
+            println!("Checking tags in {} repositories...", body.tags.len());
+            for (repository, tags) in body.tags.iter() {
+                for (tag, digest) in tags.iter() {
+                    // check digest is a manifest in repository
+                }
+            }
+        }
     }
 
     Ok(())
