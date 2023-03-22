@@ -121,7 +121,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Checking {} blobs...", body.blobs.len());
             for (digest, blob) in body.blobs.iter_mut() {
                 if blob.locations.contains(&config.identifier) {
-                    let path = get_blob_path(&config.identifier, digest);
+                    let path = get_blob_path(&config.storage, digest);
 
                     if !path.exists() {
                         fixes.push(RegistryAction::BlobUnstored {
@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Checking {} manifests...", body.manifests.len());
             for (digest, manifest) in body.manifests.iter_mut() {
                 if manifest.locations.contains(&config.identifier) {
-                    let path = get_manifest_path(&config.identifier, digest);
+                    let path = get_manifest_path(&config.storage, digest);
 
                     if !path.exists() {
                         fixes.push(RegistryAction::ManifestUnstored {
