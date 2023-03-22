@@ -16,6 +16,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::time::timeout;
 
+use crate::network::management::ImportBody;
 use crate::typ;
 use crate::RegistryNodeId;
 use crate::RegistryRequest;
@@ -103,6 +104,18 @@ impl RegistryClient {
     pub async fn change_membership(
         &self,
         req: &BTreeSet<RegistryNodeId>,
+    ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
+        self.send_rpc_to_leader("change-membership", Some(req))
+            .await
+    }
+
+    /// Change membership to the specified set of nodes.
+    ///
+    /// All nodes in `req` have to be already added as learner with [`add_learner`],
+    /// or an error [`LearnerNotFound`] will be returned.
+    pub async fn import(
+        &self,
+        req: &ImportBody,
     ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("change-membership", Some(req))
             .await

@@ -14,6 +14,7 @@ use openraft::error::Infallible;
 use openraft::BasicNode;
 use openraft::RaftMetrics;
 use serde::Deserialize;
+use serde::Serialize;
 use web::Json;
 
 use crate::app::RegistryApp;
@@ -75,7 +76,7 @@ pub async fn metrics(app: Data<RegistryApp>) -> actix_web::Result<impl Responder
     Ok(Json(res))
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ImportBody {
     blobs: HashMap<Digest, Blob>,
     manifests: HashMap<Digest, Manifest>,
