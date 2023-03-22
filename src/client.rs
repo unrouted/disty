@@ -109,16 +109,15 @@ impl RegistryClient {
             .await
     }
 
-    /// Change membership to the specified set of nodes.
-    ///
-    /// All nodes in `req` have to be already added as learner with [`add_learner`],
-    /// or an error [`LearnerNotFound`] will be returned.
     pub async fn import(
         &self,
         req: &ImportBody,
-    ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
-        self.send_rpc_to_leader("change-membership", Some(req))
-            .await
+    ) -> Result<(), typ::RPCError<typ::ClientWriteError>> {
+        self.send_rpc_to_leader("import", Some(req)).await
+    }
+
+    pub async fn export(&self) -> Result<ImportBody, typ::RPCError<typ::ClientWriteError>> {
+        self.send_rpc_to_leader("export", None::<&()>).await
     }
 
     /// Get the metrics about the cluster.

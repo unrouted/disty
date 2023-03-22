@@ -161,6 +161,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(management::change_membership)
             .service(management::metrics)
             .service(management::import)
+            .service(management::export)
             // application API
             .service(api::write)
             .service(api::read)

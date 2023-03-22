@@ -1,13 +1,10 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 
 use actix_web::get;
-use actix_web::http::StatusCode;
 use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
-use actix_web::HttpResponseBuilder;
 use actix_web::Responder;
 use chrono::Utc;
 use openraft::error::Infallible;
@@ -18,6 +15,7 @@ use serde::Serialize;
 use web::Json;
 
 use crate::app::RegistryApp;
+use crate::store::SerializableRegistryStateMachine;
 use crate::types::Blob;
 use crate::types::Digest;
 use crate::types::Manifest;
@@ -78,9 +76,9 @@ pub async fn metrics(app: Data<RegistryApp>) -> actix_web::Result<impl Responder
 
 #[derive(Serialize, Deserialize)]
 pub struct ImportBody {
-    blobs: HashMap<Digest, Blob>,
-    manifests: HashMap<Digest, Manifest>,
-    tags: HashMap<RepositoryName, HashMap<String, Digest>>,
+    blobs: BTreeMap<Digest, Blob>,
+    manifests: BTreeMap<Digest, Manifest>,
+    tags: BTreeMap<RepositoryName, BTreeMap<String, Digest>>,
 }
 
 /// Import a v2 snapshot
@@ -171,9 +169,24 @@ pub async fn import(
         }
     }
 
+    let res: Result<(), Infallible> = Ok(());
+
     if !app.submit(actions).await {
-        return Ok(HttpResponseBuilder::new(StatusCode::FAILED_DEPENDENCY));
+        return Ok(Json(res));
     }
 
-    Ok(HttpResponseBuilder::new(StatusCode::OK))
+    Ok(Json(res))
+}
+
+#[get("/export")]
+pub async fn export(app: Data<RegistryApp>) -> actix_web::Result<impl Responder> {
+    let sm = app.store.state_machine.read().await;
+    let state_machine = SerializableRegistryStateMachine::from(&*sm);
+
+    let res: Result<ImportBody, Infallible> = Ok(ImportBody {
+        blobs: state_machine.blobs,
+        manifests: state_machine.manifests,
+        tags: state_machine.tags,
+    });
+    Ok(Json(res))
 }

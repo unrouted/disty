@@ -36,6 +36,7 @@ pub enum Action {
     AddLearner { id: u64, address: String, port: u16 },
     ChangeMembership { ids: Vec<u64> },
     Import { path: PathBuf },
+    Export {},
     Metrics {},
     Fsck {},
 }
@@ -97,6 +98,11 @@ async fn main() -> anyhow::Result<()> {
             let body: ImportBody = from_str(&payload)?;
             client.import(&body).await?;
             println!("Data imported");
+        }
+        Action::Export {} => {
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let body = client.export().await?;
+            println!("{}", serde_json::to_string(&body)?);
         }
         Action::Metrics {} => {
             let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
