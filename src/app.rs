@@ -6,7 +6,6 @@ use tokio::sync::mpsc::Sender;
 use tracing::debug;
 use tracing::log::warn;
 
-
 use crate::client::RegistryClient;
 use crate::config::Configuration;
 use crate::extractor::Extractor;
