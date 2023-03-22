@@ -34,7 +34,7 @@ ring = "0.16.20"
 serde_json = "1.0.88"
 uuid = { version = "1.2.2", features=["v4"] }
 jwt-simple = "0.11.2"
-regex = "1.6.0"
+regex = "1.7.2"
 jsonschema = { version = "0.16", default-features = false }
 chrono = {version = "0.4", features=["serde"]}
 prometheus-client = "0.19.0"
