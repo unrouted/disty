@@ -37,8 +37,13 @@ impl RegistryApp {
     pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
         let req = RegistryRequest::Transaction { actions };
 
-        if let Ok(_resp) = self.raft.client_write(req.clone()).await {
-            return true;
+        match self.raft.client_write(req.clone()).await {
+            Ok(_) => {
+                return true;
+            }
+            Err(e) => {
+                tracing::error!("local submit error: {:?}", e);
+            }
         }
 
         // FIXME: This is super dumb
