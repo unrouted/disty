@@ -5,7 +5,7 @@ use prometheus_client::registry::Registry;
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
 use tracing::log::warn;
-use uuid::Uuid;
+
 
 use crate::client::RegistryClient;
 use crate::config::Configuration;

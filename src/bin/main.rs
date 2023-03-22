@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+use chrono::Utc;
 use clap::{Parser, Subcommand};
 use distribd::client::RegistryClient;
 use distribd::network::management::ImportBody;
 use distribd::network::raft_network_impl::RegistryNetwork;
 use distribd::start_raft_node;
-use distribd::store::RegistryStore;
+use distribd::store::{RegistryRequest, RegistryStore};
+use distribd::types::RegistryAction;
 use distribd::utils::{get_blob_path, get_manifest_path};
 use distribd::RegistryTypeConfig;
 use openraft::Raft;
@@ -39,7 +41,7 @@ pub enum Action {
     Import { path: PathBuf },
     Export {},
     Metrics {},
-    Fsck {},
+    Fsck { repair: bool },
 }
 
 #[actix_web::main]
@@ -110,17 +112,25 @@ async fn main() -> anyhow::Result<()> {
             let metrics = client.metrics().await?;
             println!("{:?}", metrics);
         }
-        Action::Fsck {} => {
+        Action::Fsck { repair } => {
             let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
-            let body = client.export().await?;
+            let mut body = client.export().await?;
+
+            let mut fixes = vec![];
 
             println!("Checking {} blobs...", body.blobs.len());
-            for (digest, blob) in body.blobs.iter() {
+            for (digest, blob) in body.blobs.iter_mut() {
                 if blob.locations.contains(&config.identifier) {
                     let path = get_blob_path(&config.identifier, digest);
 
                     if !path.exists() {
-                        println!("BLOB: {}: Does not exist on disk", digest);
+                        fixes.push(RegistryAction::BlobUnstored {
+                            timestamp: Utc::now(),
+                            digest: digest.clone(),
+                            location: config.identifier.clone(),
+                            user: "$fsck".to_string(),
+                        });
+                        blob.locations.remove(&config.identifier);
                         continue;
                     }
 
@@ -130,12 +140,18 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("Checking {} manifests...", body.manifests.len());
-            for (digest, manifest) in body.manifests.iter() {
+            for (digest, manifest) in body.manifests.iter_mut() {
                 if manifest.locations.contains(&config.identifier) {
                     let path = get_manifest_path(&config.identifier, digest);
 
                     if !path.exists() {
-                        println!("MANIFEST: {}: Does not exist on disk", digest);
+                        fixes.push(RegistryAction::ManifestUnstored {
+                            timestamp: Utc::now(),
+                            digest: digest.clone(),
+                            location: config.identifier.clone(),
+                            user: "$fsck".to_string(),
+                        });
+                        manifest.locations.remove(&config.identifier);
                         continue;
                     }
 
@@ -145,10 +161,20 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("Checking tags in {} repositories...", body.tags.len());
-            for (repository, tags) in body.tags.iter() {
-                for (tag, digest) in tags.iter() {
+            for (_repository, tags) in body.tags.iter() {
+                for (_tag, _digest) in tags.iter() {
                     // check digest is a manifest in repository
                 }
+            }
+
+            for action in fixes.iter() {
+                println!("{:?}", action);
+            }
+
+            if repair {
+                client
+                    .write(&RegistryRequest::Transaction { actions: fixes })
+                    .await?;
             }
         }
     }
