@@ -52,6 +52,7 @@ impl RegistryApp {
                 if resp.is_ok() {
                     return true;
                 }
+                tracing::error!("submit error: {:?}", resp);
             }
         }
 
