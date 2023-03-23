@@ -3,10 +3,12 @@ use crate::extractors::Token;
 use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RepositoryName;
+use actix_files::NamedFile;
 use actix_web::head;
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
+use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::HttpResponseBuilder;
 use serde::Deserialize;
@@ -41,6 +43,7 @@ pub struct ManifestGetRequestDigest {
 #[head("/{repository:[^{}]+}/manifests/{digest:sha256:.*}")]
 pub(crate) async fn head(
     app: Data<RegistryApp>,
+    req: HttpRequest,
     path: Path<ManifestGetRequestDigest>,
     token: Token,
 ) -> Result<HttpResponse, RegistryError> {
@@ -72,7 +75,7 @@ pub(crate) async fn head(
         }
     };
 
-    let content_length = match manifest.size {
+    let _content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");
@@ -80,11 +83,21 @@ pub(crate) async fn head(
         }
     };
 
+    let manifest_path = app.get_manifest_path(&path.digest);
+    if !manifest_path.is_file() {
+        debug!("Expected manifest file does not exist");
+        return Err(RegistryError::ManifestNotFound {});
+    }
+
+    let manifest = NamedFile::open_async(manifest_path)
+        .await
+        .unwrap()
+        .into_response(&req);
+
     Ok(HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
-        .append_header(("Content-Length", content_length))
         .append_header(("Docker-Content-Digest", path.digest.to_string()))
-        .finish())
+        .body(manifest.into_body()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +109,7 @@ pub struct ManifestGetRequestTag {
 #[head("/{repository:[^{}]+}/manifests/{tag}")]
 pub(crate) async fn head_by_tag(
     app: Data<RegistryApp>,
+    req: HttpRequest,
     path: Path<ManifestGetRequestTag>,
     token: Token,
 ) -> Result<HttpResponse, RegistryError> {
@@ -135,7 +149,7 @@ pub(crate) async fn head_by_tag(
         }
     };
 
-    let content_length = match manifest.size {
+    let _content_length = match manifest.size {
         Some(content_length) => content_length,
         _ => {
             debug!("Could not extract content length from graph");
@@ -143,9 +157,19 @@ pub(crate) async fn head_by_tag(
         }
     };
 
+    let manifest_path = app.get_manifest_path(&digest);
+    if !manifest_path.is_file() {
+        debug!("Expected manifest file does not exist");
+        return Err(RegistryError::ManifestNotFound {});
+    }
+
+    let manifest = NamedFile::open_async(manifest_path)
+        .await
+        .unwrap()
+        .into_response(&req);
+
     Ok(HttpResponseBuilder::new(StatusCode::OK)
         .content_type(content_type)
-        .append_header(("Content-Length", content_length))
         .append_header(("Docker-Content-Digest", digest.to_string()))
-        .finish())
+        .body(manifest.into_body()))
 }

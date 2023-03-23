@@ -496,6 +496,14 @@ async fn upload_whole_blob() {
                     return true;
                 }
                 assert_eq!(resp.status(), StatusCode::OK);
+                assert_eq!(
+                    resp.headers()
+                        .get("content-length")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "6"
+                );
                 false
             },
         )
@@ -505,6 +513,14 @@ async fn upload_whole_blob() {
         let url = url.join("foo/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("content-length")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "6"
+        );
         assert_eq!(resp.text().await.unwrap(), "FOOBAR".to_string());
     }
 }
@@ -841,7 +857,14 @@ async fn upload_manifest() {
         let url = url.join("foo/bar/manifests/latest").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-
+        assert_eq!(
+            resp.headers()
+                .get("content-length")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "106"
+        );
         let value: Value = resp.json().await.unwrap();
         assert_eq!(value, payload);
     }
@@ -853,7 +876,14 @@ async fn upload_manifest() {
                 if resp.status() == StatusCode::NOT_FOUND {
                     return true;
                 }
-                assert_eq!(resp.status(), StatusCode::OK);
+                assert_eq!(resp.status(), StatusCode::OK);        assert_eq!(
+                    resp.headers()
+                        .get("content-length")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "106"
+                );
                 false
             },
         )
@@ -865,6 +895,14 @@ async fn upload_manifest() {
                 return true;
             }
             assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(
+                resp.headers()
+                    .get("content-length")
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                "106"
+            );
             false
         })
         .await;
@@ -873,7 +911,14 @@ async fn upload_manifest() {
         let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-
+        assert_eq!(
+            resp.headers()
+                .get("content-length")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "106"
+        );
         let value: Value = resp.json().await.unwrap();
         assert_eq!(value, payload);
     }
@@ -882,7 +927,14 @@ async fn upload_manifest() {
         let url = url.join("foo/bar/manifests/latest").unwrap();
         let resp = client.get(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-
+        assert_eq!(
+            resp.headers()
+                .get("content-length")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "106"
+        );
         let value: Value = resp.json().await.unwrap();
         assert_eq!(value, payload);
     }
