@@ -332,7 +332,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                         let result = do_transfer(
                             app1.clone(),
                             client1.clone(),
-                            MirrorRequest::Blob {
+                            MirrorRequest::Manifest {
                                 digest: digest.clone(),
                             },
                         )
