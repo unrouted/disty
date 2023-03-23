@@ -204,7 +204,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::NormalizePath::trim())
-            .wrap(middleware::Compress::default())
+            // we can't use compression because it enables transfer-encoding: chunked which breaks content-length which breaks containerd
+            // .wrap(middleware::Compress::default())
             .app_data(app.clone())
             .service(registry_api)
     })
