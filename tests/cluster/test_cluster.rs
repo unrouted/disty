@@ -1113,14 +1113,36 @@ async fn import_old_snapshot() {
     let client = &cluster.peers.get(0).unwrap().client;
 
     let blob_path = distribd::utils::get_blob_path(
-        &cluster.peers.get(0).unwrap()._tempdir. path().to_owned().to_string_lossy().to_string(),
-        &Digest::from_str("sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap(),
+        &cluster
+            .peers
+            .get(0)
+            .unwrap()
+            ._tempdir
+            .path()
+            .to_owned()
+            .to_string_lossy()
+            .to_string(),
+        &Digest::from_str(
+            "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
+        )
+        .unwrap(),
     );
     tokio::fs::write(blob_path, "FOOBAR").await.unwrap();
 
     let manifest_path = distribd::utils::get_manifest_path(
-        &cluster.peers.get(0).unwrap()._tempdir. path().to_owned().to_string_lossy().to_string(),
-        &Digest::from_str("sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225").unwrap(),
+        &cluster
+            .peers
+            .get(0)
+            .unwrap()
+            ._tempdir
+            .path()
+            .to_owned()
+            .to_string_lossy()
+            .to_string(),
+        &Digest::from_str(
+            "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",
+        )
+        .unwrap(),
     );
     tokio::fs::write(manifest_path, "123456789").await.unwrap();
 
