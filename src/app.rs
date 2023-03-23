@@ -65,11 +65,11 @@ impl RegistryApp {
     }
 
     pub async fn get_blob(&self, digest: &Digest) -> Option<Blob> {
-        let sm = self.store.state_machine.read().await;
+        let sm = self.store.state_machine.read().unwrap();
         sm.get_blob(digest).unwrap()
     }
     pub async fn wait_for_blob(&self, digest: &Digest) {
-        let mut sm = self.store.state_machine.write().await;
+        let mut sm = self.store.state_machine.write().unwrap();
 
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -94,11 +94,11 @@ impl RegistryApp {
         }
     }
     pub async fn get_manifest(&self, digest: &Digest) -> Option<Manifest> {
-        let sm = self.store.state_machine.read().await;
+        let sm = self.store.state_machine.read().unwrap();
         sm.get_manifest(digest).unwrap()
     }
     pub async fn wait_for_manifest(&self, digest: &Digest) {
-        let mut sm = self.store.state_machine.write().await;
+        let mut sm = self.store.state_machine.write().unwrap();
 
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -125,12 +125,12 @@ impl RegistryApp {
         }
     }
     pub async fn get_tag(&self, repository: &RepositoryName, tag: &str) -> Option<Digest> {
-        let sm = self.store.state_machine.read().await;
+        let sm = self.store.state_machine.read().unwrap();
         sm.get_tag(repository, tag).unwrap()
     }
 
     pub async fn get_tags(&self, repository: &RepositoryName) -> Option<Vec<String>> {
-        let sm = self.store.state_machine.read().await;
+        let sm = self.store.state_machine.read().unwrap();
         sm.get_tags(repository).unwrap()
     }
 

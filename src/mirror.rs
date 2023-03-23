@@ -249,7 +249,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
             .store
             .state_machine
             .read()
-            .await
+            .unwrap()
             .pending_blobs
             .subscribe();
         let mut pending_blobs = subscriber.borrow_and_update().clone();
@@ -305,7 +305,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
             .store
             .state_machine
             .read()
-            .await
+            .unwrap()
             .pending_manifests
             .subscribe();
         let mut pending_manifests = subscriber.borrow_and_update().clone();

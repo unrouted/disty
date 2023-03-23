@@ -9,6 +9,7 @@ use std::fmt::Debug;
 use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use bincode::options;
 use bincode::Options;
@@ -39,7 +40,6 @@ use sled::transaction::TransactionalTree;
 use sled::Transactional;
 use tokio::sync::watch::channel;
 use tokio::sync::watch::Sender;
-use tokio::sync::RwLock;
 
 use crate::config::Configuration;
 use crate::types::Blob;
@@ -836,7 +836,7 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
         {
             // Serialize the data of the state machine.
             let state_machine =
-                SerializableRegistryStateMachine::from(&*self.state_machine.read().await);
+                SerializableRegistryStateMachine::from(&*self.state_machine.read().unwrap());
             data = serde_json::to_vec(&state_machine).map_err(|e| {
                 StorageIOError::new(
                     ErrorSubject::StateMachine,
@@ -969,7 +969,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         ),
         StorageError<RegistryNodeId>,
     > {
-        let state_machine = self.state_machine.read().await;
+        let state_machine = self.state_machine.read().unwrap();
         Ok((
             state_machine.get_last_applied_log()?,
             state_machine.get_last_membership()?,
@@ -981,15 +981,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         &mut self,
         entries: &[&Entry<RegistryTypeConfig>],
     ) -> Result<Vec<RegistryResponse>, StorageError<RegistryNodeId>> {
-        let mut sm = self.state_machine.write().await;
         let state_machine = state_machine(&self.db);
         let data_tree = data(&self.db);
         let blob_tree = blobs(&self.db);
         let manifest_tree = manifests(&self.db);
         let tag_tree = tags(&self.db);
-
-        let mut pending_blobs = sm.pending_blobs.borrow().clone();
-        let mut pending_manifests = sm.pending_manifests.borrow().clone();
 
         let trans_res = (
             &state_machine,
@@ -1000,6 +996,8 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         )
             .transaction(
                 |(tx_state_machine, tx_data_tree, tx_blob_tree, tx_manifest_tree, tx_tag_tree)| {
+                    let sm = self.state_machine.write().unwrap();
+
                     let mut res = Vec::with_capacity(entries.len());
 
                     for entry in entries {
@@ -1288,6 +1286,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e))
         })?;
 
+        let mut sm = self.state_machine.write().unwrap();
+
+        let mut pending_blobs = sm.pending_blobs.borrow().clone();
+        let mut pending_manifests = sm.pending_manifests.borrow().clone();
+
         for entry in entries {
             if let EntryPayload::Normal(RegistryRequest::Transaction { ref actions }) =
                 entry.payload
@@ -1397,10 +1400,11 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         AnyError::new(&e),
                     )
                 })?;
-            let mut state_machine = self.state_machine.write().await;
-            *state_machine =
+            let new_sm =
                 RegistryStateMachine::from_serializable(updated_state_machine, self.db.clone())
                     .await?;
+            let mut state_machine = self.state_machine.write().unwrap();
+            *state_machine = new_sm;
         }
 
         self.set_current_snapshot_(new_snapshot).await?;

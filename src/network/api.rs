@@ -32,7 +32,7 @@ pub async fn write(
 
 #[post("/read")]
 pub async fn read(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let state_machine = app.store.state_machine.read().await;
+    let state_machine = app.store.state_machine.read().unwrap();
     let key = req.0;
     let value = (*state_machine).get(&key).unwrap();
 
@@ -49,7 +49,7 @@ pub async fn consistent_read(
 
     match ret {
         Ok(_) => {
-            let state_machine = app.store.state_machine.read().await;
+            let state_machine = app.store.state_machine.read().unwrap();
             let key = req.0;
             let value = (*state_machine).get(&key).unwrap();
 

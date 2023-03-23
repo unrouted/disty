@@ -180,7 +180,7 @@ pub async fn import(
 
 #[get("/export")]
 pub async fn export(app: Data<RegistryApp>) -> actix_web::Result<impl Responder> {
-    let sm = app.store.state_machine.read().await;
+    let sm = app.store.state_machine.read().unwrap();
     let state_machine = SerializableRegistryStateMachine::from(&*sm);
 
     let res: Result<ImportBody, Infallible> = Ok(ImportBody {
