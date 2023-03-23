@@ -69,18 +69,20 @@ impl RegistryApp {
         sm.get_blob(digest).unwrap()
     }
     pub async fn wait_for_blob(&self, digest: &Digest) {
-        let mut sm = self.store.state_machine.write().unwrap();
-
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
 
-        let values = sm
-            .blob_waiters
-            .entry(digest.clone())
-            .or_insert_with(std::vec::Vec::new);
+        {
+            let mut sm = self.store.state_machine.write().unwrap();
 
-        values.push(tx);
+            let values = sm
+                .blob_waiters
+                .entry(digest.clone())
+                .or_insert_with(std::vec::Vec::new);
 
-        drop(sm);
+            values.push(tx);
+
+            drop(sm);
+        }
 
         debug!("State: Wait for blob: Waiting for {digest} to download");
 
@@ -98,18 +100,20 @@ impl RegistryApp {
         sm.get_manifest(digest).unwrap()
     }
     pub async fn wait_for_manifest(&self, digest: &Digest) {
-        let mut sm = self.store.state_machine.write().unwrap();
-
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
 
-        let values = sm
-            .manifest_waiters
-            .entry(digest.clone())
-            .or_insert_with(std::vec::Vec::new);
+        {
+            let mut sm = self.store.state_machine.write().unwrap();
 
-        values.push(tx);
+            let values = sm
+                .manifest_waiters
+                .entry(digest.clone())
+                .or_insert_with(std::vec::Vec::new);
 
-        drop(sm);
+            values.push(tx);
+
+            drop(sm);
+        }
 
         debug!("State: Wait for manifest: Waiting for {digest} to download");
 
