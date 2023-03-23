@@ -214,7 +214,8 @@ async fn do_transfer(
 }
 
 enum MirrorState {
-    Poll,
+    Changed,
+    Timeout,
     Close,
 }
 
@@ -225,14 +226,14 @@ async fn wait_for_change(mut subscriber: watch::Receiver<HashSet<Digest>>) -> Mi
         return MirrorState::Close;
     }
 
-    MirrorState::Poll
+    MirrorState::Changed
 }
 
 #[inline]
 async fn wait_for_time() -> MirrorState {
     tokio::time::sleep(Duration::from_secs(10)).await;
 
-    MirrorState::Poll
+    MirrorState::Timeout
 }
 
 pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
@@ -261,13 +262,8 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         }
 
         while let Some(res) = waiters.join_next().await {
-            waiters.spawn(wait_for_change(subscriber.clone()));
-            if !pending_blobs.is_empty() {
-                waiters.spawn(wait_for_time());
-            }
-
             match res {
-                Ok(MirrorState::Poll) => {
+                Ok(MirrorState::Timeout | MirrorState::Changed) => {
                     pending_blobs = subscriber.borrow_and_update().clone();
                     for digest in pending_blobs.iter() {
                         let result = do_transfer(
@@ -294,6 +290,18 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                     break;
                 }
             }
+
+            match res {
+                Ok(MirrorState::Changed) => {
+                    waiters.spawn(wait_for_change(subscriber.clone()));
+                }
+                Ok(MirrorState::Timeout) => {
+                    if !pending_blobs.is_empty() {
+                        waiters.spawn(wait_for_time());
+                    }
+                }
+                _ => {}
+            }
         }
     });
 
@@ -317,13 +325,8 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
         }
 
         while let Some(res) = waiters.join_next().await {
-            waiters.spawn(wait_for_change(subscriber.clone()));
-            if !pending_manifests.is_empty() {
-                waiters.spawn(wait_for_time());
-            }
-
             match res {
-                Ok(MirrorState::Poll) => {
+                Ok(MirrorState::Timeout | MirrorState::Changed) => {
                     pending_manifests = subscriber.borrow_and_update().clone();
                     for digest in pending_manifests.iter() {
                         let result = do_transfer(
@@ -349,6 +352,18 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                     tracing::error!("JoinError during mirror: {:?}", err);
                     break;
                 }
+            }
+
+            match res {
+                Ok(MirrorState::Changed) => {
+                    waiters.spawn(wait_for_change(subscriber.clone()));
+                }
+                Ok(MirrorState::Timeout) => {
+                    if !pending_manifests.is_empty() {
+                        waiters.spawn(wait_for_time());
+                    }
+                }
+                _ => {}
             }
         }
     });
