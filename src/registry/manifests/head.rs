@@ -67,6 +67,10 @@ pub(crate) async fn head(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
+    if !manifest.locations.contains(&app.config.identifier) {
+        app.wait_for_manifest(&path.digest).await;
+    }
+
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,
         _ => {
@@ -140,6 +144,10 @@ pub(crate) async fn head_by_tag(
         }
         None => return Err(RegistryError::ManifestNotFound {}),
     };
+
+    if !manifest.locations.contains(&app.config.identifier) {
+        app.wait_for_manifest(&digest).await;
+    }
 
     let content_type = match manifest.content_type {
         Some(content_type) => content_type,

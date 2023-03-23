@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
@@ -10,6 +11,7 @@ use distribd::config::PrometheusConfig;
 use distribd::config::RaftConfig;
 use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
+use distribd::types::Digest;
 use lazy_static::lazy_static;
 use maplit::btreeset;
 use reqwest::Response;
@@ -1110,6 +1112,18 @@ async fn import_old_snapshot() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
 
+    let blob_path = distribd::utils::get_blob_path(
+        &cluster.peers.get(0).unwrap()._tempdir. path().to_owned().to_string_lossy().to_string(),
+        &Digest::from_str("sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap(),
+    );
+    tokio::fs::write(blob_path, "FOOBAR").await.unwrap();
+
+    let manifest_path = distribd::utils::get_manifest_path(
+        &cluster.peers.get(0).unwrap()._tempdir. path().to_owned().to_string_lossy().to_string(),
+        &Digest::from_str("sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225").unwrap(),
+    );
+    tokio::fs::write(manifest_path, "123456789").await.unwrap();
+
     let payload = json!({
         "blobs": {
             "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5": {
@@ -1123,7 +1137,7 @@ async fn import_old_snapshot() {
             }
         },
         "manifests": {
-            "sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1": {
+            "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225": {
                 "repositories": ["foo/bar"],
                 "locations": ["registry1"],
                 "size": 9,
@@ -1135,7 +1149,7 @@ async fn import_old_snapshot() {
         },
         "tags": {
             "foo/bar": {
-                "latest": "sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1"
+                "latest": "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225"
             }
         },
     });
@@ -1163,7 +1177,7 @@ async fn import_old_snapshot() {
 
     cluster
         .head_all(
-            "foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1",
+            "foo/bar/manifests/sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",
             |resp| {
                 if resp.status() == StatusCode::NOT_FOUND {
                     return true;

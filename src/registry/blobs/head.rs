@@ -48,6 +48,10 @@ pub(crate) async fn head(
         return Err(RegistryError::BlobNotFound {});
     }
 
+    if !blob.locations.contains(&app.config.identifier) {
+        app.wait_for_blob(&path.digest).await;
+    }
+
     let content_type = match blob.content_type {
         Some(content_type) => content_type,
         _ => "application/octet-steam".to_string(),
