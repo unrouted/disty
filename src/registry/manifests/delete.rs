@@ -35,7 +35,7 @@ pub(crate) async fn delete(
         return Err(RegistryError::AccessDenied {});
     }
 
-    if let Some(manifest) = app.get_manifest(&path.digest).await {
+    if let Some(manifest) = app.get_manifest(&path.digest) {
         if !manifest.repositories.contains(&path.repository) {
             return Err(RegistryError::ManifestNotFound {});
         }
@@ -80,12 +80,12 @@ pub(crate) async fn delete_by_tag(
         return Err(RegistryError::AccessDenied {});
     }
 
-    let digest = match app.get_tag(&path.repository, &path.tag).await {
+    let digest = match app.get_tag(&path.repository, &path.tag) {
         Some(tag) => tag,
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if let Some(manifest) = app.get_manifest(&digest).await {
+    if let Some(manifest) = app.get_manifest(&digest) {
         if !manifest.repositories.contains(&path.repository) {
             return Err(RegistryError::ManifestNotFound {});
         }

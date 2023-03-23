@@ -57,7 +57,7 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    let manifest = match app.get_manifest(&path.digest).await {
+    let manifest = match app.get_manifest(&path.digest) {
         Some(manifest) => {
             if !manifest.repositories.contains(&path.repository) {
                 return Err(RegistryError::ManifestNotFound {});
@@ -127,7 +127,7 @@ pub(crate) async fn get_by_tag(
         return Err(RegistryError::AccessDenied {});
     }
 
-    let digest = match app.get_tag(&path.repository, &path.tag).await {
+    let digest = match app.get_tag(&path.repository, &path.tag) {
         Some(tag) => tag,
         None => {
             debug!("No such tag");
@@ -135,7 +135,7 @@ pub(crate) async fn get_by_tag(
         }
     };
 
-    let manifest = match app.get_manifest(&digest).await {
+    let manifest = match app.get_manifest(&digest) {
         Some(manifest) => {
             if !manifest.repositories.contains(&path.repository) {
                 return Err(RegistryError::ManifestNotFound {});

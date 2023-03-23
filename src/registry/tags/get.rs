@@ -37,7 +37,7 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    match app.get_tags(&path.repository).await {
+    match app.get_tags(&path.repository) {
         Some(mut tags) => {
             tags.sort();
 

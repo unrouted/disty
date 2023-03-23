@@ -61,13 +61,17 @@ pub(crate) async fn get_blob(
     req: HttpRequest,
     path: Path<BlobRequest>,
 ) -> Result<impl Responder, RegistryError> {
-    let blob = match app.get_blob(&path.digest).await {
+    let blob = match app.get_blob(&path.digest) {
         Some(blob) => blob,
         None => return Err(RegistryError::BlobNotFound {}),
     };
 
     if !blob.locations.contains(&app.config.identifier) {
-        app.wait_for_blob(&path.digest).await;
+        // Nodes should only hit this endpoint if their records indicate we *do* have it
+        // So either we removed it again (and likely waiting will fail)
+        // Or something is broken
+        // Either way, don't block!
+        return Err(RegistryError::BlobNotFound {});
     }
 
     let content_type = match blob.content_type {
@@ -111,13 +115,17 @@ pub(crate) async fn get_manifest(
     req: HttpRequest,
     path: Path<ManifestGetRequestDigest>,
 ) -> Result<HttpResponse, RegistryError> {
-    let manifest = match app.get_manifest(&path.digest).await {
+    let manifest = match app.get_manifest(&path.digest) {
         Some(manifest) => manifest,
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
     if !manifest.locations.contains(&app.config.identifier) {
-        app.wait_for_manifest(&path.digest).await;
+        // Nodes should only hit this endpoint if their records indicate we *do* have it
+        // So either we removed it again (and likely waiting will fail)
+        // Or something is broken
+        // Either way, don't block!
+        return Err(RegistryError::ManifestNotFound {});
     }
 
     let content_type = match manifest.content_type {

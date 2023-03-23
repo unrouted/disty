@@ -65,7 +65,7 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match app.get_blob(digest).await {
+        MirrorRequest::Blob { ref digest } => match app.get_blob(digest) {
             Some(blob) => {
                 if blob.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do. {:?} {:?}", blob.locations, app.config.identifier);
@@ -79,7 +79,7 @@ async fn do_transfer(
                 return MirrorResult::None;
             }
         },
-        MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest).await {
+        MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest) {
             Some(manifest) => {
                 if manifest.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");

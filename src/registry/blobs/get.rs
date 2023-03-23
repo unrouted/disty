@@ -38,7 +38,7 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    let blob = match app.get_blob(&path.digest).await {
+    let blob = match app.get_blob(&path.digest) {
         Some(blob) => blob,
         None => return Err(RegistryError::BlobNotFound {}),
     };

@@ -67,7 +67,7 @@ pub(crate) async fn post(
             return Err(RegistryError::UploadInvalid {});
         }
 
-        if let Some(blob) = app.get_blob(mount).await {
+        if let Some(blob) = app.get_blob(mount) {
             if blob.repositories.contains(from) {
                 let actions = vec![RegistryAction::BlobMounted {
                     timestamp: Utc::now(),

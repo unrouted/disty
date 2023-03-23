@@ -239,7 +239,7 @@ impl Extractor {
                     continue;
                 }
 
-                match app.get_blob(&extraction.digest).await {
+                match app.get_blob(&extraction.digest) {
                     Some(blob) => {
                         if blob.content_type.is_some() {
                             // Was already analyzed, don't do it again!

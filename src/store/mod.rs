@@ -399,92 +399,6 @@ impl RegistryStateMachine {
             .map_err(ct_err)?;
         Ok(())
     }
-    pub fn get_blob(&self, key: &Digest) -> StorageResult<Option<Blob>> {
-        let key = options().with_big_endian().serialize(key).unwrap();
-        let blob_tree = blobs(&self.db);
-        blob_tree
-            .get(key)
-            .map(|value| {
-                value.map(|value| {
-                    options()
-                        .with_big_endian()
-                        .deserialize(&value)
-                        .expect("invalid data")
-                })
-            })
-            .map_err(|e| {
-                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
-            })
-    }
-    pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
-        let key = options().with_big_endian().serialize(key).unwrap();
-        let manifest_tree = manifests(&self.db);
-        manifest_tree
-            .get(key)
-            .map(|value| {
-                value.map(|value| {
-                    options()
-                        .with_big_endian()
-                        .deserialize(&value)
-                        .expect("invalid data")
-                })
-            })
-            .map_err(|e| {
-                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
-            })
-    }
-    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
-        let key = options()
-            .with_big_endian()
-            .serialize(&TagKey {
-                repository: repository.clone(),
-                tag: tag.to_owned(),
-            })
-            .unwrap();
-        let tag_tree = tags(&self.db);
-        tag_tree
-            .get(key)
-            .map(|value| {
-                value.map(|value| {
-                    options()
-                        .with_big_endian()
-                        .deserialize(&value)
-                        .expect("invalid data")
-                })
-            })
-            .map_err(|e| {
-                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
-            })
-    }
-    pub fn get_tags(&self, repository: &RepositoryName) -> StorageResult<Option<Vec<String>>> {
-        let opts = options().with_big_endian();
-
-        let key = opts
-            .serialize(&TagKey {
-                repository: repository.clone(),
-                tag: "".to_string(),
-            })
-            .unwrap();
-
-        let tag_tree = tags(&self.db);
-        let r = tag_tree.range(key..);
-
-        let mut digests = vec![];
-
-        for row in r {
-            if let Ok((key, _value)) = row {
-                let key = opts.deserialize::<TagKey>(&key).unwrap();
-                if &key.repository != repository {
-                    break;
-                }
-                digests.push(key.tag.clone());
-                continue;
-            }
-            break;
-        }
-
-        Ok(Some(digests))
-    }
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
         let data_tree = data(&self.db);
@@ -1300,7 +1214,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         RegistryAction::BlobStored {
                             location, digest, ..
                         } => {
-                            if let Some(blob) = sm.get_blob(digest).unwrap() {
+                            if let Some(blob) = self.get_blob(digest).unwrap() {
                                 if !blob.locations.contains(&self.config.identifier) {
                                     pending_blobs.insert(digest.clone());
                                 } else {
@@ -1316,7 +1230,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             }
                         }
                         RegistryAction::BlobUnstored { digest, .. } => {
-                            if let Some(blob) = sm.get_blob(digest).unwrap() {
+                            if let Some(blob) = self.get_blob(digest).unwrap() {
                                 if !blob.locations.contains(&self.config.identifier) {
                                     pending_blobs.insert(digest.clone());
                                 } else {
@@ -1327,7 +1241,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         RegistryAction::ManifestStored {
                             location, digest, ..
                         } => {
-                            if let Some(manifest) = sm.get_manifest(digest).unwrap() {
+                            if let Some(manifest) = self.get_manifest(digest).unwrap() {
                                 if !manifest.locations.contains(&self.config.identifier) {
                                     pending_manifests.insert(digest.clone());
                                 } else {
@@ -1343,7 +1257,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             }
                         }
                         RegistryAction::ManifestUnstored { digest, .. } => {
-                            if let Some(manifest) = sm.get_manifest(digest).unwrap() {
+                            if let Some(manifest) = self.get_manifest(digest).unwrap() {
                                 if !manifest.locations.contains(&self.config.identifier) {
                                     pending_manifests.insert(digest.clone());
                                 } else {
@@ -1446,6 +1360,93 @@ impl RegistryStore {
             config,
             state_machine,
         })
+    }
+
+    pub fn get_blob(&self, key: &Digest) -> StorageResult<Option<Blob>> {
+        let key = options().with_big_endian().serialize(key).unwrap();
+        let blob_tree = blobs(&self.db);
+        blob_tree
+            .get(key)
+            .map(|value| {
+                value.map(|value| {
+                    options()
+                        .with_big_endian()
+                        .deserialize(&value)
+                        .expect("invalid data")
+                })
+            })
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+    pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
+        let key = options().with_big_endian().serialize(key).unwrap();
+        let manifest_tree = manifests(&self.db);
+        manifest_tree
+            .get(key)
+            .map(|value| {
+                value.map(|value| {
+                    options()
+                        .with_big_endian()
+                        .deserialize(&value)
+                        .expect("invalid data")
+                })
+            })
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+    pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
+        let key = options()
+            .with_big_endian()
+            .serialize(&TagKey {
+                repository: repository.clone(),
+                tag: tag.to_owned(),
+            })
+            .unwrap();
+        let tag_tree = tags(&self.db);
+        tag_tree
+            .get(key)
+            .map(|value| {
+                value.map(|value| {
+                    options()
+                        .with_big_endian()
+                        .deserialize(&value)
+                        .expect("invalid data")
+                })
+            })
+            .map_err(|e| {
+                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
+            })
+    }
+    pub fn get_tags(&self, repository: &RepositoryName) -> StorageResult<Option<Vec<String>>> {
+        let opts = options().with_big_endian();
+
+        let key = opts
+            .serialize(&TagKey {
+                repository: repository.clone(),
+                tag: "".to_string(),
+            })
+            .unwrap();
+
+        let tag_tree = tags(&self.db);
+        let r = tag_tree.range(key..);
+
+        let mut digests = vec![];
+
+        for row in r {
+            if let Ok((key, _value)) = row {
+                let key = opts.deserialize::<TagKey>(&key).unwrap();
+                if &key.repository != repository {
+                    break;
+                }
+                digests.push(key.tag.clone());
+                continue;
+            }
+            break;
+        }
+
+        Ok(Some(digests))
     }
 }
 
