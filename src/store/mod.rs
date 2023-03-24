@@ -309,6 +309,7 @@ impl RegistryStateMachine {
         Ok(())
     }
     async fn from_serializable(
+        config: Configuration,
         sm: SerializableRegistryStateMachine,
         db: Arc<sled::Db>,
     ) -> StorageResult<Self> {
@@ -320,24 +321,32 @@ impl RegistryStateMachine {
         data_tree.apply_batch(batch).map_err(sm_w_err)?;
         data_tree.flush_async().await.map_err(s_w_err)?;
 
+        let mut pblob = HashSet::new();
         let blob_tree = blobs(&db);
         let mut batch = sled::Batch::default();
         for (key, value) in sm.blobs {
             batch.insert(
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
-            )
+            );
+            if !value.locations.contains(&config.identifier) {
+                pblob.insert(key);
+            }
         }
         blob_tree.apply_batch(batch).map_err(sm_w_err)?;
         blob_tree.flush_async().await.map_err(s_w_err)?;
 
+        let mut pmanifest = HashSet::new();
         let manifest_tree = manifests(&db);
         let mut batch = sled::Batch::default();
         for (key, value) in sm.manifests {
             batch.insert(
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
-            )
+            );
+            if !value.locations.contains(&config.identifier) {
+                pmanifest.insert(key);
+            }
         }
         manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
         manifest_tree.flush_async().await.map_err(s_w_err)?;
@@ -359,8 +368,8 @@ impl RegistryStateMachine {
         tag_tree.apply_batch(batch).map_err(sm_w_err)?;
         tag_tree.flush_async().await.map_err(s_w_err)?;
 
-        let (pending_blobs, _) = channel(HashSet::<Digest>::new());
-        let (pending_manifests, _) = channel(HashSet::<Digest>::new());
+        let (pending_blobs, _) = channel(pblob);
+        let (pending_manifests, _) = channel(pmanifest);
 
         let r = Self {
             db,
@@ -1314,9 +1323,12 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         AnyError::new(&e),
                     )
                 })?;
-            let new_sm =
-                RegistryStateMachine::from_serializable(updated_state_machine, self.db.clone())
-                    .await?;
+            let new_sm = RegistryStateMachine::from_serializable(
+                self.config.clone(),
+                updated_state_machine,
+                self.db.clone(),
+            )
+            .await?;
             let mut state_machine = self.state_machine.write().unwrap();
             *state_machine = new_sm;
         }
