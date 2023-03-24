@@ -38,6 +38,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sled::transaction::TransactionalTree;
 use sled::Transactional;
+use sled::Tree;
 use tokio::sync::watch::channel;
 use tokio::sync::watch::Sender;
 
@@ -386,9 +387,13 @@ impl RegistryStateMachine {
         Ok(r)
     }
 
-    fn new(db: Arc<sled::Db>) -> RegistryStateMachine {
-        let (pending_blobs, _) = channel(HashSet::<Digest>::new());
-        let (pending_manifests, _) = channel(HashSet::<Digest>::new());
+    fn new(
+        db: Arc<sled::Db>,
+        blobs: HashSet<Digest>,
+        manifests: HashSet<Digest>,
+    ) -> RegistryStateMachine {
+        let (pending_blobs, _) = channel(blobs);
+        let (pending_manifests, _) = channel(manifests);
         Self {
             db,
             pending_blobs: Arc::new(pending_blobs),
@@ -1356,17 +1361,61 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         }
     }
 }
+pub fn get_blobs(tree: &Tree) -> StorageResult<BTreeMap<Digest, Blob>> {
+    let opts = options().with_big_endian();
+    let mut blobs = BTreeMap::new();
+    for row in tree.iter() {
+        if let Ok((key, value)) = row {
+            let key = opts.deserialize::<Digest>(&key).unwrap();
+            let value = opts.deserialize::<Blob>(&value).unwrap();
+            blobs.insert(key, value);
+            continue;
+        }
+        break;
+    }
+
+    Ok(blobs)
+}
+pub fn get_manifests(tree: &Tree) -> StorageResult<BTreeMap<Digest, Manifest>> {
+    let opts = options().with_big_endian();
+    let mut manifests = BTreeMap::new();
+    for row in tree.iter() {
+        if let Ok((key, value)) = row {
+            let key = opts.deserialize::<Digest>(&key).unwrap();
+            let value = opts.deserialize::<Manifest>(&value).unwrap();
+            manifests.insert(key, value);
+            continue;
+        }
+        break;
+    }
+
+    Ok(manifests)
+}
 impl RegistryStore {
     pub async fn new(db: Arc<sled::Db>, config: Configuration) -> Arc<RegistryStore> {
         let _store = store(&db);
         let _state_machine = state_machine(&db);
         let _data = data(&db);
-        let _blobs = blobs(&db);
-        let _manifests = manifests(&db);
+        let blobs = blobs(&db);
+        let manifests = manifests(&db);
         let _tags = tags(&db);
         let _logs = logs(&db);
 
-        let state_machine = RwLock::new(RegistryStateMachine::new(db.clone()));
+        let pblobs = get_blobs(&blobs)
+            .unwrap()
+            .iter()
+            .filter(|(_handle, blob)| !blob.locations.contains(&config.identifier))
+            .map(|(digest, _)| digest.clone())
+            .collect();
+
+        let pmans = get_manifests(&manifests)
+            .unwrap()
+            .iter()
+            .filter(|(_, manifest)| !manifest.locations.contains(&config.identifier))
+            .map(|(digest, _)| digest.clone())
+            .collect();
+
+        let state_machine = RwLock::new(RegistryStateMachine::new(db.clone(), pblobs, pmans));
         Arc::new(RegistryStore {
             db,
             config,
@@ -1391,6 +1440,9 @@ impl RegistryStore {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
     }
+    pub fn get_blobs(&self) -> StorageResult<BTreeMap<Digest, Blob>> {
+        get_blobs(&blobs(&self.db))
+    }
     pub fn get_manifest(&self, key: &Digest) -> StorageResult<Option<Manifest>> {
         let key = options().with_big_endian().serialize(key).unwrap();
         let manifest_tree = manifests(&self.db);
@@ -1407,6 +1459,9 @@ impl RegistryStore {
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
             })
+    }
+    pub fn get_manifests(&self) -> StorageResult<BTreeMap<Digest, Manifest>> {
+        get_manifests(&manifests(&self.db))
     }
     pub fn get_tag(&self, repository: &RepositoryName, tag: &str) -> StorageResult<Option<Digest>> {
         let key = options()
