@@ -35,13 +35,27 @@ pub struct Opt {
 #[derive(Subcommand, Debug)]
 pub enum Action {
     Serve,
-    Init { address: String, port: u16 },
-    AddLearner { id: u64, address: String, port: u16 },
-    ChangeMembership { ids: Vec<u64> },
-    Import { path: PathBuf },
+    Init {
+        address: String,
+        port: u16,
+    },
+    AddLearner {
+        id: u64,
+        address: String,
+        port: u16,
+    },
+    ChangeMembership {
+        ids: Vec<u64>,
+    },
+    Import {
+        path: PathBuf,
+    },
     Export {},
     Metrics {},
-    Fsck { repair: bool },
+    Fsck {
+        #[clap(short, long, action)]
+        repair: bool,
+    },
 }
 
 #[actix_web::main]
