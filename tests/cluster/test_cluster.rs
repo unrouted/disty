@@ -33,11 +33,17 @@ lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
         let r = ResourcePool::new();
 
-        //for i in 1..200 {
-        //    r.append(format!("127.37.0.{i}"));
-        //}
+        #[cfg(target_os = "linux")]
+        {
+            for i in 1..200 {
+                r.append(format!("127.37.0.{i}"));
+            }
+        }
 
-        r.append("127.0.0.1".to_owned());
+        #[cfg(not(target_os = "linux"))]
+        {
+            r.append("127.0.0.1".to_owned());
+        }
 
         r
     };
