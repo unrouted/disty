@@ -330,7 +330,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) {
+            if !value.locations.contains(&config.identifier) && value.locations.len() > 0 {
                 pblob.insert(key);
             }
         }
@@ -345,7 +345,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) {
+            if !value.locations.contains(&config.identifier) && value.locations.len() > 0 {
                 pmanifest.insert(key);
             }
         }
@@ -1412,14 +1412,18 @@ impl RegistryStore {
         let pblobs = get_blobs(&blobs)
             .unwrap()
             .iter()
-            .filter(|(_handle, blob)| !blob.locations.contains(&config.identifier))
+            .filter(|(_handle, blob)| {
+                !blob.locations.contains(&config.identifier) && blob.locations.len() > 0
+            })
             .map(|(digest, _)| digest.clone())
             .collect();
 
         let pmans = get_manifests(&manifests)
             .unwrap()
             .iter()
-            .filter(|(_, manifest)| !manifest.locations.contains(&config.identifier))
+            .filter(|(_, manifest)| {
+                !manifest.locations.contains(&config.identifier) && manifest.locations.len() > 0
+            })
             .map(|(digest, _)| digest.clone())
             .collect();
 
