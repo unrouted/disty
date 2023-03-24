@@ -1,5 +1,4 @@
 use crate::app::RegistryApp;
-use crate::config::Configuration;
 use crate::types::RepositoryName;
 use actix_web::{http::Error, web::Data, FromRequest, HttpRequest};
 use futures_util::future::{ready, Ready};
@@ -120,12 +119,9 @@ impl FromRequest for Token {
         req: &HttpRequest,
         _payload: &mut actix_web::dev::Payload,
     ) -> <Self as FromRequest>::Future {
-        //FIXME
-        let config = Configuration::default();
+        let app = req.app_data::<Data<RegistryApp>>().unwrap();
 
-        let _app = req.app_data::<Data<RegistryApp>>().unwrap();
-
-        let config = match &config.token_server {
+        let config = match &app.config.token_server {
             None => {
                 return ready(Ok(Token {
                     access: vec![],
