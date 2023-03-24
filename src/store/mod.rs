@@ -1229,7 +1229,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             location, digest, ..
                         } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
-                                if !blob.locations.contains(&self.config.identifier) {
+                                if !blob.locations.contains(&self.config.identifier)
+                                    && blob.locations.len() > 0
+                                {
                                     pending_blobs.insert(digest.clone());
                                 } else {
                                     pending_blobs.remove(digest);
@@ -1245,7 +1247,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         }
                         RegistryAction::BlobUnstored { digest, .. } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
-                                if !blob.locations.contains(&self.config.identifier) {
+                                if !blob.locations.contains(&self.config.identifier)
+                                    && blob.locations.len() > 0
+                                {
                                     pending_blobs.insert(digest.clone());
                                 } else {
                                     pending_blobs.remove(digest);
@@ -1256,7 +1260,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             location, digest, ..
                         } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
-                                if !manifest.locations.contains(&self.config.identifier) {
+                                if !manifest.locations.contains(&self.config.identifier)
+                                    && manifest.locations.len() > 0
+                                {
                                     pending_manifests.insert(digest.clone());
                                 } else {
                                     pending_manifests.remove(digest);
@@ -1272,7 +1278,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         }
                         RegistryAction::ManifestUnstored { digest, .. } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
-                                if !manifest.locations.contains(&self.config.identifier) {
+                                if !manifest.locations.contains(&self.config.identifier)
+                                    && manifest.locations.len() > 0
+                                {
                                     pending_manifests.insert(digest.clone());
                                 } else {
                                     pending_manifests.remove(digest);

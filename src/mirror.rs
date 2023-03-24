@@ -72,6 +72,14 @@ async fn do_transfer(
                     return MirrorResult::None;
                 }
 
+                if blob.locations.len() == 0 {
+                    debug!(
+                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
+                        blob.locations, app.config.identifier
+                    );
+                    return MirrorResult::None;
+                }
+
                 (digest, blob.locations, "blobs")
             }
             None => {
@@ -83,6 +91,14 @@ async fn do_transfer(
             Some(manifest) => {
                 if manifest.locations.contains(&app.config.identifier) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
+                    return MirrorResult::None;
+                }
+
+                if manifest.locations.len() == 0 {
+                    debug!(
+                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
+                        manifest.locations, app.config.identifier
+                    );
                     return MirrorResult::None;
                 }
 
