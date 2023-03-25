@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use openraft::error::ForwardToLeader;
 use prometheus_client::registry::Registry;
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
@@ -42,23 +43,21 @@ impl RegistryApp {
                 return true;
             }
             Err(e) => {
-                tracing::error!("local submit error: {:?}", e);
-            }
-        }
-
-        // FIXME: This is super dumb
-        for _i in 1..4 {
-            for (idx, peer) in self.config.peers.iter().enumerate() {
-                let client = RegistryClient::new(
-                    (idx + 1) as u64,
-                    format!("{}:{}", peer.raft.address, peer.raft.port),
-                    None,
-                );
-                let resp = client.write(&req).await;
-                if resp.is_ok() {
-                    return true;
+                if let Some(ForwardToLeader {
+                    leader_id: Some(leader_id),
+                    leader_node: Some(leader_node),
+                }) = e.forward_to_leader()
+                {
+                    let client = RegistryClient::new(*leader_id, leader_node.addr.clone(), None);
+                    let resp = client.write(&req).await;
+                    if resp.is_ok() {
+                        return true;
+                    }
+                    tracing::error!("Unhandled error processing submission: {:?}", e);
+                } else {
+                    tracing::error!("Unhandled error processing submission: {:?}", e);
+                    return false;
                 }
-                tracing::error!("submit error: {:?}", resp);
             }
         }
 
