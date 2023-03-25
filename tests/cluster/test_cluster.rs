@@ -485,7 +485,10 @@ async fn get_root() {
     let client = &cluster.peers.get(0).unwrap().client;
     let url = cluster.peers.get(0).unwrap().url.clone();
 
-    let resp = client.get(url).send().await.unwrap();
+    let resp = client.get(url.clone()).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = client.head(url).send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 

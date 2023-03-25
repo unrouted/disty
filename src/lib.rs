@@ -198,7 +198,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             // tags
             .service(registry::tags::get::get)
             // roots
-            .service(registry::get::get);
+            .service(registry::get::get)
+            .service(registry::head::head);
 
         App::new()
             .wrap(Logger::default())
