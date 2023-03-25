@@ -830,78 +830,42 @@ async fn delete_blob() {
 #[tokio::test]
 async fn upload_manifest() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
 
-    let payload = json!({
-        "schemaVersion": 2,
-        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
-        "manifests": []
-    });
+    for peer in cluster.peers.iter() {
+        let client = &peer.client;
+        let url = peer.url.clone();
 
-    {
-        let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+        let payload = json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
 
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            "application/vnd.docker.distribution.manifest.list.v2+json"
-                .parse()
-                .unwrap(),
-        );
+        {
+            let url = url.clone().join("foo/bar/manifests/latest").unwrap();
 
-        let resp = client
-            .put(url)
-            .json(&payload)
-            .headers(headers)
-            .send()
-            .await
-            .unwrap();
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                CONTENT_TYPE,
+                "application/vnd.docker.distribution.manifest.list.v2+json"
+                    .parse()
+                    .unwrap(),
+            );
 
-        assert_eq!(resp.status(), StatusCode::CREATED);
-    }
+            let resp = client
+                .put(url)
+                .json(&payload)
+                .headers(headers)
+                .send()
+                .await
+                .unwrap();
 
-    {
-        let url = url.join("foo/bar/manifests/latest").unwrap();
-        let resp = client.get(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(
-            resp.headers()
-                .get("content-length")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "106"
-        );
-        let value: Value = resp.json().await.unwrap();
-        assert_eq!(value, payload);
-    }
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
 
-    cluster
-        .head_all(
-            "foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1",
-            |resp| {
-                if resp.status() == StatusCode::NOT_FOUND {
-                    return true;
-                }
-                assert_eq!(resp.status(), StatusCode::OK);        assert_eq!(
-                    resp.headers()
-                        .get("content-length")
-                        .unwrap()
-                        .to_str()
-                        .unwrap(),
-                    "106"
-                );
-                false
-            },
-        )
-        .await;
-
-    cluster
-        .head_all("foo/bar/manifests/latest", |resp| {
-            if resp.status() == StatusCode::NOT_FOUND {
-                return true;
-            }
+        {
+            let url = url.join("foo/bar/manifests/latest").unwrap();
+            let resp = client.get(url).send().await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK);
             assert_eq!(
                 resp.headers()
@@ -911,40 +875,79 @@ async fn upload_manifest() {
                     .unwrap(),
                 "106"
             );
+            let value: Value = resp.json().await.unwrap();
+            assert_eq!(value, payload);
+        }
+
+        cluster
+    .head_all(
+        "foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1",
+        |resp| {
+            if resp.status() == StatusCode::NOT_FOUND {
+                return true;
+            }
+            assert_eq!(resp.status(), StatusCode::OK);        assert_eq!(
+                resp.headers()
+                .get("content-length")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+                "106"
+            );
             false
-        })
-        .await;
+        },
+    )
+    .await;
 
-    {
-        let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
-        let resp = client.get(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(
-            resp.headers()
-                .get("content-length")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "106"
-        );
-        let value: Value = resp.json().await.unwrap();
-        assert_eq!(value, payload);
-    }
+        cluster
+            .head_all("foo/bar/manifests/latest", |resp| {
+                if resp.status() == StatusCode::NOT_FOUND {
+                    return true;
+                }
+                assert_eq!(resp.status(), StatusCode::OK);
+                assert_eq!(
+                    resp.headers()
+                        .get("content-length")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    "106"
+                );
+                false
+            })
+            .await;
 
-    {
-        let url = url.join("foo/bar/manifests/latest").unwrap();
-        let resp = client.get(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(
-            resp.headers()
-                .get("content-length")
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "106"
-        );
-        let value: Value = resp.json().await.unwrap();
-        assert_eq!(value, payload);
+        {
+            let url = url.join("foo/bar/manifests/sha256:a3f9bc842ffddfb3d3deed4fac54a2e8b4ac0e900d2a88125cd46e2947485ed1").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(
+                resp.headers()
+                    .get("content-length")
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                "106"
+            );
+            let value: Value = resp.json().await.unwrap();
+            assert_eq!(value, payload);
+        }
+
+        {
+            let url = url.join("foo/bar/manifests/latest").unwrap();
+            let resp = client.get(url).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(
+                resp.headers()
+                    .get("content-length")
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                "106"
+            );
+            let value: Value = resp.json().await.unwrap();
+            assert_eq!(value, payload);
+        }
     }
 }
 
