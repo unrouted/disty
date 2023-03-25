@@ -148,6 +148,7 @@ impl FromRequest for Token {
                 }));
             }
         };
+        let header2 = header.clone();
 
         let (token_type, token_bytes) = match header.split_once(' ') {
             Some(value) => value,
@@ -180,7 +181,7 @@ impl FromRequest for Token {
         {
             Ok(claims) => claims,
             Err(error) => {
-                info!("Could not verify token: {error}");
+                info!("Could not verify token: '{header2}': {error}");
                 // return Outcome::Failure((Status::Forbidden, TokenError::Missing));
                 panic!("MEH2");
             }
