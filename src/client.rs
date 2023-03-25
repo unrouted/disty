@@ -10,7 +10,10 @@ use openraft::error::RemoteError;
 use openraft::BasicNode;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
-use reqwest::Client;
+use reqwest_middleware::ClientBuilder;
+use reqwest_middleware::ClientWithMiddleware;
+use reqwest_retry::policies::ExponentialBackoff;
+use reqwest_retry::RetryTransientMiddleware;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
@@ -30,15 +33,20 @@ pub struct RegistryClient {
     /// All traffic should be sent to the leader in a cluster.
     pub leader: Arc<Mutex<(RegistryNodeId, String)>>,
 
-    pub inner: Client,
+    pub inner: ClientWithMiddleware,
 }
 
 impl RegistryClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
     pub fn new(leader_id: RegistryNodeId, leader_addr: String) -> Self {
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+        let client = ClientBuilder::new(reqwest::Client::new())
+            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+            .build();
+
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),
-            inner: reqwest::Client::new(),
+            inner: client,
         }
     }
 
