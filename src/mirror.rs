@@ -72,7 +72,7 @@ async fn do_transfer(
                     return MirrorResult::None;
                 }
 
-                if blob.locations.len() == 0 {
+                if blob.locations.is_empty() {
                     debug!(
                         "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
                         blob.locations, app.config.identifier
@@ -94,7 +94,7 @@ async fn do_transfer(
                     return MirrorResult::None;
                 }
 
-                if manifest.locations.len() == 0 {
+                if manifest.locations.is_empty() {
                     debug!(
                         "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
                         manifest.locations, app.config.identifier

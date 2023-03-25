@@ -330,7 +330,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) && value.locations.len() > 0 {
+            if !value.locations.contains(&config.identifier) && !value.locations.is_empty() {
                 pblob.insert(key);
             }
         }
@@ -345,7 +345,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) && value.locations.len() > 0 {
+            if !value.locations.contains(&config.identifier) && !value.locations.is_empty() {
                 pmanifest.insert(key);
             }
         }
@@ -1230,7 +1230,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
                                 if !blob.locations.contains(&self.config.identifier)
-                                    && blob.locations.len() > 0
+                                    && !blob.locations.is_empty()
                                 {
                                     pending_blobs.insert(digest.clone());
                                 } else {
@@ -1248,7 +1248,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         RegistryAction::BlobUnstored { digest, .. } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
                                 if !blob.locations.contains(&self.config.identifier)
-                                    && blob.locations.len() > 0
+                                    && !blob.locations.is_empty()
                                 {
                                     pending_blobs.insert(digest.clone());
                                 } else {
@@ -1261,7 +1261,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
                                 if !manifest.locations.contains(&self.config.identifier)
-                                    && manifest.locations.len() > 0
+                                    && !manifest.locations.is_empty()
                                 {
                                     pending_manifests.insert(digest.clone());
                                 } else {
@@ -1279,7 +1279,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         RegistryAction::ManifestUnstored { digest, .. } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
                                 if !manifest.locations.contains(&self.config.identifier)
-                                    && manifest.locations.len() > 0
+                                    && !manifest.locations.is_empty()
                                 {
                                     pending_manifests.insert(digest.clone());
                                 } else {
@@ -1413,7 +1413,7 @@ impl RegistryStore {
             .unwrap()
             .iter()
             .filter(|(_handle, blob)| {
-                !blob.locations.contains(&config.identifier) && blob.locations.len() > 0
+                !blob.locations.contains(&config.identifier) && !blob.locations.is_empty()
             })
             .map(|(digest, _)| digest.clone())
             .collect();
@@ -1422,7 +1422,7 @@ impl RegistryStore {
             .unwrap()
             .iter()
             .filter(|(_, manifest)| {
-                !manifest.locations.contains(&config.identifier) && manifest.locations.len() > 0
+                !manifest.locations.contains(&config.identifier) && !manifest.locations.is_empty()
             })
             .map(|(digest, _)| digest.clone())
             .collect();

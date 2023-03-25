@@ -1129,8 +1129,7 @@ async fn import_old_snapshot() {
             ._tempdir
             .path()
             .to_owned()
-            .to_string_lossy()
-            .to_string(),
+            .to_string_lossy(),
         &Digest::from_str(
             "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5",
         )
@@ -1146,8 +1145,7 @@ async fn import_old_snapshot() {
             ._tempdir
             .path()
             .to_owned()
-            .to_string_lossy()
-            .to_string(),
+            .to_string_lossy(),
         &Digest::from_str(
             "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",
         )
