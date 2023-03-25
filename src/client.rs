@@ -38,11 +38,16 @@ pub struct RegistryClient {
 
 impl RegistryClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
-    pub fn new(leader_id: RegistryNodeId, leader_addr: String) -> Self {
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
-        let client = ClientBuilder::new(reqwest::Client::new())
-            .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-            .build();
+    pub fn new(
+        leader_id: RegistryNodeId,
+        leader_addr: String,
+        retry_policy: Option<ExponentialBackoff>,
+    ) -> Self {
+        let mut builder = ClientBuilder::new(reqwest::Client::new());
+        if let Some(retry_policy) = retry_policy {
+            builder = builder.with(RetryTransientMiddleware::new_with_policy(retry_policy));
+        }
+        let client = builder.build();
 
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),

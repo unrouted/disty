@@ -432,7 +432,12 @@ async fn configure() -> anyhow::Result<TestCluster> {
             rt.shutdown_timeout(Duration::from_secs(5));
         });
 
-        let backend = RegistryClient::new(id, format!("{}:{}", address.clone(), config.raft.port));
+        let retry_policy = Some(ExponentialBackoff::builder().build_with_max_retries(3));
+        let backend = RegistryClient::new(
+            id,
+            format!("{}:{}", address.clone(), config.raft.port),
+            retry_policy,
+        );
 
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
         let client = ClientBuilder::new(reqwest::Client::new())

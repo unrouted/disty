@@ -11,6 +11,7 @@ use distribd::types::RegistryAction;
 use distribd::utils::{get_blob_path, get_manifest_path};
 use distribd::RegistryTypeConfig;
 use openraft::Raft;
+use reqwest_retry::policies::ExponentialBackoff;
 use serde_json::from_str;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
@@ -77,6 +78,13 @@ async fn main() -> anyhow::Result<()> {
         config.identifier = name;
     }
 
+    let retry_policy = Some(ExponentialBackoff {
+        max_n_retries: 3,
+        max_retry_interval: std::time::Duration::from_millis(30),
+        min_retry_interval: std::time::Duration::from_millis(100),
+        backoff_exponent: 2,
+    });
+
     match options.action {
         Action::Serve => {
             let tasks = start_raft_node(config).await.unwrap();
@@ -92,42 +100,42 @@ async fn main() -> anyhow::Result<()> {
             tasks.notify_one();
         }
         Action::Init { address, port } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.init(address).await?;
             print!("Cluster initialized");
         }
         Action::AddLearner { id, address, port } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.add_learner((id, address)).await?;
             print!("Learner added");
         }
         Action::ChangeMembership { ids } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let ids = ids.into_iter().collect();
             client.change_membership(&ids).await?;
             print!("Membership changed");
         }
         Action::Import { path } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let payload = tokio::fs::read_to_string(path).await?;
             let body: ImportBody = from_str(&payload)?;
             client.import(&body).await?;
             println!("Data imported");
         }
         Action::Export {} => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let body = client.export().await?;
             println!("{}", serde_json::to_string(&body)?);
         }
         Action::Metrics {} => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let metrics = client.metrics().await?;
             println!("{:?}", metrics);
         }
         Action::Fsck { repair } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string());
+            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
             let mut body = client.export().await?;
 
             let mut fixes = vec![];

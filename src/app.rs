@@ -52,6 +52,7 @@ impl RegistryApp {
                 let client = RegistryClient::new(
                     (idx + 1) as u64,
                     format!("{}:{}", peer.raft.address, peer.raft.port),
+                    None,
                 );
                 let resp = client.write(&req).await;
                 if resp.is_ok() {
