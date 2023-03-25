@@ -1,10 +1,31 @@
 use crate::app::RegistryApp;
 use crate::types::RepositoryName;
-use actix_web::{http::Error, web::Data, FromRequest, HttpRequest};
+use actix_web::{
+    web::Data, FromRequest, HttpRequest, HttpResponse, HttpResponseBuilder, ResponseError,
+};
 use futures_util::future::{ready, Ready};
 use jwt_simple::prelude::*;
 use std::collections::HashSet;
+use thiserror::Error;
 use tracing::{debug, info};
+
+#[derive(Debug, Error)]
+pub enum TokenError {
+    #[error("The authorization token is missing")]
+    Missing,
+    #[error("The authorization token contains invalid data")]
+    Invalid,
+}
+
+impl ResponseError for TokenError {
+    fn status_code(&self) -> reqwest::StatusCode {
+        reqwest::StatusCode::FORBIDDEN
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponseBuilder::new(self.status_code()).finish()
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Access {
@@ -113,7 +134,7 @@ impl Token {
 
 impl FromRequest for Token {
     type Future = Ready<Result<Self, Self::Error>>;
-    type Error = Error;
+    type Error = TokenError;
 
     fn from_request(
         req: &HttpRequest,
@@ -148,18 +169,15 @@ impl FromRequest for Token {
                 }));
             }
         };
-        let header2 = header.clone();
 
         let (token_type, token_bytes) = match header.split_once(' ') {
             Some(value) => value,
-            _ => {
-                panic!("MEH");
-            } //return Outcome::Failure((Status::Forbidden, TokenError::Missing)),
+            _ => return ready(Err(TokenError::Missing)),
         };
 
         if token_type.to_lowercase() != "bearer" {
             info!("Not bearer token");
-            // return Outcome::Failure((Status::Forbidden, TokenError::Missing));
+            return ready(Err(TokenError::Invalid));
         }
 
         let options = VerificationOptions {
@@ -181,9 +199,8 @@ impl FromRequest for Token {
         {
             Ok(claims) => claims,
             Err(error) => {
-                info!("Could not verify token: '{header2}': {error}");
-                // return Outcome::Failure((Status::Forbidden, TokenError::Missing));
-                panic!("MEH2");
+                info!("Could not verify token: {error}");
+                return ready(Err(TokenError::Invalid));
             }
         };
 
@@ -191,8 +208,7 @@ impl FromRequest for Token {
             Some(subject) => subject,
             _ => {
                 info!("Could not retrieve subject from token");
-                // return Outcome::Failure((Status::Forbidden, TokenError::Missing));
-                panic!("MEH3")
+                return ready(Err(TokenError::Invalid));
             }
         };
 

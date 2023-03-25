@@ -829,6 +829,7 @@ dependencies = [
  "simple-pool",
  "sled",
  "tempfile",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-futures",
