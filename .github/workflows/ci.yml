@@ -21,16 +21,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Annotate commit with clippy warnings
-        uses: actions-rs/clippy-check@v1
+      - uses: giraffate/clippy-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
-
-      #- name: Security audit
-      #  uses: actions-rs/audit-check@v1
-      #  with:
-      #    token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: 'github-pr-review'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   rustfmt:
     name: rustfmt
