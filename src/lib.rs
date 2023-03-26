@@ -80,13 +80,15 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
 }
 
 pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>> {
-    let _guard = conf.sentry.as_ref().map(|config| sentry::init((
+    let _guard = conf.sentry.as_ref().map(|config| {
+        sentry::init((
             config.endpoint.clone(),
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 ..Default::default()
             },
-        )));
+        ))
+    });
 
     create_dir(&conf.storage, "uploads")?;
     create_dir(&conf.storage, "manifests")?;
