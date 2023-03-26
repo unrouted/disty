@@ -50,6 +50,8 @@ futures-util = "0.3.27"
 thiserror = "1.0.40"
 reqwest-retry = "0.2.2"
 reqwest-middleware = "0.2.1"
+sentry = "0.30.0"
+sentry-actix = "0.30.0"
 
 [dev-dependencies]
 maplit = "1.0.2"

@@ -126,6 +126,11 @@ pub struct ScrubberConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ScrubberConfig {
+    pub endpoing: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub identifier: String,
     pub raft: RaftConfig,
@@ -137,6 +142,7 @@ pub struct Configuration {
     pub peers: Vec<PeerConfig>,
     pub webhooks: Vec<WebhookConfig>,
     pub scrubber: ScrubberConfig,
+    pub sentry: Option<SentryConfig>,
 }
 
 impl Default for Configuration {
@@ -152,6 +158,7 @@ impl Default for Configuration {
             peers: vec![],
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
+            sentry: None,
         }
     }
 }
