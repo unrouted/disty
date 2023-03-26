@@ -3,14 +3,16 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use actix_web::middleware;
 use actix_web::middleware::Logger;
+use actix_web::middleware::{Compress, NormalizePath};
 use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
 use config::Configuration;
 use extractor::Extractor;
+use middleware::prometheus::Port;
+use middleware::prometheus::PrometheusHttpMetrics;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
@@ -31,6 +33,7 @@ pub mod client;
 pub mod config;
 pub mod extractor;
 pub mod extractors;
+pub mod middleware;
 pub mod mirror;
 pub mod network;
 pub mod prometheus;
@@ -157,10 +160,11 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     // Start the actix-web server.
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(PrometheusHttpMetrics::new(app1.clone(), Port::Raft))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .wrap(middleware::Compress::default())
+            .wrap(Compress::default())
             .app_data(app1.clone())
             // raft internal RPC
             .service(raft::append)
@@ -187,7 +191,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     .disable_signals()
     .run();
 
-    let registry = HttpServer::new(move || {
+    let registry_server = HttpServer::new(move || {
         let registry_api = web::scope("/v2")
             //   blob upload
             .service(registry::blobs::uploads::delete::delete)
@@ -214,10 +218,11 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(registry::head::head);
 
         App::new()
+            .wrap(PrometheusHttpMetrics::new(app.clone(), Port::Registry))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .wrap(middleware::NormalizePath::trim())
+            .wrap(NormalizePath::trim())
             // we can't use compression because it enables transfer-encoding: chunked which breaks content-length which breaks containerd
             // .wrap(middleware::Compress::default())
             .app_data(app.clone())
@@ -233,16 +238,17 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     let raft_handle = server.handle();
     let _handle1 = tokio::spawn(server);
 
-    let registry_handle = registry.handle();
-    let _handle2 = tokio::spawn(registry);
+    let registry_handle = registry_server.handle();
+    let _handle2 = tokio::spawn(registry_server);
 
     // Start the actix-web server.
     let prometheus = HttpServer::new(move || {
         App::new()
+            .wrap(PrometheusHttpMetrics::new(app4.clone(), Port::Prometheus))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
-            .wrap(middleware::Compress::default())
+            .wrap(Compress::default())
             .app_data(app4.clone())
             .service(prometheus::metrics)
             .service(prometheus::healthz)
