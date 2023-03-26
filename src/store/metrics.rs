@@ -145,7 +145,7 @@ pub(crate) fn start_watching_metrics(app: Data<RegistryApp>) {
                 }
 
                 for (peer, peer_metrics) in &replication.data().replication {
-                    let labels = RaftPeerLabels { node: peer.clone() };
+                    let labels = RaftPeerLabels { node: *peer };
                     if let Ok(last_log_index) = peer_metrics.matched().index.try_into() {
                         mout.matched_index
                             .get_or_create(&labels)
