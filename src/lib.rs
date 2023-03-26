@@ -77,9 +77,9 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
 }
 
 pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>> {
-    let _guard = match conf.sentry {
+    let _guard = match &conf.sentry {
         Some(config) => Some(sentry::init((
-            config.endpoint,
+            config.endpoint.clone(),
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 ..Default::default()
@@ -157,6 +157,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     // Start the actix-web server.
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::Compress::default())
@@ -213,6 +214,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(registry::head::head);
 
         App::new()
+            .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::NormalizePath::trim())
@@ -237,6 +239,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     // Start the actix-web server.
     let prometheus = HttpServer::new(move || {
         App::new()
+            .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
             .wrap(Logger::new("%a %{User-Agent}i"))
             .wrap(middleware::Compress::default())

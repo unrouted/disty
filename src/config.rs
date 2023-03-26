@@ -126,8 +126,8 @@ pub struct ScrubberConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ScrubberConfig {
-    pub endpoing: String,
+pub struct SentryConfig {
+    pub endpoint: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
