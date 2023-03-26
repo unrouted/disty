@@ -111,7 +111,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     let db: sled::Db = sled::open(&path).unwrap_or_else(|_| panic!("could not open: {:?}", path));
 
     // Create a instance of where the Raft data will be stored.
-    let store = RegistryStore::new(Arc::new(db), conf.clone()).await;
+    let store = RegistryStore::new(Arc::new(db), conf.clone(), &mut registry).await;
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.

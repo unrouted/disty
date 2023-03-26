@@ -45,7 +45,9 @@ impl StoreBuilder<RegistryTypeConfig, Arc<RegistryStore>> for SledBuilder {
             let db: sled::Db = sled::open(db_dir)
                 .unwrap_or_else(|_| panic!("could not open: {:?}", db_dir.to_str()));
 
-            let store = RegistryStore::new(Arc::new(db), Configuration::default()).await;
+            let mut registry = <prometheus_client::registry::Registry>::default();
+            let store =
+                RegistryStore::new(Arc::new(db), Configuration::default(), &mut registry).await;
             let test_res = t(store).await;
 
             if db_dir.exists() {

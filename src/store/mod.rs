@@ -34,6 +34,7 @@ use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::StoredMembership;
 use openraft::Vote;
+use prometheus_client::registry::Registry;
 use serde::Deserialize;
 use serde::Serialize;
 use sled::transaction::TransactionalTree;
@@ -50,6 +51,10 @@ use crate::types::RegistryAction;
 use crate::types::RepositoryName;
 use crate::types::TagKey;
 use crate::RegistryTypeConfig;
+
+use self::metrics::StorageMetrics;
+
+pub mod metrics;
 
 pub type RegistryNodeId = u64;
 
@@ -109,6 +114,7 @@ pub struct SerializableRegistryStateMachine {
 pub struct RegistryStateMachine {
     /// Application data.
     pub db: Arc<sled::Db>,
+    pub metrics: StorageMetrics,
     pub pending_manifests: Arc<Sender<HashSet<Digest>>>,
     pub pending_blobs: Arc<Sender<HashSet<Digest>>>,
     pub manifest_waiters: HashMap<Digest, Vec<tokio::sync::oneshot::Sender<()>>>,
@@ -257,11 +263,9 @@ impl RegistryStateMachine {
             .insert(b"last_membership", value)
             .map_err(m_w_err)?;
 
-        state_machine
-            .flush_async()
-            .await
-            .map_err(m_w_err)
-            .map(|_| ())
+        let flushed = state_machine.flush_async().await.map_err(m_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
     fn set_last_membership_tx(
         &self,
@@ -292,11 +296,9 @@ impl RegistryStateMachine {
             .insert(b"last_applied_log", value)
             .map_err(l_r_err)?;
 
-        state_machine
-            .flush_async()
-            .await
-            .map_err(l_r_err)
-            .map(|_| ())
+        let flushed = state_machine.flush_async().await.map_err(l_r_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
     fn set_last_applied_log_tx(
         &self,
@@ -313,6 +315,7 @@ impl RegistryStateMachine {
         config: Configuration,
         sm: SerializableRegistryStateMachine,
         db: Arc<sled::Db>,
+        metrics: StorageMetrics,
     ) -> StorageResult<Self> {
         let data_tree = data(&db);
         let mut batch = sled::Batch::default();
@@ -320,7 +323,8 @@ impl RegistryStateMachine {
             batch.insert(key.as_bytes(), value.as_bytes())
         }
         data_tree.apply_batch(batch).map_err(sm_w_err)?;
-        data_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = data_tree.flush_async().await.map_err(s_w_err)?;
+        metrics.flushed_bytes.inc_by(flushed as u64);
 
         let mut pblob = HashSet::new();
         let blob_tree = blobs(&db);
@@ -335,7 +339,8 @@ impl RegistryStateMachine {
             }
         }
         blob_tree.apply_batch(batch).map_err(sm_w_err)?;
-        blob_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = blob_tree.flush_async().await.map_err(s_w_err)?;
+        metrics.flushed_bytes.inc_by(flushed as u64);
 
         let mut pmanifest = HashSet::new();
         let manifest_tree = manifests(&db);
@@ -350,7 +355,8 @@ impl RegistryStateMachine {
             }
         }
         manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
-        manifest_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = manifest_tree.flush_async().await.map_err(s_w_err)?;
+        metrics.flushed_bytes.inc_by(flushed as u64);
 
         let tag_tree = tags(&db);
         let mut batch = sled::Batch::default();
@@ -367,13 +373,15 @@ impl RegistryStateMachine {
             }
         }
         tag_tree.apply_batch(batch).map_err(sm_w_err)?;
-        tag_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = tag_tree.flush_async().await.map_err(s_w_err)?;
+        metrics.flushed_bytes.inc_by(flushed as u64);
 
         let (pending_blobs, _) = channel(pblob);
         let (pending_manifests, _) = channel(pmanifest);
 
         let r = Self {
             db,
+            metrics,
             pending_blobs: Arc::new(pending_blobs),
             pending_manifests: Arc::new(pending_manifests),
             manifest_waiters: HashMap::new(),
@@ -389,6 +397,7 @@ impl RegistryStateMachine {
 
     fn new(
         db: Arc<sled::Db>,
+        metrics: StorageMetrics,
         blobs: HashSet<Digest>,
         manifests: HashSet<Digest>,
     ) -> RegistryStateMachine {
@@ -396,6 +405,7 @@ impl RegistryStateMachine {
         let (pending_manifests, _) = channel(manifests);
         Self {
             db,
+            metrics,
             pending_blobs: Arc::new(pending_blobs),
             pending_manifests: Arc::new(pending_manifests),
             manifest_waiters: HashMap::new(),
@@ -560,6 +570,9 @@ pub struct RegistryStore {
 
     /// The Raft state machine.
     pub state_machine: RwLock<RegistryStateMachine>,
+
+    // Metrics
+    pub metrics: StorageMetrics,
 }
 
 type StorageResult<T> = Result<T, StorageError<RegistryNodeId>>;
@@ -597,7 +610,9 @@ impl RegistryStore {
             .insert(b"last_purged_log_id", val.as_slice())
             .map_err(s_w_err)?;
 
-        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     fn get_snapshot_index_(&self) -> StorageResult<u64> {
@@ -618,7 +633,9 @@ impl RegistryStore {
             .insert(b"snapshot_index", val.as_slice())
             .map_err(s_w_err)?;
 
-        store_tree.flush_async().await.map_err(s_w_err).map(|_| ())
+        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     async fn set_vote_(&self, vote: &Vote<RegistryNodeId>) -> StorageResult<()> {
@@ -629,7 +646,9 @@ impl RegistryStore {
             .map_err(v_w_err)
             .map(|_| ())?;
 
-        store_tree.flush_async().await.map_err(v_w_err).map(|_| ())
+        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     fn get_vote_(&self) -> StorageResult<Option<Vote<RegistryNodeId>>> {
@@ -666,18 +685,15 @@ impl RegistryStore {
                 ),
             })?;
 
-        store_tree
-            .flush_async()
-            .await
-            .map_err(|e| {
-                StorageIOError::new(
-                    ErrorSubject::Snapshot(meta.signature()),
-                    ErrorVerb::Write,
-                    AnyError::new(&e),
-                )
-                .into()
-            })
-            .map(|_| ())
+        let flushed = store_tree.flush_async().await.map_err(|e| {
+            StorageIOError::new(
+                ErrorSubject::Snapshot(meta.signature()),
+                ErrorVerb::Write,
+                AnyError::new(&e),
+            )
+        })?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 }
 
@@ -843,7 +859,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         }
         logs_tree.apply_batch(batch).map_err(l_w_err)?;
 
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -863,7 +881,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             batch_del.remove(entry.0);
         }
         logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -885,7 +905,9 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         }
         logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
 
-        logs_tree.flush_async().await.map_err(l_w_err).map(|_| ())
+        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
+        Ok(())
     }
 
     async fn last_applied_state(
@@ -1210,9 +1232,10 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             );
         let result_vec = trans_res.map_err(t_err)?;
 
-        self.db.flush_async().await.map_err(|e| {
+        let flushed = self.db.flush_async().await.map_err(|e| {
             StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e))
         })?;
+        self.metrics.flushed_bytes.inc_by(flushed as u64);
 
         let mut sm = self.state_machine.write().unwrap();
 
@@ -1340,6 +1363,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                 self.config.clone(),
                 updated_state_machine,
                 self.db.clone(),
+                self.metrics.clone(),
             )
             .await?;
             let mut state_machine = self.state_machine.write().unwrap();
@@ -1400,7 +1424,11 @@ pub fn get_manifests(tree: &Tree) -> StorageResult<BTreeMap<Digest, Manifest>> {
     Ok(manifests)
 }
 impl RegistryStore {
-    pub async fn new(db: Arc<sled::Db>, config: Configuration) -> Arc<RegistryStore> {
+    pub async fn new(
+        db: Arc<sled::Db>,
+        config: Configuration,
+        registry: &mut Registry,
+    ) -> Arc<RegistryStore> {
         let _store = store(&db);
         let _state_machine = state_machine(&db);
         let _data = data(&db);
@@ -1427,11 +1455,20 @@ impl RegistryStore {
             .map(|(digest, _)| digest.clone())
             .collect();
 
-        let state_machine = RwLock::new(RegistryStateMachine::new(db.clone(), pblobs, pmans));
+        let metrics = StorageMetrics::new(registry);
+
+        let state_machine = RwLock::new(RegistryStateMachine::new(
+            db.clone(),
+            metrics.clone(),
+            pblobs,
+            pmans,
+        ));
+
         Arc::new(RegistryStore {
             db,
             config,
             state_machine,
+            metrics,
         })
     }
 
