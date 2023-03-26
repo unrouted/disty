@@ -87,14 +87,14 @@ pub(crate) fn start_watching_metrics(app: Data<RegistryApp>) {
     let mut receiver = app.raft.metrics();
 
     tokio::spawn(async move {
-        while let Ok(_) = receiver.changed().await {
+        while receiver.changed().await.is_ok() {
             let metrics = receiver.borrow().clone();
 
             let mout = app.store.metrics.clone();
 
             if let Some(last_applied) = metrics.last_applied {
                 mout.applied_index
-                    .set(last_applied.index.clone().try_into().unwrap());
+                    .set(last_applied.index.try_into().unwrap());
             }
         }
     });
