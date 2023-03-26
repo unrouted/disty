@@ -267,6 +267,8 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
 
     let _mirrorer = tokio::spawn(crate::mirror::do_miroring(app3.clone()));
 
+    self::store::metrics::start_watching_metrics(app3.clone());
+
     tokio::spawn(async move {
         receiver.notified().await;
         drop(receiver);
