@@ -11,8 +11,7 @@ pub struct StorageMetrics {
     pub hs_index: Gauge,
     pub hs_term: Gauge,
     pub applied_index: Gauge,
-    pub first_index: Gauge,
-    pub last_index: Gauge,
+    pub applied_term: Gauge,
     pub snapshot_index: Gauge,
     pub snapshot_term: Gauge,
     pub flushed_bytes: Counter,
@@ -35,18 +34,11 @@ impl StorageMetrics {
             applied_index.clone(),
         );
 
-        let first_index = Gauge::default();
+        let applied_term = Gauge::default();
         registry.register(
-            "first_index",
-            "The first log entry in the journal",
-            first_index.clone(),
-        );
-
-        let last_index = Gauge::default();
-        registry.register(
-            "last_index",
-            "The last log entry in the journal",
-            last_index.clone(),
+            "applied_term",
+            "The latest applied term",
+            applied_term.clone(),
         );
 
         let snapshot_index = Gauge::default();
@@ -74,8 +66,7 @@ impl StorageMetrics {
             hs_index,
             hs_term,
             applied_index,
-            first_index,
-            last_index,
+            applied_term,
             snapshot_index,
             snapshot_term,
             flushed_bytes,
@@ -92,9 +83,34 @@ pub(crate) fn start_watching_metrics(app: Data<RegistryApp>) {
 
             let mout = app.store.metrics.clone();
 
+            if let Ok(current_term) = metrics.current_term.try_into() {
+                mout.hs_term.set(current_term);
+            }
+
+            if let Some(last_log_index) = metrics.last_log_index {
+                if let Ok(last_log_index) = last_log_index.try_into() {
+                    mout.hs_index.set(last_log_index);
+                }
+            }
+
             if let Some(last_applied) = metrics.last_applied {
-                mout.applied_index
-                    .set(last_applied.index.try_into().unwrap());
+                if let Ok(last_applied) = last_applied.index.try_into() {
+                    mout.applied_index.set(last_applied);
+                }
+
+                if let Ok(term) = last_applied.leader_id.term.try_into() {
+                    mout.applied_term.set(term);
+                }
+            }
+
+            if let Some(snapshot) = metrics.snapshot {
+                if let Ok(index) = snapshot.index.try_into() {
+                    mout.snapshot_index.set(index);
+                }
+
+                if let Ok(term) = snapshot.leader_id.term.try_into() {
+                    mout.snapshot_term.set(term);
+                }
             }
         }
     });
