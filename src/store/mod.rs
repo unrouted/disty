@@ -493,6 +493,13 @@ impl RegistryStateMachine {
             })
     }
 
+    fn tx_del_blob(&self, blobs: &TransactionalTree, digest: &Digest) -> StorageResult<()> {
+        let key = options().with_big_endian().serialize(digest).unwrap();
+        blobs.remove(key).map(|_value| ()).map_err(|e| {
+            StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+        })
+    }
+
     fn tx_get_manifest(
         &self,
         manifests: &TransactionalTree,
@@ -533,6 +540,13 @@ impl RegistryStateMachine {
             .map_err(|e| {
                 StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
             })
+    }
+
+    fn tx_del_manifest(&self, manifests: &TransactionalTree, digest: &Digest) -> StorageResult<()> {
+        let key = options().with_big_endian().serialize(digest).unwrap();
+        manifests.remove(key).map(|_value| ()).map_err(|e| {
+            StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into()
+        })
     }
 
     fn tx_put_tag(
@@ -998,8 +1012,13 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 {
                                                     blob.updated = *timestamp;
                                                     blob.locations.remove(location);
-                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                        .unwrap();
+                                                    if blob.locations.is_empty() {
+                                                        sm.tx_del_blob(tx_blob_tree, digest)
+                                                            .unwrap();
+                                                    } else {
+                                                        sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                            .unwrap();
+                                                    }
                                                 }
                                             }
                                             RegistryAction::BlobMounted {
@@ -1104,12 +1123,20 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                 {
                                                     manifest.updated = *timestamp;
                                                     manifest.locations.remove(location);
-                                                    sm.tx_put_manifest(
-                                                        tx_manifest_tree,
-                                                        digest,
-                                                        &manifest,
-                                                    )
-                                                    .unwrap();
+                                                    if manifest.locations.is_empty() {
+                                                        sm.tx_del_manifest(
+                                                            tx_manifest_tree,
+                                                            digest,
+                                                        )
+                                                        .unwrap();
+                                                    } else {
+                                                        sm.tx_put_manifest(
+                                                            tx_manifest_tree,
+                                                            digest,
+                                                            &manifest,
+                                                        )
+                                                        .unwrap();
+                                                    }
                                                 }
                                             }
                                             RegistryAction::ManifestMounted {
@@ -1563,6 +1590,72 @@ impl RegistryStore {
         }
 
         Ok(Some(digests))
+    }
+
+    pub fn get_all_tags(&self) -> StorageResult<BTreeMap<TagKey, Digest>> {
+        let opts = options().with_big_endian();
+
+        let tag_tree = tags(&self.db);
+        let r = tag_tree.iter();
+
+        let mut results = BTreeMap::new();
+
+        for row in r {
+            if let Ok((key, value)) = row {
+                let key = opts.deserialize::<TagKey>(&key).unwrap();
+                let value = opts.deserialize(&value).unwrap();
+                results.insert(key, value);
+                continue;
+            }
+            break;
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_orphaned_blobs(&self) -> StorageResult<BTreeMap<Digest, Blob>> {
+        let mut blobs = self.get_blobs()?;
+        let mut visited: HashSet<Digest> = HashSet::new();
+        let mut visiting: HashSet<Digest> = HashSet::new();
+
+        for manifest in self.get_manifests()?.values() {
+            if let Some(dependencies) = &manifest.dependencies {
+                visiting.extend(dependencies.iter().cloned());
+            }
+        }
+
+        while let Some(digest) = visiting.iter().next().cloned() {
+            match blobs.get(&digest) {
+                Some(blob) => match &blob.dependencies {
+                    Some(dependencies) => {
+                        visiting.extend(
+                            dependencies
+                                .iter()
+                                .cloned()
+                                .filter(|digest| !visited.contains(digest)),
+                        );
+                    }
+                    None => {}
+                },
+                _ => {
+                    tracing::debug!("Dangling dependency found: {digest} missing");
+                }
+            }
+
+            visiting.remove(&digest);
+            visited.insert(digest);
+        }
+
+        blobs.retain(|k, _| !visited.contains(&k));
+
+        Ok(blobs)
+    }
+
+    pub fn get_orphaned_manifests(&self) -> StorageResult<BTreeMap<Digest, Manifest>> {
+        let mut manifests = self.get_manifests()?;
+        let tags: HashSet<Digest> = self.get_all_tags()?.values().cloned().collect();
+        manifests.retain(|k, _| !tags.contains(k));
+        Ok(manifests)
     }
 }
 

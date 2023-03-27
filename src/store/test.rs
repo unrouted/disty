@@ -509,7 +509,6 @@ async fn can_tag_manifest() {
     );
 }
 
-/*
 #[tokio::test]
 async fn can_collect_orphaned_manifests() {
     let mut state = setup_state().await;
@@ -519,18 +518,18 @@ async fn can_collect_orphaned_manifests() {
     let digest1: Digest = "sha256:abcdefg".parse().unwrap();
     let digest2: Digest = "sha256:gfedcba".parse().unwrap();
 
-    state.dispatch_actions(
-        vec![
-            RegistryAction::ManifestStored {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                location: "test".to_string(),
-                digest: digest1.clone(),
-            },
+    state
+        .dispatch_actions(vec![
             RegistryAction::ManifestMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 repository: repository.clone(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
                 digest: digest1.clone(),
             },
             RegistryAction::HashTagged {
@@ -540,16 +539,16 @@ async fn can_collect_orphaned_manifests() {
                 digest: digest1.clone(),
                 tag: "latest".to_string(),
             },
-            RegistryAction::ManifestStored {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                location: "test".to_string(),
-                digest: digest2.clone(),
-            },
             RegistryAction::ManifestMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 repository: repository.clone(),
+                digest: digest2.clone(),
+            },
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
                 digest: digest2.clone(),
             },
             RegistryAction::HashTagged {
@@ -559,15 +558,15 @@ async fn can_collect_orphaned_manifests() {
                 digest: digest2,
                 tag: "latest".to_string(),
             },
-        ]
-    );
+        ])
+        .await;
 
-    let collected = state.get_orphaned_manifests();
+    let collected = state.store.get_orphaned_manifests().unwrap();
     assert_eq!(collected.len(), 1);
 
-    let entry = collected.first().unwrap();
-    assert_eq!(entry.digest, digest1);
-    assert!(entry.manifest.locations.contains("test"));
+    let entry = collected.iter().next().unwrap();
+    assert_eq!(entry.0, &digest1);
+    assert!(entry.1.locations.contains("test"));
 }
 
 #[tokio::test]
@@ -582,15 +581,9 @@ async fn can_collect_orphaned_blobs() {
     let digest4: Digest = "sha256:bbbbbbb".parse().unwrap();
     let manifest_digest: Digest = "sha256:ababababababa".parse().unwrap();
 
-    state.dispatch_actions(
-        vec![
+    state
+        .dispatch_actions(vec![
             // BLOB 1 DAG
-            RegistryAction::BlobStored {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                location: "test".to_string(),
-                digest: digest1.clone(),
-            },
             RegistryAction::BlobMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
@@ -601,12 +594,18 @@ async fn can_collect_orphaned_blobs() {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 location: "test".to_string(),
+                digest: digest1.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
                 digest: digest2.clone(),
             },
-            RegistryAction::BlobMounted {
+            RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                repository: repository.clone(),
+                location: "test".to_string(),
                 digest: digest2.clone(),
             },
             RegistryAction::BlobInfo {
@@ -616,12 +615,6 @@ async fn can_collect_orphaned_blobs() {
                 dependencies: vec![digest1.clone()],
             },
             // BLOB 2 DAG
-            RegistryAction::BlobStored {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                location: "test".to_string(),
-                digest: digest3.clone(),
-            },
             RegistryAction::BlobMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
@@ -632,12 +625,18 @@ async fn can_collect_orphaned_blobs() {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 location: "test".to_string(),
+                digest: digest3.clone(),
+            },
+            RegistryAction::BlobMounted {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                repository: repository.clone(),
                 digest: digest4.clone(),
             },
-            RegistryAction::BlobMounted {
+            RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                repository: repository.clone(),
+                location: "test".to_string(),
                 digest: digest4.clone(),
             },
             RegistryAction::BlobInfo {
@@ -647,16 +646,16 @@ async fn can_collect_orphaned_blobs() {
                 dependencies: vec![digest3],
             },
             // MANIFEST DAG
-            RegistryAction::ManifestStored {
-                timestamp: Utc::now(),
-                user: "test".to_string(),
-                location: "test".to_string(),
-                digest: manifest_digest.clone(),
-            },
             RegistryAction::ManifestMounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
                 repository: repository.clone(),
+                digest: manifest_digest.clone(),
+            },
+            RegistryAction::ManifestStored {
+                timestamp: Utc::now(),
+                user: "test".to_string(),
+                location: "test".to_string(),
                 digest: manifest_digest.clone(),
             },
             RegistryAction::ManifestInfo {
@@ -665,30 +664,26 @@ async fn can_collect_orphaned_blobs() {
                 content_type: "foo".to_string(),
                 dependencies: vec![digest4],
             },
-        ]
-    );
+        ])
+        .await;
 
-    let collected = state.get_orphaned_blobs();
+    let collected = state.store.get_orphaned_blobs().unwrap();
     assert_eq!(collected.len(), 2);
 
-    for blob in collected {
-        match &blob {
-            BlobEntry { blob, digest } if digest == &digest1 => {
-                assert_eq!(blob.dependencies.as_ref().unwrap().len(), 0);
-            }
-            BlobEntry { blob, digest } if digest == &digest2 => {
-                assert_eq!(blob.dependencies.as_ref().unwrap().len(), 1);
-            }
-            _ => {
-                panic!("Unexpected digest was collected")
-            }
+    for (digest, blob) in collected.iter() {
+        if digest == &digest1 {
+            assert_eq!(blob.dependencies.as_ref().unwrap().len(), 0);
+        } else if digest == &digest2 {
+            assert_eq!(blob.dependencies.as_ref().unwrap().len(), 1);
+        } else {
+            panic!("Unexpected digest was collected")
         }
     }
 
     // If we delete the manifest all blobs should now be garbage collected
 
-    state.dispatch_actions(
-        vec![
+    state
+        .dispatch_actions(vec![
             RegistryAction::ManifestUnmounted {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
@@ -701,10 +696,9 @@ async fn can_collect_orphaned_blobs() {
                 location: "test".to_string(),
                 digest: manifest_digest,
             },
-        ]
-    );
+        ])
+        .await;
 
-    let collected = state.get_orphaned_blobs();
+    let collected = state.store.get_orphaned_blobs().unwrap();
     assert_eq!(collected.len(), 4);
 }
-*/
