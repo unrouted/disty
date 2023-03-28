@@ -65,6 +65,7 @@ pub enum ExtractError {
 struct Extraction {
     digest: Digest,
     content_type: String,
+    size: Option<usize>,
 }
 
 impl Default for Extractor {
@@ -152,10 +153,11 @@ impl Extractor {
         if let Ok(manifest) = manifest {
             match manifest {
                 Manifest::DistributionManifestListV2 { manifests } => {
-                    for layer in manifests.iter() {
+                    for layer in manifests {
                         results.insert(Extraction {
-                            digest: layer.digest.clone(),
-                            content_type: layer.media_type.clone(),
+                            digest: layer.digest,
+                            content_type: layer.media_type,
+                            size: layer.size,
                         });
                     }
                 }
@@ -164,11 +166,13 @@ impl Extractor {
                     results.insert(Extraction {
                         digest: config.digest.clone(),
                         content_type: config.media_type,
+                        size: config.size,
                     });
-                    for layer in layers.iter() {
+                    for layer in layers {
                         results.insert(Extraction {
-                            digest: layer.digest.clone(),
-                            content_type: layer.media_type.clone(),
+                            digest: layer.digest,
+                            content_type: layer.media_type,
+                            size: layer.size,
                         });
                     }
                 }
@@ -179,6 +183,7 @@ impl Extractor {
                         results.insert(Extraction {
                             digest: layer.digest.clone(),
                             content_type: "application/octet-string".into(),
+                            size: None,
                         });
                     }
                 }
@@ -248,6 +253,13 @@ impl Extractor {
 
                         if !blob.repositories.contains(repository) {
                             return Err(ExtractError::UnknownError {});
+                        }
+
+                        if let Some(size) = extraction.size {
+                            if Some(size as u64) != blob.size {
+                                tracing::error!("Size mismatch");
+                                return Err(ExtractError::UnknownError {});
+                            }
                         }
                     }
                     _ => {
