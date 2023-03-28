@@ -74,7 +74,7 @@ pub(crate) async fn put(
         }
     };
 
-    match std::fs::rename(filename.clone(), dest.clone()) {
+    match tokio::fs::rename(filename.clone(), dest.clone()).await {
         Ok(_) => {}
         Err(_e) => {
             return Err(RegistryError::UploadInvalid {});

@@ -105,7 +105,7 @@ pub(crate) async fn put(
 
     let dest = app.get_manifest_path(&digest);
 
-    match std::fs::rename(upload_path, dest) {
+    match tokio::fs::rename(upload_path, dest).await {
         Ok(_) => {}
         Err(_) => {
             return Err(RegistryError::ManifestInvalid {});

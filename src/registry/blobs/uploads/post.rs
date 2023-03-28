@@ -123,7 +123,7 @@ pub(crate) async fn post(
                 }
             };
 
-            match std::fs::rename(filename, dest) {
+            match tokio::fs::rename(filename, dest).await {
                 Ok(_) => {}
                 Err(_) => {
                     return Err(RegistryError::UploadInvalid {});
