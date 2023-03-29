@@ -1646,7 +1646,7 @@ impl RegistryStore {
             visited.insert(digest);
         }
 
-        blobs.retain(|k, _| !visited.contains(&k));
+        blobs.retain(|k, _| !visited.contains(k));
 
         Ok(blobs)
     }
