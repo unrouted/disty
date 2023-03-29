@@ -6,14 +6,17 @@ use chrono::prelude::*;
 use jsonschema::JSONSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 use tracing::debug;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestV2Config {
     #[serde(rename = "mediaType")]
     pub media_type: String,
-    pub size: Option<usize>,
+    pub size: Option<u64>,
     pub digest: Digest,
 }
 
@@ -21,7 +24,7 @@ struct ManifestV2Config {
 struct ManifestV2Layer {
     #[serde(rename = "mediaType")]
     media_type: String,
-    size: Option<usize>,
+    size: Option<u64>,
     digest: Digest,
     urls: Option<Vec<String>>,
 }
@@ -62,10 +65,10 @@ pub enum ExtractError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Extraction {
-    digest: Digest,
-    content_type: String,
-    size: Option<usize>,
+pub struct Extraction {
+    pub digest: Digest,
+    pub content_type: String,
+    pub size: Option<u64>,
 }
 
 impl Default for Extractor {
@@ -140,6 +143,23 @@ impl Extractor {
             }
             _ => false,
         }
+    }
+
+    pub async fn parse_manifest(
+        &self,
+        path: PathBuf,
+        content_type: &str,
+    ) -> Result<HashSet<Extraction>, ExtractError> {
+        let data = match tokio::fs::read_to_string(&path).await {
+            Ok(data) => data,
+            _ => return Err(ExtractError::UnknownError {}),
+        };
+
+        if !self.validate(content_type, &data) {
+            return Err(ExtractError::SchemaValidationError {});
+        }
+
+        self.extract_one(content_type, &data)
     }
 
     fn extract_one(

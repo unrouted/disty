@@ -162,6 +162,9 @@ async fn main() -> anyhow::Result<()> {
             }
 
             println!("Checking {} manifests...", body.manifests.len());
+
+            let extractor = distribd::extractor::Extractor::new();
+
             for (digest, manifest) in body.manifests.iter_mut() {
                 if manifest.locations.contains(&config.identifier) {
                     let path = get_manifest_path(&config.storage, digest);
@@ -175,6 +178,37 @@ async fn main() -> anyhow::Result<()> {
                         });
                         manifest.locations.remove(&config.identifier);
                         continue;
+                    }
+
+                    match extractor
+                        .parse_manifest(path.clone(), manifest.content_type.as_ref().unwrap())
+                        .await
+                    {
+                        Ok(extractions) => {
+                            for extraction in extractions.iter() {
+                                match body.blobs.get(&extraction.digest) {
+                                    Some(blob) => {
+                                        for repo in manifest.repositories.iter() {
+                                            if !blob.repositories.contains(&repo) {
+                                                println!("Manifest is invalid: {}: Not all blobs are available for {}.", digest, repo)
+                                            }
+                                        }
+                                        if blob.size != extraction.size {
+                                            println!("Manifest is invalid: {}: Blob is wrong size: {:?} actual vs {:?} declared", digest, blob.size, extraction.size);
+                                        }
+                                    }
+                                    None => {
+                                        println!(
+                                            "Manifest is invalid: {}: Blob is missing",
+                                            digest
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Manifest: Manifest is not valid: {}: {:?}", digest, e);
+                        }
                     }
 
                     // check size is correct
