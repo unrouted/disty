@@ -25,6 +25,11 @@ pub(crate) async fn upload_part(filename: &std::path::Path, mut body: Payload) -
         };
     }
 
+    if let Err(err) = file.sync_all().await {
+        tracing::error!("Fsync failed: {:?}", err);
+        return false;
+    }
+
     true
 }
 
