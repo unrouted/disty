@@ -190,17 +190,19 @@ async fn main() -> anyhow::Result<()> {
                                     Some(blob) => {
                                         for repo in manifest.repositories.iter() {
                                             if !blob.repositories.contains(&repo) {
-                                                println!("Manifest is invalid: {}: Not all blobs are available for {}.", digest, repo)
+                                                println!("Manifest is invalid: {:?}: {}: Not all blobs are available for {}.", manifest.repositories, digest, repo)
                                             }
                                         }
-                                        if blob.size != extraction.size {
-                                            println!("Manifest is invalid: {}: Blob is wrong size: {:?} actual vs {:?} declared", digest, blob.size, extraction.size);
+                                        if let Some(size) = extraction.size {
+                                            if blob.size != Some(size) {
+                                                println!("Manifest is invalid: {:?}: {}: Blob {} is wrong size: {:?} actual vs {:?} declared ({} / {})", manifest.repositories, digest, extraction.digest, blob.size, extraction.size, manifest.created, manifest.updated);
+                                            }
                                         }
                                     }
                                     None => {
                                         println!(
-                                            "Manifest is invalid: {}: Blob is missing",
-                                            digest
+                                            "Manifest is invalid: {:?}: {}: Blob {} is missing",
+                                            manifest.repositories, digest, extraction.digest,
                                         );
                                     }
                                 }
