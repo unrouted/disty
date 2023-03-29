@@ -189,7 +189,7 @@ async fn main() -> anyhow::Result<()> {
                                 match body.blobs.get(&extraction.digest) {
                                     Some(blob) => {
                                         for repo in manifest.repositories.iter() {
-                                            if !blob.repositories.contains(&repo) {
+                                            if !blob.repositories.contains(repo) {
                                                 println!("Manifest is invalid: {:?}: {}: Not all blobs are available for {}.", manifest.repositories, digest, repo)
                                             }
                                         }

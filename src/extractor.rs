@@ -276,7 +276,7 @@ impl Extractor {
                         }
 
                         if let Some(size) = extraction.size {
-                            if Some(size as u64) != blob.size {
+                            if Some(size) != blob.size {
                                 tracing::error!("Size mismatch");
                                 return Err(ExtractError::UnknownError {});
                             }
