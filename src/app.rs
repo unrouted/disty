@@ -35,7 +35,7 @@ pub struct RegistryApp {
 }
 
 impl RegistryApp {
-    pub async fn submit(&self, actions: Vec<RegistryAction>) -> bool {
+    pub async fn submit_write(&self, actions: Vec<RegistryAction>) -> bool {
         let req = RegistryRequest::Transaction { actions };
 
         match self.raft.client_write(req.clone()).await {
@@ -62,6 +62,45 @@ impl RegistryApp {
         }
 
         false
+    }
+
+    pub async fn consistent_write(&self, actions: Vec<RegistryAction>) -> bool {
+        let req = RegistryRequest::Transaction { actions };
+
+        let resp = match self.raft.client_write(req.clone()).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                if let Some(ForwardToLeader {
+                    leader_id: Some(leader_id),
+                    leader_node: Some(leader_node),
+                }) = e.forward_to_leader()
+                {
+                    let client = RegistryClient::new(*leader_id, leader_node.addr.clone(), None);
+                    if let Ok(resp) = client.write(&req).await {
+                        resp
+                    } else {
+                        tracing::error!("Unhandled error processing submission: {:?}", e);
+                        return false;
+                    }
+                } else {
+                    tracing::error!("Unhandled error processing submission: {:?}", e);
+                    return false;
+                }
+            }
+        };
+
+        let target_index = resp.data.value;
+
+        let mut receiver = self.raft.metrics();
+        loop {
+            let value = receiver.borrow().clone();
+            if let Some(applied) = value.last_applied {
+                if applied.index >= target_index {
+                    return true;
+                }
+            }
+            receiver.changed().await.unwrap();
+        }
     }
 
     pub fn get_blob(&self, digest: &Digest) -> Option<Blob> {

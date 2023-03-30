@@ -50,7 +50,7 @@ pub(crate) async fn delete(
         user: token.sub.clone(),
     }];
 
-    if !app.submit(actions).await {
+    if !app.consistent_write(actions).await {
         // FIXME
         return Err(RegistryError::ManifestInvalid {});
     }
@@ -100,7 +100,7 @@ pub(crate) async fn delete_by_tag(
         user: token.sub.clone(),
     }];
 
-    if !app.submit(actions).await {
+    if !app.consistent_write(actions).await {
         // FIXME
         return Err(RegistryError::ManifestInvalid {});
     }

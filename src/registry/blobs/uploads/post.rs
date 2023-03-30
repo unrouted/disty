@@ -76,7 +76,7 @@ pub(crate) async fn post(
                     user: token.sub.clone(),
                 }];
 
-                if !app.submit(actions).await {
+                if !app.consistent_write(actions).await {
                     return Err(RegistryError::UploadInvalid {});
                 }
 
@@ -150,7 +150,7 @@ pub(crate) async fn post(
                 },
             ];
 
-            if !app.submit(actions).await {
+            if !app.consistent_write(actions).await {
                 return Err(RegistryError::UploadInvalid {});
             }
 

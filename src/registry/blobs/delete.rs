@@ -51,7 +51,7 @@ pub(crate) async fn delete(
         user: token.sub.clone(),
     }];
 
-    if !app.submit(actions).await {
+    if !app.consistent_write(actions).await {
         // FIXME
         return Err(RegistryError::BlobNotFound {});
     }

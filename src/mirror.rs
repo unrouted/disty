@@ -292,7 +292,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                         .await;
 
                         if let MirrorResult::Success { action, request: _ } = result {
-                            if app1.submit(vec![action]).await {
+                            if app1.submit_write(vec![action]).await {
                                 debug!("Mirroring: Download logged to raft");
                             }
                         }
@@ -355,7 +355,7 @@ pub(crate) async fn do_miroring(app: Data<RegistryApp>) -> anyhow::Result<()> {
                         .await;
 
                         if let MirrorResult::Success { action, request: _ } = result {
-                            if app1.submit(vec![action]).await {
+                            if app1.submit_write(vec![action]).await {
                                 debug!("Mirroring: Download logged to raft");
                             }
                         }

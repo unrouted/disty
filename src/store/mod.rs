@@ -80,7 +80,7 @@ pub enum RegistryRequest {
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RegistryResponse {
-    pub value: Option<String>,
+    pub value: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -970,20 +970,16 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
 
                         match entry.payload {
-                            EntryPayload::Blank => res.push(RegistryResponse { value: None }),
+                            EntryPayload::Blank => res.push(RegistryResponse {
+                                value: entry.log_id.index,
+                            }),
                             EntryPayload::Normal(ref req) => match req {
                                 RegistryRequest::Set { key, value } => {
                                     sm.insert_tx(tx_data_tree, key.clone(), value.clone())?;
-                                    res.push(RegistryResponse {
-                                        value: Some(value.clone()),
-                                    })
+                                    res.push(RegistryResponse { value: 0 })
                                 }
                                 RegistryRequest::Transaction { actions } => {
                                     for action in actions {
-                                        // FIXME: Need a less crap response!! :)
-                                        res.push(RegistryResponse {
-                                            value: Some("ok".to_owned()),
-                                        });
                                         match action {
                                             RegistryAction::Empty => {}
                                             RegistryAction::BlobStored {
@@ -1244,13 +1240,18 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                             }
                                         }
                                     }
+                                    res.push(RegistryResponse {
+                                        value: entry.log_id.index,
+                                    });
                                 }
                             },
                             EntryPayload::Membership(ref mem) => {
                                 let membership =
                                     StoredMembership::new(Some(entry.log_id), mem.clone());
                                 sm.set_last_membership_tx(tx_state_machine, membership)?;
-                                res.push(RegistryResponse { value: None })
+                                res.push(RegistryResponse {
+                                    value: entry.log_id.index,
+                                })
                             }
                         };
                     }

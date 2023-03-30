@@ -101,7 +101,7 @@ pub(crate) async fn put(
         },
     ];
 
-    if !app.submit(actions).await {
+    if !app.consistent_write(actions).await {
         return Err(RegistryError::UploadInvalid {});
     }
 

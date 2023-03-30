@@ -113,7 +113,7 @@ pub(crate) async fn put(
         }
     }
 
-    if !app.submit(actions).await {
+    if !app.consistent_write(actions).await {
         tracing::error!("Raft storage failed");
         return Err(RegistryError::ManifestInvalid {});
     }

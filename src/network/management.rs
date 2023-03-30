@@ -171,7 +171,7 @@ pub async fn import(
 
     let res: Result<(), Infallible> = Ok(());
 
-    if !app.submit(actions).await {
+    if !app.submit_write(actions).await {
         return Ok(Json(res));
     }
 
