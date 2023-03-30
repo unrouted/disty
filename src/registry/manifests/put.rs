@@ -90,7 +90,8 @@ pub(crate) async fn put(
 
     let extracted = match extracted {
         Ok(extracted_actions) => extracted_actions,
-        _ => {
+        Err(e) => {
+            tracing::error!("Extraction failed: {:?}", e);
             return Err(RegistryError::ManifestInvalid {});
         }
     };
@@ -113,6 +114,7 @@ pub(crate) async fn put(
     }
 
     if !app.submit(actions).await {
+        tracing::error!("Raft storage failed");
         return Err(RegistryError::ManifestInvalid {});
     }
 
