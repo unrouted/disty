@@ -10,9 +10,16 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TlsConfig {
+    pub key: PathBuf,
+    pub chain: PathBuf
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RaftConfig {
     pub address: String,
     pub port: u16,
+    pub tls: Option<TlsConfig>,
 }
 
 impl Default for RaftConfig {
@@ -20,6 +27,7 @@ impl Default for RaftConfig {
         Self {
             address: "0.0.0.0".to_string(),
             port: 8080,
+            tls: None,
         }
     }
 }
