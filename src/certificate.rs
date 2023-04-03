@@ -15,6 +15,7 @@ pub struct ServerCertificate {
     pub key_path: String,
     pub chain_path: String,
     certified_key: Arc<RwLock<Arc<CertifiedKey>>>,
+    watcher: RecommendedWatcher,
 }
 
 pub async fn get_certified_key(key_path: &String, chain_path: &String) -> Result<CertifiedKey> {
@@ -39,15 +40,17 @@ impl ServerCertificate {
             get_certified_key(&key_path, &chain_path).await?,
         )));
 
-        let server_certificate = ServerCertificate {
+        let (watcher, mut rx) = async_watcher()?;
+
+        let mut server_certificate = ServerCertificate {
             key_path: key_path.clone(),
             chain_path: chain_path.clone(),
             certified_key: certified_key.clone(),
+            watcher,
         };
 
-        let (mut watcher, mut rx) = async_watcher()?;
-        watcher.watch(key_path.as_ref(), RecursiveMode::Recursive)?;
-        watcher.watch(chain_path.as_ref(), RecursiveMode::Recursive)?;
+        server_certificate.watcher.watch(key_path.as_ref(), RecursiveMode::Recursive)?;
+        server_certificate.watcher.watch(chain_path.as_ref(), RecursiveMode::Recursive)?;
 
         tokio::spawn(async move {
             while let Some(res) = rx.next().await {
