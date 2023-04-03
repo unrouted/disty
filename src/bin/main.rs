@@ -18,9 +18,6 @@ use tracing_subscriber::EnvFilter;
 
 pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>;
 
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Opt {
