@@ -27,7 +27,7 @@ pub async fn get_certified_key(key_path: &String, chain_path: &String) -> Result
     let mut chain_bytes = chain_string.as_bytes();
     let chain = certs(&mut chain_bytes)?
         .into_iter()
-        .map(|b| Certificate(b))
+        .map(Certificate)
         .collect();
 
     Ok(CertifiedKey::new(chain, Arc::new(signing_key)))
