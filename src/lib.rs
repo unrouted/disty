@@ -9,6 +9,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use certificate::ServerCertificate;
 use config::Configuration;
 use extractor::Extractor;
 use middleware::prometheus::Port;
@@ -16,6 +17,7 @@ use middleware::prometheus::PrometheusHttpMetrics;
 use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
+use rustls::ServerConfig;
 use tokio::sync::Notify;
 use webhook::start_webhook_worker;
 
@@ -80,7 +82,7 @@ fn create_dir(parent_dir: &str, child_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>> {
+pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>> {
     let _guard = conf.sentry.as_ref().map(|config| {
         sentry::init((
             config.endpoint.clone(),
@@ -105,7 +107,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
     {
         Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
         None => {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "value"));
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "value").into());
         }
     };
 
@@ -146,7 +148,7 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
         id: node_id,
         raft,
         store,
-        config: conf,
+        config: conf.clone(),
         extractor,
         webhooks: Arc::new(webhook_queue),
         registry: Mutex::new(registry),
@@ -184,11 +186,29 @@ pub async fn start_raft_node(conf: Configuration) -> std::io::Result<Arc<Notify>
             .service(api::read)
             .service(api::consistent_read)
     })
-    .bind((
-        app2.config.raft.address.clone().as_str(),
-        app2.config.raft.port,
-    ))?
-    .disable_signals()
+    .disable_signals();
+
+    let server = match conf.raft.tls.clone() {
+        Some(tls) => {
+            let certificate = ServerCertificate::new(tls.key.clone(), tls.chain.clone()).await?;
+            let config = ServerConfig::builder()
+                .with_safe_defaults()
+                .with_no_client_auth()
+                .with_cert_resolver(Arc::new(certificate));
+
+            server.bind_rustls(
+                (
+                    app2.config.raft.address.clone().as_str(),
+                    app2.config.raft.port,
+                ),
+                config,
+            )?
+        }
+        None => server.bind((
+            app2.config.raft.address.clone().as_str(),
+            app2.config.raft.port,
+        ))?,
+    }
     .run();
 
     let registry_server = HttpServer::new(move || {

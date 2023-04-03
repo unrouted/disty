@@ -49,8 +49,12 @@ impl ServerCertificate {
             watcher,
         };
 
-        server_certificate.watcher.watch(key_path.as_ref(), RecursiveMode::Recursive)?;
-        server_certificate.watcher.watch(chain_path.as_ref(), RecursiveMode::Recursive)?;
+        server_certificate
+            .watcher
+            .watch(key_path.as_ref(), RecursiveMode::Recursive)?;
+        server_certificate
+            .watcher
+            .watch(chain_path.as_ref(), RecursiveMode::Recursive)?;
 
         tokio::spawn(async move {
             while let Some(res) = rx.next().await {

@@ -11,8 +11,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
-    pub key: PathBuf,
-    pub chain: PathBuf
+    pub key: String,
+    pub chain: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
