@@ -29,6 +29,7 @@ use crate::store::RegistryResponse;
 use crate::store::RegistryStore;
 
 pub mod app;
+pub mod certificate;
 pub mod client;
 pub mod config;
 pub mod extractor;
