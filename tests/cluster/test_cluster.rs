@@ -59,6 +59,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
     config.raft = RaftConfig {
         address: addr.clone(),
         port: (8079 + node_id) as u16,
+        tls: None,
     };
 
     config.registry = RegistryConfig {
@@ -76,6 +77,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
         raft: RaftConfig {
             address: addr.clone(),
             port: 8080,
+            tls: None,
         },
         registry: RegistryConfig {
             address: addr.clone(),
@@ -87,6 +89,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
         raft: RaftConfig {
             address: addr.clone(),
             port: 8080,
+            tls: None,
         },
         registry: RegistryConfig {
             address: addr.clone(),
@@ -98,6 +101,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
         raft: RaftConfig {
             address: addr.clone(),
             port: 8080,
+            tls: None,
         },
         registry: RegistryConfig {
             address: addr,
