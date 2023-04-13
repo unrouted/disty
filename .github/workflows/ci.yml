@@ -1,9 +1,5 @@
 name: CI
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 on:
   push:
     branches:
@@ -70,9 +66,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Generate code coverage
-        run: cargo tarpaulin --out Xml -t 180
+        run: cargo tarpaulin --out Xml
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v3
         with:
           fail_ci_if_error: true
+
