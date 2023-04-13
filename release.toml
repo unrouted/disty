@@ -1,4 +1,4 @@
 consolidate-commits = false
 allow-branch = ["main"]
-
-tag-message = "Release {{tag_name}}"
+pre-release-commit-message = "Release"
+tag-message = "{{tag_name}}"
