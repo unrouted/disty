@@ -8,6 +8,8 @@ on:
   push:
     branches:
     - main
+    tags:
+    - *
   pull_request: ~
 
 jobs:
@@ -78,6 +80,7 @@ jobs:
           fail_ci_if_error: true
 
   binaries:
+    if: github.ref_type == 'tag'
     needs: [tests]
     runs-on: ubuntu-latest
     strategy:
@@ -88,8 +91,6 @@ jobs:
             archive: zip
           - target: x86_64-unknown-linux-musl
             archive: tar.gz
-          - target: x86_64-apple-darwin
-            archive: zip
     steps:
       - uses: actions/checkout@v3
       - name: Compile and release
