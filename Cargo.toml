@@ -11,6 +11,7 @@ homepage = "https://github.com/distribd/distribd"
 keywords = ["raft", "consensus"]
 license = "Apache-2.0"
 repository = "https://github.com/distribd/distribd"
+publish = false
 
 [[bin]]
 name = "distribd"
