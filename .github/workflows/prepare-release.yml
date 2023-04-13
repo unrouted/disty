@@ -3,9 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release
+        description: Version to release (or alpha/beta/rc/release/major/minor/patch)
         required: true
         type: string
+        default: minor
 
 jobs:
   make-release-pr:
