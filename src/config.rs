@@ -8,6 +8,7 @@ use jwt_simple::prelude::ES256PublicKey;
 use platform_dirs::AppDirs;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use x509_parser::prelude::Pem;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
@@ -90,9 +91,24 @@ impl<'de> Deserialize<'de> for PublicKey {
             p = config_dir.join(p);
         }
         let pem = std::fs::read_to_string(&p).unwrap();
+
+        let public_key = match ES256PublicKey::from_pem(&pem) {
+            Ok(public_key) => public_key,
+            Err(_) => {
+                let pem = Pem::iter_from_buffer(pem.as_bytes())
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let x509 = pem.parse_x509().expect("X.509: decoding DER failed");
+                let raw = &x509.public_key().subject_public_key.data;
+
+                ES256PublicKey::from_bytes(raw).unwrap()
+            }
+        };
+
         Ok(PublicKey {
             path: s,
-            public_key: ES256PublicKey::from_pem(&pem).unwrap(),
+            public_key,
         })
     }
 }
@@ -243,6 +259,33 @@ mod test {
         assert_eq!(t.realm, "testrealm");
         assert_eq!(t.service, "myservice");
         assert_eq!(t.public_key.path, "token.pub");
+        assert_eq!(t.public_key.public_key.to_pem().unwrap(), "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n");
+    }
+
+    #[test]
+    fn token_confi_cert() {
+        std::env::set_var(
+            "XDG_CONFIG_HOME",
+            std::env::current_dir()
+                .unwrap()
+                .join("fixtures/etc")
+                .as_os_str(),
+        );
+
+        let data = r#"
+        {
+            "issuer": "Test Issuer",
+            "realm": "testrealm",
+            "service": "myservice",
+            "public_key": "token.crt"
+        }"#;
+
+        let t: TokenConfig = serde_json::from_str(data).unwrap();
+
+        assert_eq!(t.issuer, "Test Issuer");
+        assert_eq!(t.realm, "testrealm");
+        assert_eq!(t.service, "myservice");
+        assert_eq!(t.public_key.path, "token.crt");
         assert_eq!(t.public_key.public_key.to_pem().unwrap(), "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n");
     }
 

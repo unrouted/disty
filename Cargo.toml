@@ -57,6 +57,7 @@ rustls = "~0.20.8"
 rustls-pemfile = "1.0.2"
 notify = "5.1.0"
 futures = "0.3"
+x509-parser = "0.15.0"
 
 [dev-dependencies]
 maplit = "1.0.2"
