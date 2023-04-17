@@ -125,7 +125,6 @@ pub struct TokenConfig {
 pub struct PeerConfig {
     pub name: String,
     pub raft: RaftConfig,
-    pub registry: RegistryConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
