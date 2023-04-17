@@ -68,7 +68,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
     };
 
     config.prometheus = PrometheusConfig {
-        address: addr.clone(),
+        address: addr,
         port: (7079 + node_id) as u16,
     };
 
