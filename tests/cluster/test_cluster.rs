@@ -78,7 +78,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
             address: addr.clone(),
             port: 8080,
             tls: None,
-        }
+        },
     });
     config.peers.push(PeerConfig {
         name: "registry2".to_owned(),
@@ -86,7 +86,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
             address: addr.clone(),
             port: 8080,
             tls: None,
-        }
+        },
     });
     config.peers.push(PeerConfig {
         name: "registry3".to_owned(),
@@ -94,7 +94,7 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
             address: addr.clone(),
             port: 8080,
             tls: None,
-        }
+        },
     });
 
     config
