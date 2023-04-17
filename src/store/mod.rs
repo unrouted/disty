@@ -242,7 +242,9 @@ fn ct_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactio
 }
 
 impl RegistryStateMachine {
-    fn get_last_membership(&self) -> StorageResult<StoredMembership<RegistryNodeId, BasicNode>> {
+    pub fn get_last_membership(
+        &self,
+    ) -> StorageResult<StoredMembership<RegistryNodeId, BasicNode>> {
         let state_machine = state_machine(&self.db);
         state_machine
             .get(b"last_membership")

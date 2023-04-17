@@ -111,17 +111,26 @@ async fn do_transfer(
         },
     };
 
+    let peers = app
+        .store
+        .state_machine
+        .read()
+        .unwrap()
+        .get_last_membership()
+        .unwrap();
+
     let mut urls = vec![];
-    for peer in &app.config.peers {
+    for (nid, peer) in app.config.peers.iter().enumerate() {
         if !locations.contains(&peer.name) {
             continue;
         }
 
-        let address = &peer.raft.address;
-        let port = &peer.raft.port;
-
-        let url = format!("http://{address}:{port}/{object_type}/{digest}");
-        urls.push(url);
+        let nid = (nid + 1) as u64;
+        if let Some(node) = peers.membership().get_node(&nid) {
+            let address = &node.addr;
+            let url = format!("http://{address}/{object_type}/{digest}");
+            urls.push(url);
+        }
     }
 
     let url = match urls.choose(&mut rand::thread_rng()) {

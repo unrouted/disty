@@ -124,7 +124,6 @@ pub struct TokenConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PeerConfig {
     pub name: String,
-    pub raft: RaftConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
