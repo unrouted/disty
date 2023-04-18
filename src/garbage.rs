@@ -187,7 +187,10 @@ pub async fn do_garbage_collect(app: Arc<RegistryApp>) -> anyhow::Result<()> {
             do_garbage_collect_phase1(&app).await?;
         }
 
-        if matches!(metrics.state, openraft::ServerState::Leader | openraft::ServerState::Follower) {
+        if matches!(
+            metrics.state,
+            openraft::ServerState::Leader | openraft::ServerState::Follower
+        ) {
             do_garbage_collect_phase2(&app).await?;
         }
 
