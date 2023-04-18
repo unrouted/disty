@@ -179,9 +179,9 @@ async fn test_cluster() -> anyhow::Result<()> {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => BasicNode::new("127.0.0.1:8080"),
-            2 => BasicNode::new("127.0.0.1:8081"),
-            3 => BasicNode::new("127.0.0.1:8082"),
+            1 => Node::new("127.0.0.1:8080"),
+            2 => Node::new("127.0.0.1:8081"),
+            3 => Node::new("127.0.0.1:8082"),
         },
         nodes_in_cluster
     );
@@ -280,7 +280,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     match x {
         Err(e) => {
             let s = e.to_string();
-            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(BasicNode { addr: \"127.0.0.1:8080\" })".to_string();
+            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { addr: \"127.0.0.1:8080\" })".to_string();
 
             assert_eq!(s, expect_err);
         }

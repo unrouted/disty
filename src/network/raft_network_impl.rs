@@ -1,3 +1,4 @@
+use crate::node::Node;
 use async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
@@ -10,7 +11,6 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
-use openraft::BasicNode;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use serde::de::DeserializeOwned;
@@ -25,10 +25,10 @@ impl RegistryNetwork {
     pub async fn send_rpc<Req, Resp, Err>(
         &self,
         target: RegistryNodeId,
-        target_node: &BasicNode,
+        target_node: &Node,
         uri: &str,
         req: Req,
-    ) -> Result<Resp, RPCError<RegistryNodeId, BasicNode, Err>>
+    ) -> Result<Resp, RPCError<RegistryNodeId, Node, Err>>
     where
         Req: Serialize,
         Err: std::error::Error + DeserializeOwned,
@@ -68,7 +68,7 @@ impl RegistryNetwork {
 impl RaftNetworkFactory<RegistryTypeConfig> for RegistryNetwork {
     type Network = RegistryNetworkConnection;
 
-    async fn new_client(&mut self, target: RegistryNodeId, node: &BasicNode) -> Self::Network {
+    async fn new_client(&mut self, target: RegistryNodeId, node: &Node) -> Self::Network {
         RegistryNetworkConnection {
             owner: RegistryNetwork {},
             target,
@@ -80,7 +80,7 @@ impl RaftNetworkFactory<RegistryTypeConfig> for RegistryNetwork {
 pub struct RegistryNetworkConnection {
     owner: RegistryNetwork,
     target: RegistryNodeId,
-    target_node: BasicNode,
+    target_node: Node,
 }
 
 #[async_trait]
@@ -90,7 +90,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
         req: AppendEntriesRequest<RegistryTypeConfig>,
     ) -> Result<
         AppendEntriesResponse<RegistryNodeId>,
-        RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
+        RPCError<RegistryNodeId, Node, RaftError<RegistryNodeId>>,
     > {
         self.owner
             .send_rpc(self.target, &self.target_node, "raft-append", req)
@@ -102,7 +102,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
         req: InstallSnapshotRequest<RegistryTypeConfig>,
     ) -> Result<
         InstallSnapshotResponse<RegistryNodeId>,
-        RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId, InstallSnapshotError>>,
+        RPCError<RegistryNodeId, Node, RaftError<RegistryNodeId, InstallSnapshotError>>,
     > {
         self.owner
             .send_rpc(self.target, &self.target_node, "raft-snapshot", req)
@@ -114,7 +114,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
         req: VoteRequest<RegistryNodeId>,
     ) -> Result<
         VoteResponse<RegistryNodeId>,
-        RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
+        RPCError<RegistryNodeId, Node, RaftError<RegistryNodeId>>,
     > {
         self.owner
             .send_rpc(self.target, &self.target_node, "raft-vote", req)

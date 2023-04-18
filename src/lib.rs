@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::node::Node;
 use actix_web::middleware::Logger;
 use actix_web::middleware::{Compress, NormalizePath};
 use actix_web::web;
@@ -14,7 +15,6 @@ use config::Configuration;
 use extractor::Extractor;
 use middleware::prometheus::Port;
 use middleware::prometheus::PrometheusHttpMetrics;
-use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
 use rustls::ServerConfig;
@@ -40,6 +40,7 @@ pub mod garbage;
 pub mod middleware;
 pub mod mirror;
 pub mod network;
+pub mod node;
 pub mod prometheus;
 pub mod registry;
 pub mod store;
@@ -51,13 +52,13 @@ pub type RegistryNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = RegistryNodeId, Node = BasicNode
+    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = RegistryNodeId, Node = Node
 );
 
 pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, Arc<RegistryStore>>;
 
 pub mod typ {
-    use openraft::BasicNode;
+    use crate::node::Node;
 
     use crate::RegistryNodeId;
     use crate::RegistryTypeConfig;
@@ -65,12 +66,12 @@ pub mod typ {
     pub type RaftError<E = openraft::error::Infallible> =
         openraft::error::RaftError<RegistryNodeId, E>;
     pub type RPCError<E = openraft::error::Infallible> =
-        openraft::error::RPCError<RegistryNodeId, BasicNode, RaftError<E>>;
+        openraft::error::RPCError<RegistryNodeId, Node, RaftError<E>>;
 
-    pub type ClientWriteError = openraft::error::ClientWriteError<RegistryNodeId, BasicNode>;
-    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<RegistryNodeId, BasicNode>;
-    pub type ForwardToLeader = openraft::error::ForwardToLeader<RegistryNodeId, BasicNode>;
-    pub type InitializeError = openraft::error::InitializeError<RegistryNodeId, BasicNode>;
+    pub type ClientWriteError = openraft::error::ClientWriteError<RegistryNodeId, Node>;
+    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<RegistryNodeId, Node>;
+    pub type ForwardToLeader = openraft::error::ForwardToLeader<RegistryNodeId, Node>;
+    pub type InitializeError = openraft::error::InitializeError<RegistryNodeId, Node>;
 
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<RegistryTypeConfig>;
 }

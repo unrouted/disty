@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use crate::node::Node;
 use openraft::error::ForwardToLeader;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
-use openraft::BasicNode;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
 use reqwest_middleware::ClientBuilder;
@@ -138,7 +138,7 @@ impl RegistryClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics<RegistryNodeId, BasicNode>, typ::RPCError> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<RegistryNodeId, Node>, typ::RPCError> {
         self.do_send_rpc_to_leader("metrics", None::<&()>).await
     }
 

@@ -1,3 +1,4 @@
+use crate::node::Node;
 use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
@@ -5,7 +6,6 @@ use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
 use openraft::error::RaftError;
-use openraft::BasicNode;
 use web::Json;
 
 use crate::app::RegistryApp;
@@ -55,7 +55,7 @@ pub async fn consistent_read(
 
             let res: Result<
                 String,
-                RaftError<RegistryNodeId, CheckIsLeaderError<RegistryNodeId, BasicNode>>,
+                RaftError<RegistryNodeId, CheckIsLeaderError<RegistryNodeId, Node>>,
             > = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
