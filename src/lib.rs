@@ -36,6 +36,7 @@ pub mod client;
 pub mod config;
 pub mod extractor;
 pub mod extractors;
+pub mod garbage;
 pub mod middleware;
 pub mod mirror;
 pub mod network;
