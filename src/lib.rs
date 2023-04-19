@@ -98,7 +98,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
 
     let (_, node_id) = conf
         .identifier
-        .rsplit_once("-")
+        .rsplit_once('-')
         .context("Invalid identifier name")?;
     let mut node_id = node_id
         .parse()
