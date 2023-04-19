@@ -234,7 +234,7 @@ mod test {
         );
 
         let config = config(None);
-        assert_eq!(config.identifier, "node1".to_string());
+        assert_eq!(config.identifier, "localhost-0".to_string());
     }
 
     #[test]
