@@ -10,6 +10,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use anyhow::Context;
 use certificate::ServerCertificate;
 use config::Configuration;
 use extractor::Extractor;
@@ -95,23 +96,20 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
         ))
     });
 
+    let (_, node_id) = conf
+        .identifier
+        .rsplit_once("-")
+        .context("Invalid identifier name")?;
+    let mut node_id = node_id
+        .parse()
+        .context("Identifier must end with a number")?;
+    node_id += 1;
+
     create_dir(&conf.storage, "uploads")?;
     create_dir(&conf.storage, "manifests")?;
     create_dir(&conf.storage, "blobs")?;
 
     let mut registry = <prometheus_client::registry::Registry>::default();
-
-    let (node_id, _this_node) = match conf
-        .peers
-        .iter()
-        .enumerate()
-        .find(|(_, p)| p.name == conf.identifier)
-    {
-        Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
-        None => {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "value").into());
-        }
-    };
 
     // Create a configuration for the raft instance.
     let config = Config {

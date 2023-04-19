@@ -122,11 +122,6 @@ pub struct TokenConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PeerConfig {
-    pub name: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MintConfig {
     pub realm: String,
     pub service: String,
@@ -161,7 +156,6 @@ pub struct Configuration {
     pub token_server: Option<TokenConfig>,
     pub mirroring: Option<MintConfig>,
     pub storage: String,
-    pub peers: Vec<PeerConfig>,
     pub webhooks: Vec<WebhookConfig>,
     pub scrubber: ScrubberConfig,
     pub sentry: Option<SentryConfig>,
@@ -177,7 +171,6 @@ impl Default for Configuration {
             token_server: None,
             mirroring: None,
             storage: "var".to_string(),
-            peers: vec![],
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
             sentry: None,
@@ -230,7 +223,6 @@ mod test {
             .extract()
             .unwrap();
         assert_eq!(defaults.raft.address, "0.0.0.0");
-        assert!(defaults.peers.is_empty());
     }
 
     #[test]

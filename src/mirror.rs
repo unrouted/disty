@@ -120,18 +120,22 @@ async fn do_transfer(
         .unwrap();
 
     let mut urls = vec![];
-    for (nid, peer) in app.config.peers.iter().enumerate() {
-        if !locations.contains(&peer.name) {
+
+    for (nid, node) in peers.nodes() {
+        let name = format!("registry-{}", nid - 1);
+
+        tracing::info!("Mirroring: {nid:?} {node:?} {name:?}");
+
+        if !locations.contains(&name) {
             continue;
         }
 
-        let nid = (nid + 1) as u64;
-        if let Some(node) = peers.membership().get_node(&nid) {
-            let address = &node.addr;
-            let url = format!("http://{address}/{object_type}/{digest}");
-            urls.push(url);
-        }
+        let address = &node.addr;
+        let url = format!("http://{address}/{object_type}/{digest}");
+        urls.push(url);
     }
+
+    tracing::info!("Mirroring: {urls:?}");
 
     let url = match urls.choose(&mut rand::thread_rng()) {
         Some(url) => url,
