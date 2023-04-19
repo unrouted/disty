@@ -11,7 +11,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use crate::node::Node;
 use bincode::options;
 use bincode::Options;
 use byteorder::BigEndian;
@@ -21,6 +20,7 @@ use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
@@ -85,7 +85,7 @@ pub struct RegistryResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegistrySnapshot {
-    pub meta: SnapshotMeta<RegistryNodeId, Node>,
+    pub meta: SnapshotMeta<RegistryNodeId, BasicNode>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -101,7 +101,7 @@ pub struct RegistrySnapshot {
 pub struct SerializableRegistryStateMachine {
     pub last_applied_log: Option<LogId<RegistryNodeId>>,
 
-    pub last_membership: StoredMembership<RegistryNodeId, Node>,
+    pub last_membership: StoredMembership<RegistryNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -242,7 +242,9 @@ fn ct_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactio
 }
 
 impl RegistryStateMachine {
-    pub fn get_last_membership(&self) -> StorageResult<StoredMembership<RegistryNodeId, Node>> {
+    pub fn get_last_membership(
+        &self,
+    ) -> StorageResult<StoredMembership<RegistryNodeId, BasicNode>> {
         let state_machine = state_machine(&self.db);
         state_machine
             .get(b"last_membership")
@@ -255,7 +257,7 @@ impl RegistryStateMachine {
     }
     async fn set_last_membership(
         &self,
-        membership: StoredMembership<RegistryNodeId, Node>,
+        membership: StoredMembership<RegistryNodeId, BasicNode>,
     ) -> StorageResult<()> {
         let value = serde_json::to_vec(&membership).map_err(sm_w_err)?;
         let state_machine = state_machine(&self.db);
@@ -270,7 +272,7 @@ impl RegistryStateMachine {
     fn set_last_membership_tx(
         &self,
         tx_state_machine: &sled::transaction::TransactionalTree,
-        membership: StoredMembership<RegistryNodeId, Node>,
+        membership: StoredMembership<RegistryNodeId, BasicNode>,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
         let value = serde_json::to_vec(&membership).map_err(ct_err)?;
         tx_state_machine
@@ -785,7 +787,8 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<RegistryNodeId, Node, Cursor<Vec<u8>>>, StorageError<RegistryNodeId>> {
+    ) -> Result<Snapshot<RegistryNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RegistryNodeId>>
+    {
         let data;
         let last_applied_log;
         let last_membership;
@@ -928,7 +931,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     ) -> Result<
         (
             Option<LogId<RegistryNodeId>>,
-            StoredMembership<RegistryNodeId, Node>,
+            StoredMembership<RegistryNodeId, BasicNode>,
         ),
         StorageError<RegistryNodeId>,
     > {
@@ -1363,7 +1366,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<RegistryNodeId, Node>,
+        meta: &SnapshotMeta<RegistryNodeId, BasicNode>,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<(), StorageError<RegistryNodeId>> {
         tracing::info!(
@@ -1405,7 +1408,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     async fn get_current_snapshot(
         &mut self,
     ) -> Result<
-        Option<Snapshot<RegistryNodeId, Node, Self::SnapshotData>>,
+        Option<Snapshot<RegistryNodeId, BasicNode, Self::SnapshotData>>,
         StorageError<RegistryNodeId>,
     > {
         match RegistryStore::get_current_snapshot_(self)? {

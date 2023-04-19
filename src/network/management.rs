@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::node::Node;
 use actix_web::get;
 use actix_web::post;
 use actix_web::web;
@@ -9,6 +8,7 @@ use actix_web::web::Data;
 use actix_web::Responder;
 use chrono::Utc;
 use openraft::error::Infallible;
+use openraft::BasicNode;
 use openraft::RaftMetrics;
 use serde::Deserialize;
 use serde::Serialize;
@@ -36,8 +36,7 @@ pub async fn add_learner(
     req: Json<(RegistryNodeId, String)>,
 ) -> actix_web::Result<impl Responder> {
     let node_id = req.0 .0;
-    let node = Node {
-        identifier: format!("registry-{}", node_id - 1),
+    let node = BasicNode {
         addr: req.0 .1.clone(),
     };
     let res = app.raft.add_learner(node_id, node, true).await;
@@ -57,8 +56,7 @@ pub async fn change_membership(
 /// Initialize a single-node cluster.
 #[post("/init")]
 pub async fn init(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Result<impl Responder> {
-    let node = Node {
-        identifier: format!("registry-{}", app.id - 1),
+    let node = BasicNode {
         addr: req.0.clone(),
     };
     let mut nodes = BTreeMap::new();
@@ -72,7 +70,7 @@ pub async fn init(app: Data<RegistryApp>, req: Json<String>) -> actix_web::Resul
 pub async fn metrics(app: Data<RegistryApp>) -> actix_web::Result<impl Responder> {
     let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<RegistryNodeId, Node>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics<RegistryNodeId, BasicNode>, Infallible> = Ok(metrics);
     Ok(Json(res))
 }
 
