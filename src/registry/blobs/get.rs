@@ -48,7 +48,7 @@ pub(crate) async fn get(
         return Err(RegistryError::BlobNotFound {});
     }
 
-    if !blob.locations.contains(&app.config.identifier) {
+    if !blob.locations.contains(&app.id) {
         app.wait_for_blob(&path.digest).await;
     }
 

@@ -74,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(name) = options.name {
         config.identifier = name;
     }
+    let node_id = config.id()?;
 
     let retry_policy = Some(ExponentialBackoff {
         max_n_retries: 3,
@@ -139,17 +140,17 @@ async fn main() -> anyhow::Result<()> {
 
             println!("Checking {} blobs...", body.blobs.len());
             for (digest, blob) in body.blobs.iter_mut() {
-                if blob.locations.contains(&config.identifier) {
+                if blob.locations.contains(&node_id) {
                     let path = get_blob_path(&config.storage, digest);
 
                     if !path.exists() {
                         fixes.push(RegistryAction::BlobUnstored {
                             timestamp: Utc::now(),
                             digest: digest.clone(),
-                            location: config.identifier.clone(),
+                            location: node_id,
                             user: "$fsck".to_string(),
                         });
-                        blob.locations.remove(&config.identifier);
+                        blob.locations.remove(&node_id);
                         continue;
                     }
 
@@ -163,17 +164,17 @@ async fn main() -> anyhow::Result<()> {
             let extractor = distribd::extractor::Extractor::new();
 
             for (digest, manifest) in body.manifests.iter_mut() {
-                if manifest.locations.contains(&config.identifier) {
+                if manifest.locations.contains(&node_id) {
                     let path = get_manifest_path(&config.storage, digest);
 
                     if !path.exists() {
                         fixes.push(RegistryAction::ManifestUnstored {
                             timestamp: Utc::now(),
                             digest: digest.clone(),
-                            location: config.identifier.clone(),
+                            location: node_id,
                             user: "$fsck".to_string(),
                         });
-                        manifest.locations.remove(&config.identifier);
+                        manifest.locations.remove(&node_id);
                         continue;
                     }
 

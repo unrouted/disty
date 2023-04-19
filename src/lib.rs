@@ -94,23 +94,13 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
         ))
     });
 
+    let node_id = conf.id()?;
+
     create_dir(&conf.storage, "uploads")?;
     create_dir(&conf.storage, "manifests")?;
     create_dir(&conf.storage, "blobs")?;
 
     let mut registry = <prometheus_client::registry::Registry>::default();
-
-    let (node_id, _this_node) = match conf
-        .peers
-        .iter()
-        .enumerate()
-        .find(|(_, p)| p.name == conf.identifier)
-    {
-        Some((node_id, this_node)) => ((node_id + 1) as u64, this_node),
-        None => {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "value").into());
-        }
-    };
 
     // Create a configuration for the raft instance.
     let config = Config {
@@ -128,7 +118,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     let db: sled::Db = sled::open(&path).unwrap_or_else(|_| panic!("could not open: {:?}", path));
 
     // Create a instance of where the Raft data will be stored.
-    let store = RegistryStore::new(Arc::new(db), conf.clone(), &mut registry).await;
+    let store = RegistryStore::new(Arc::new(db), node_id, &mut registry).await;
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.

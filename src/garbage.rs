@@ -123,7 +123,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()>
     let mut actions = vec![];
 
     for (digest, manifest) in app.store.get_orphaned_manifests()? {
-        if !manifest.locations.contains(&app.config.identifier) {
+        if !manifest.locations.contains(&app.id) {
             continue;
         }
 
@@ -140,13 +140,13 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()>
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: app.config.identifier.clone(),
+            location: app.id,
             user: "$system".to_string(),
         });
     }
 
     for (digest, blob) in app.store.get_orphaned_blobs()? {
-        if !blob.locations.contains(&app.config.identifier) {
+        if !blob.locations.contains(&app.id) {
             continue;
         }
 
@@ -163,7 +163,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()>
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: app.config.identifier.clone(),
+            location: app.id,
             user: "$system".to_string(),
         });
     }

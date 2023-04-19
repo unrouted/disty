@@ -1,5 +1,6 @@
 use crate::app::RegistryApp;
 use crate::types::{Digest, RegistryAction};
+use crate::RegistryNodeId;
 use actix_web::web::Data;
 use chrono::Utc;
 use rand::seq::SliceRandom;
@@ -29,7 +30,7 @@ pub enum MirrorResult {
 }
 
 impl MirrorRequest {
-    pub fn success(self, location: String) -> MirrorResult {
+    pub fn success(self, location: RegistryNodeId) -> MirrorResult {
         let action = match self {
             MirrorRequest::Blob { ref digest } => RegistryAction::BlobStored {
                 timestamp: Utc::now(),
@@ -65,40 +66,36 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match app.get_blob(digest) {
-            Some(blob) => {
-                if blob.locations.contains(&app.config.identifier) {
-                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do. {:?} {:?}", blob.locations, app.config.identifier);
+        MirrorRequest::Blob { ref digest } => {
+            match app.get_blob(digest) {
+                Some(blob) => {
+                    if blob.locations.contains(&app.id) {
+                        debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do.");
+                        return MirrorResult::None;
+                    }
+
+                    if blob.locations.is_empty() {
+                        debug!("Mirroring: {digest:?}: No sources for this; nothing to do.",);
+                        return MirrorResult::None;
+                    }
+
+                    (digest, blob.locations, "blobs")
+                }
+                None => {
+                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                     return MirrorResult::None;
                 }
-
-                if blob.locations.is_empty() {
-                    debug!(
-                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
-                        blob.locations, app.config.identifier
-                    );
-                    return MirrorResult::None;
-                }
-
-                (digest, blob.locations, "blobs")
             }
-            None => {
-                debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                return MirrorResult::None;
-            }
-        },
+        }
         MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest) {
             Some(manifest) => {
-                if manifest.locations.contains(&app.config.identifier) {
+                if manifest.locations.contains(&app.id) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
 
                 if manifest.locations.is_empty() {
-                    debug!(
-                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
-                        manifest.locations, app.config.identifier
-                    );
+                    debug!("Mirroring: {digest:?}: No sources for this; nothing to do.");
                     return MirrorResult::None;
                 }
 
@@ -120,17 +117,15 @@ async fn do_transfer(
         .unwrap();
 
     let mut urls = vec![];
-    for (nid, peer) in app.config.peers.iter().enumerate() {
-        if !locations.contains(&peer.name) {
+
+    for (nid, node) in peers.nodes() {
+        if !locations.contains(nid) {
             continue;
         }
 
-        let nid = (nid + 1) as u64;
-        if let Some(node) = peers.membership().get_node(&nid) {
-            let address = &node.addr;
-            let url = format!("http://{address}/{object_type}/{digest}");
-            urls.push(url);
-        }
+        let address = &node.addr;
+        let url = format!("http://{address}/{object_type}/{digest}");
+        urls.push(url);
     }
 
     let url = match urls.choose(&mut rand::thread_rng()) {
@@ -235,7 +230,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(app.config.identifier.clone())
+    request.success(app.id)
 }
 
 enum MirrorState {

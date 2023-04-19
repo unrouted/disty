@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use distribd::client::RegistryClient;
 use distribd::config::Configuration;
-use distribd::config::PeerConfig;
 use distribd::config::PrometheusConfig;
 use distribd::config::RaftConfig;
 use distribd::config::RegistryConfig;
@@ -52,7 +51,7 @@ lazy_static! {
 fn test_config(node_id: u64, addr: String) -> Configuration {
     let mut config = distribd::config::config(None);
 
-    config.identifier = format!("registry{}", node_id);
+    config.identifier = format!("registry-{}", node_id - 1);
 
     config.storage = format!("tmp{}", node_id);
 
@@ -71,16 +70,6 @@ fn test_config(node_id: u64, addr: String) -> Configuration {
         address: addr,
         port: (7079 + node_id) as u16,
     };
-
-    config.peers.push(PeerConfig {
-        name: "registry1".to_owned(),
-    });
-    config.peers.push(PeerConfig {
-        name: "registry2".to_owned(),
-    });
-    config.peers.push(PeerConfig {
-        name: "registry3".to_owned(),
-    });
 
     config
 }
@@ -380,7 +369,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
     .with_thread_ids(true)
     .with_level(true)
     .with_ansi(false)
-    .with_env_filter(EnvFilter::from_default_env())
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .init();
     */
 
@@ -1241,7 +1230,7 @@ async fn import_old_snapshot() {
         "blobs": {
             "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5": {
                 "repositories": ["foo/bar"],
-                "locations": ["registry1"],
+                "locations": [1],
                 "size": 9,
                 "content_type": "application/octet-stream",
                 "dependencies": [],
@@ -1252,7 +1241,7 @@ async fn import_old_snapshot() {
         "manifests": {
             "sha256:15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225": {
                 "repositories": ["foo/bar"],
-                "locations": ["registry1"],
+                "locations": [1],
                 "size": 9,
                 "content_type": "application/octet-stream",
                 "dependencies": ["sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"],

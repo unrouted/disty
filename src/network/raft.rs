@@ -66,7 +66,7 @@ pub(crate) async fn get_blob(
         None => return Err(RegistryError::BlobNotFound {}),
     };
 
-    if !blob.locations.contains(&app.config.identifier) {
+    if !blob.locations.contains(&app.id) {
         // Nodes should only hit this endpoint if their records indicate we *do* have it
         // So either we removed it again (and likely waiting will fail)
         // Or something is broken
@@ -120,7 +120,7 @@ pub(crate) async fn get_manifest(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if !manifest.locations.contains(&app.config.identifier) {
+    if !manifest.locations.contains(&app.id) {
         // Nodes should only hit this endpoint if their records indicate we *do* have it
         // So either we removed it again (and likely waiting will fail)
         // Or something is broken

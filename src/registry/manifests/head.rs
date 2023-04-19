@@ -67,7 +67,7 @@ pub(crate) async fn head(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if !manifest.locations.contains(&app.config.identifier) {
+    if !manifest.locations.contains(&app.id) {
         app.wait_for_manifest(&path.digest).await;
     }
 
@@ -145,7 +145,7 @@ pub(crate) async fn head_by_tag(
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
-    if !manifest.locations.contains(&app.config.identifier) {
+    if !manifest.locations.contains(&app.id) {
         app.wait_for_manifest(&digest).await;
     }
 
