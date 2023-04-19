@@ -66,28 +66,27 @@ async fn do_transfer(
     request: MirrorRequest,
 ) -> MirrorResult {
     let (digest, locations, object_type) = match request {
-        MirrorRequest::Blob { ref digest } => match app.get_blob(digest) {
-            Some(blob) => {
-                if blob.locations.contains(&app.id) {
-                    debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do. {:?} {:?}", blob.locations, app.config.identifier);
+        MirrorRequest::Blob { ref digest } => {
+            match app.get_blob(digest) {
+                Some(blob) => {
+                    if blob.locations.contains(&app.id) {
+                        debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do.");
+                        return MirrorResult::None;
+                    }
+
+                    if blob.locations.is_empty() {
+                        debug!("Mirroring: {digest:?}: No sources for this; nothing to do.",);
+                        return MirrorResult::None;
+                    }
+
+                    (digest, blob.locations, "blobs")
+                }
+                None => {
+                    debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
                     return MirrorResult::None;
                 }
-
-                if blob.locations.is_empty() {
-                    debug!(
-                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
-                        blob.locations, app.config.identifier
-                    );
-                    return MirrorResult::None;
-                }
-
-                (digest, blob.locations, "blobs")
             }
-            None => {
-                debug!("Mirroring: {digest:?}: missing from graph; nothing to mirror");
-                return MirrorResult::None;
-            }
-        },
+        }
         MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest) {
             Some(manifest) => {
                 if manifest.locations.contains(&app.id) {
@@ -96,10 +95,7 @@ async fn do_transfer(
                 }
 
                 if manifest.locations.is_empty() {
-                    debug!(
-                        "Mirroring: {digest:?}: No sources for this; nothing to do. {:?} {:?}",
-                        manifest.locations, app.config.identifier
-                    );
+                    debug!("Mirroring: {digest:?}: No sources for this; nothing to do.");
                     return MirrorResult::None;
                 }
 
