@@ -140,7 +140,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()>
         actions.push(RegistryAction::ManifestUnstored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: app.id.clone(),
+            location: app.id,
             user: "$system".to_string(),
         });
     }
@@ -163,7 +163,7 @@ async fn do_garbage_collect_phase2(app: &Arc<RegistryApp>) -> anyhow::Result<()>
         actions.push(RegistryAction::BlobUnstored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: app.id.clone(),
+            location: app.id,
             user: "$system".to_string(),
         });
     }

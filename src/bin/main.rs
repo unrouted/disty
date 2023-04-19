@@ -147,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
                         fixes.push(RegistryAction::BlobUnstored {
                             timestamp: Utc::now(),
                             digest: digest.clone(),
-                            location: node_id.clone(),
+                            location: node_id,
                             user: "$fsck".to_string(),
                         });
                         blob.locations.remove(&node_id);
@@ -171,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
                         fixes.push(RegistryAction::ManifestUnstored {
                             timestamp: Utc::now(),
                             digest: digest.clone(),
-                            location: node_id.clone(),
+                            location: node_id,
                             user: "$fsck".to_string(),
                         });
                         manifest.locations.remove(&node_id);

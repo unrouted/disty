@@ -123,7 +123,7 @@ async fn do_transfer(
     let mut urls = vec![];
 
     for (nid, node) in peers.nodes() {
-        if !locations.contains(&nid) {
+        if !locations.contains(nid) {
             continue;
         }
 
@@ -234,7 +234,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(app.id.clone())
+    request.success(app.id)
 }
 
 enum MirrorState {

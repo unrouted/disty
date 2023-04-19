@@ -994,7 +994,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                     .unwrap()
                                                     .unwrap();
                                                 blob.updated = *timestamp;
-                                                blob.locations.insert(location.clone());
+                                                blob.locations.insert(*location);
                                                 sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                     .unwrap();
                                             }
@@ -1100,7 +1100,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                     .unwrap()
                                                     .unwrap();
                                                 manifest.updated = *timestamp;
-                                                manifest.locations.insert(location.clone());
+                                                manifest.locations.insert(*location);
                                                 sm.tx_put_manifest(
                                                     tx_manifest_tree,
                                                     digest,
@@ -1387,7 +1387,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                     )
                 })?;
             let new_sm = RegistryStateMachine::from_serializable(
-                self.id.clone(),
+                self.id,
                 updated_state_machine,
                 self.db.clone(),
                 self.metrics.clone(),

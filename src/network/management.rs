@@ -102,7 +102,7 @@ pub async fn import(
             actions.push(RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 digest: digest.clone(),
-                location: location.clone(),
+                location: *location,
                 user: "$import".to_string(),
             });
         }
@@ -135,7 +135,7 @@ pub async fn import(
             actions.push(RegistryAction::ManifestStored {
                 timestamp: Utc::now(),
                 digest: digest.clone(),
-                location: location.clone(),
+                location: *location,
                 user: "$import".to_string(),
             });
         }
