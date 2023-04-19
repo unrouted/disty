@@ -125,14 +125,6 @@ pub struct TokenConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MintConfig {
-    pub realm: String,
-    pub service: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     pub url: String,
 
@@ -157,7 +149,6 @@ pub struct Configuration {
     pub registry: RegistryConfig,
     pub prometheus: PrometheusConfig,
     pub token_server: Option<TokenConfig>,
-    pub mirroring: Option<MintConfig>,
     pub storage: String,
     pub webhooks: Vec<WebhookConfig>,
     pub scrubber: ScrubberConfig,
@@ -189,7 +180,6 @@ impl Default for Configuration {
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),
             token_server: None,
-            mirroring: None,
             storage: "var".to_string(),
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
