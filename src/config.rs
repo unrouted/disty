@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::{Context, Result};
 use figment::{
     providers::{Env, Format, Serialized, Yaml},
     Figment,
@@ -9,6 +10,8 @@ use platform_dirs::AppDirs;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use x509_parser::prelude::Pem;
+
+use crate::RegistryNodeId;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
@@ -161,10 +164,27 @@ pub struct Configuration {
     pub sentry: Option<SentryConfig>,
 }
 
+impl Configuration {
+    pub fn id(&self) -> Result<RegistryNodeId> {
+        let (_, node_id) = self
+            .identifier
+            .rsplit_once('-')
+            .context("Invalid identifier name")?;
+
+        let mut node_id = node_id
+            .parse()
+            .context("Identifier must end with a number")?;
+
+        node_id += 1;
+
+        Ok(node_id)
+    }
+}
+
 impl Default for Configuration {
     fn default() -> Self {
         Self {
-            identifier: "localhost".to_string(),
+            identifier: "localhost-0".to_string(),
             raft: RaftConfig::default(),
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),

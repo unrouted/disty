@@ -78,7 +78,7 @@ pub(crate) async fn put(
         RegistryAction::ManifestStored {
             timestamp: Utc::now(),
             digest: digest.clone(),
-            location: app.config.identifier.clone(),
+            location: app.id.clone(),
             user: token.sub.clone(),
         },
         RegistryAction::ManifestStat {

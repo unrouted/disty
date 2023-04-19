@@ -9,7 +9,6 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
-use anyhow::Context;
 use certificate::ServerCertificate;
 use config::Configuration;
 use extractor::Extractor;
@@ -95,14 +94,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
         ))
     });
 
-    let (_, node_id) = conf
-        .identifier
-        .rsplit_once('-')
-        .context("Invalid identifier name")?;
-    let mut node_id = node_id
-        .parse()
-        .context("Identifier must end with a number")?;
-    node_id += 1;
+    let node_id = conf.id()?;
 
     create_dir(&conf.storage, "uploads")?;
     create_dir(&conf.storage, "manifests")?;
@@ -126,7 +118,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     let db: sled::Db = sled::open(&path).unwrap_or_else(|_| panic!("could not open: {:?}", path));
 
     // Create a instance of where the Raft data will be stored.
-    let store = RegistryStore::new(Arc::new(db), conf.clone(), &mut registry).await;
+    let store = RegistryStore::new(Arc::new(db), node_id, &mut registry).await;
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.

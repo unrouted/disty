@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::RegistryNodeId;
+
 use super::digest::Digest;
 use super::RepositoryName;
 
@@ -13,7 +15,7 @@ pub enum RegistryAction {
     BlobStored {
         timestamp: DateTime<Utc>,
         digest: Digest,
-        location: String,
+        location: RegistryNodeId,
         user: String,
     },
 
@@ -22,7 +24,7 @@ pub enum RegistryAction {
     BlobUnstored {
         timestamp: DateTime<Utc>,
         digest: Digest,
-        location: String,
+        location: RegistryNodeId,
         user: String,
     },
 
@@ -66,7 +68,7 @@ pub enum RegistryAction {
     ManifestStored {
         timestamp: DateTime<Utc>,
         digest: Digest,
-        location: String,
+        location: RegistryNodeId,
         user: String,
     },
 
@@ -75,7 +77,7 @@ pub enum RegistryAction {
     ManifestUnstored {
         timestamp: DateTime<Utc>,
         digest: Digest,
-        location: String,
+        location: RegistryNodeId,
         user: String,
     },
 

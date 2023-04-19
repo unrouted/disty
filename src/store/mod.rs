@@ -43,7 +43,6 @@ use sled::Tree;
 use tokio::sync::watch::channel;
 use tokio::sync::watch::Sender;
 
-use crate::config::Configuration;
 use crate::types::Blob;
 use crate::types::Digest;
 use crate::types::Manifest;
@@ -314,7 +313,7 @@ impl RegistryStateMachine {
         Ok(())
     }
     async fn from_serializable(
-        config: Configuration,
+        id: RegistryNodeId,
         sm: SerializableRegistryStateMachine,
         db: Arc<sled::Db>,
         metrics: StorageMetrics,
@@ -336,7 +335,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) && !value.locations.is_empty() {
+            if !value.locations.contains(&id) && !value.locations.is_empty() {
                 pblob.insert(key);
             }
         }
@@ -352,7 +351,7 @@ impl RegistryStateMachine {
                 options().with_big_endian().serialize(&key).unwrap(),
                 options().with_big_endian().serialize(&value).unwrap(),
             );
-            if !value.locations.contains(&config.identifier) && !value.locations.is_empty() {
+            if !value.locations.contains(&id) && !value.locations.is_empty() {
                 pmanifest.insert(key);
             }
         }
@@ -582,7 +581,7 @@ impl RegistryStateMachine {
 #[derive(Debug)]
 pub struct RegistryStore {
     db: Arc<sled::Db>,
-    config: Configuration,
+    id: RegistryNodeId,
 
     /// The Raft state machine.
     pub state_machine: RwLock<RegistryStateMachine>,
@@ -1282,15 +1281,14 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             location, digest, ..
                         } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
-                                if !blob.locations.contains(&self.config.identifier)
-                                    && !blob.locations.is_empty()
+                                if !blob.locations.contains(&self.id) && !blob.locations.is_empty()
                                 {
                                     pending_blobs.insert(digest.clone());
                                 } else {
                                     pending_blobs.remove(digest);
                                 }
                             }
-                            if location == &self.config.identifier {
+                            if location == &self.id {
                                 if let Some(senders) = sm.blob_waiters.remove(digest) {
                                     for sender in senders {
                                         sender.send(()).unwrap();
@@ -1300,8 +1298,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         }
                         RegistryAction::BlobUnstored { digest, .. } => {
                             if let Some(blob) = self.get_blob(digest).unwrap() {
-                                if !blob.locations.contains(&self.config.identifier)
-                                    && !blob.locations.is_empty()
+                                if !blob.locations.contains(&self.id) && !blob.locations.is_empty()
                                 {
                                     pending_blobs.insert(digest.clone());
                                 } else {
@@ -1313,7 +1310,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                             location, digest, ..
                         } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
-                                if !manifest.locations.contains(&self.config.identifier)
+                                if !manifest.locations.contains(&self.id)
                                     && !manifest.locations.is_empty()
                                 {
                                     pending_manifests.insert(digest.clone());
@@ -1321,7 +1318,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                     pending_manifests.remove(digest);
                                 }
                             }
-                            if location == &self.config.identifier {
+                            if location == &self.id {
                                 if let Some(senders) = sm.manifest_waiters.remove(digest) {
                                     for sender in senders {
                                         sender.send(()).unwrap();
@@ -1331,7 +1328,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                         }
                         RegistryAction::ManifestUnstored { digest, .. } => {
                             if let Some(manifest) = self.get_manifest(digest).unwrap() {
-                                if !manifest.locations.contains(&self.config.identifier)
+                                if !manifest.locations.contains(&self.id)
                                     && !manifest.locations.is_empty()
                                 {
                                     pending_manifests.insert(digest.clone());
@@ -1390,7 +1387,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                     )
                 })?;
             let new_sm = RegistryStateMachine::from_serializable(
-                self.config.clone(),
+                self.id.clone(),
                 updated_state_machine,
                 self.db.clone(),
                 self.metrics.clone(),
@@ -1456,7 +1453,7 @@ pub fn get_manifests(tree: &Tree) -> StorageResult<BTreeMap<Digest, Manifest>> {
 impl RegistryStore {
     pub async fn new(
         db: Arc<sled::Db>,
-        config: Configuration,
+        id: RegistryNodeId,
         registry: &mut Registry,
     ) -> Arc<RegistryStore> {
         let _store = store(&db);
@@ -1470,9 +1467,7 @@ impl RegistryStore {
         let pblobs = get_blobs(&blobs)
             .unwrap()
             .iter()
-            .filter(|(_handle, blob)| {
-                !blob.locations.contains(&config.identifier) && !blob.locations.is_empty()
-            })
+            .filter(|(_handle, blob)| !blob.locations.contains(&id) && !blob.locations.is_empty())
             .map(|(digest, _)| digest.clone())
             .collect();
 
@@ -1480,7 +1475,7 @@ impl RegistryStore {
             .unwrap()
             .iter()
             .filter(|(_, manifest)| {
-                !manifest.locations.contains(&config.identifier) && !manifest.locations.is_empty()
+                !manifest.locations.contains(&id) && !manifest.locations.is_empty()
             })
             .map(|(digest, _)| digest.clone())
             .collect();
@@ -1496,7 +1491,7 @@ impl RegistryStore {
 
         Arc::new(RegistryStore {
             db,
-            config,
+            id,
             state_machine,
             metrics,
         })

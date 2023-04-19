@@ -15,7 +15,6 @@ use openraft::RaftStorage;
 use openraft::StorageError;
 use tempfile::TempDir;
 
-use crate::config::Configuration;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
@@ -58,8 +57,7 @@ impl StoreBuilder<RegistryTypeConfig, Arc<RegistryStore>> for SledBuilder {
                 .unwrap_or_else(|_| panic!("could not open: {:?}", db_dir.to_str()));
 
             let mut registry = <prometheus_client::registry::Registry>::default();
-            let store =
-                RegistryStore::new(Arc::new(db), Configuration::default(), &mut registry).await;
+            let store = RegistryStore::new(Arc::new(db), 0, &mut registry).await;
             let test_res = t(store).await;
 
             if db_dir.exists() {
@@ -84,7 +82,7 @@ async fn setup_state() -> TestStorage {
         sled::open(&db_dir).unwrap_or_else(|_| panic!("could not open: {:?}", db_dir));
 
     let mut registry = <prometheus_client::registry::Registry>::default();
-    let store = RegistryStore::new(Arc::new(db), Configuration::default(), &mut registry).await;
+    let store = RegistryStore::new(Arc::new(db), 0, &mut registry).await;
 
     TestStorage {
         store,
@@ -529,7 +527,7 @@ async fn can_collect_orphaned_manifests() {
             RegistryAction::ManifestStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest1.clone(),
             },
             RegistryAction::HashTagged {
@@ -548,7 +546,7 @@ async fn can_collect_orphaned_manifests() {
             RegistryAction::ManifestStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest2.clone(),
             },
             RegistryAction::HashTagged {
@@ -566,7 +564,7 @@ async fn can_collect_orphaned_manifests() {
 
     let entry = collected.iter().next().unwrap();
     assert_eq!(entry.0, &digest1);
-    assert!(entry.1.locations.contains("test"));
+    assert!(entry.1.locations.contains(&0));
 }
 
 #[tokio::test]
@@ -593,7 +591,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest1.clone(),
             },
             RegistryAction::BlobMounted {
@@ -605,7 +603,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest2.clone(),
             },
             RegistryAction::BlobInfo {
@@ -624,7 +622,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest3.clone(),
             },
             RegistryAction::BlobMounted {
@@ -636,7 +634,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::BlobStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: digest4.clone(),
             },
             RegistryAction::BlobInfo {
@@ -655,7 +653,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::ManifestStored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: manifest_digest.clone(),
             },
             RegistryAction::ManifestInfo {
@@ -693,7 +691,7 @@ async fn can_collect_orphaned_blobs() {
             RegistryAction::ManifestUnstored {
                 timestamp: Utc::now(),
                 user: "test".to_string(),
-                location: "test".to_string(),
+                location: 0,
                 digest: manifest_digest,
             },
         ])

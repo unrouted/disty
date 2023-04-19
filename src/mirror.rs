@@ -1,5 +1,6 @@
 use crate::app::RegistryApp;
 use crate::types::{Digest, RegistryAction};
+use crate::RegistryNodeId;
 use actix_web::web::Data;
 use chrono::Utc;
 use rand::seq::SliceRandom;
@@ -29,7 +30,7 @@ pub enum MirrorResult {
 }
 
 impl MirrorRequest {
-    pub fn success(self, location: String) -> MirrorResult {
+    pub fn success(self, location: RegistryNodeId) -> MirrorResult {
         let action = match self {
             MirrorRequest::Blob { ref digest } => RegistryAction::BlobStored {
                 timestamp: Utc::now(),
@@ -67,7 +68,7 @@ async fn do_transfer(
     let (digest, locations, object_type) = match request {
         MirrorRequest::Blob { ref digest } => match app.get_blob(digest) {
             Some(blob) => {
-                if blob.locations.contains(&app.config.identifier) {
+                if blob.locations.contains(&app.id) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do. {:?} {:?}", blob.locations, app.config.identifier);
                     return MirrorResult::None;
                 }
@@ -89,7 +90,7 @@ async fn do_transfer(
         },
         MirrorRequest::Manifest { ref digest } => match app.get_manifest(digest) {
             Some(manifest) => {
-                if manifest.locations.contains(&app.config.identifier) {
+                if manifest.locations.contains(&app.id) {
                     debug!("Mirroring: {digest:?}: Already downloaded by this node; nothing to do");
                     return MirrorResult::None;
                 }
@@ -122,11 +123,7 @@ async fn do_transfer(
     let mut urls = vec![];
 
     for (nid, node) in peers.nodes() {
-        let name = format!("registry-{}", nid - 1);
-
-        tracing::info!("Mirroring: {nid:?} {node:?} {name:?}");
-
-        if !locations.contains(&name) {
+        if !locations.contains(&nid) {
             continue;
         }
 
@@ -134,8 +131,6 @@ async fn do_transfer(
         let url = format!("http://{address}/{object_type}/{digest}");
         urls.push(url);
     }
-
-    tracing::info!("Mirroring: {urls:?}");
 
     let url = match urls.choose(&mut rand::thread_rng()) {
         Some(url) => url,
@@ -239,7 +234,7 @@ async fn do_transfer(
 
     debug!("Mirroring: Mirrored {digest}");
 
-    request.success(app.config.identifier.clone())
+    request.success(app.id.clone())
 }
 
 enum MirrorState {

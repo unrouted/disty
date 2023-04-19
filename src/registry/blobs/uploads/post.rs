@@ -145,7 +145,7 @@ pub(crate) async fn post(
                 RegistryAction::BlobStored {
                     timestamp: Utc::now(),
                     digest: digest.clone(),
-                    location: app.config.identifier.clone(),
+                    location: app.id.clone(),
                     user: token.sub.clone(),
                 },
             ];

@@ -96,7 +96,7 @@ pub(crate) async fn put(
         RegistryAction::BlobStored {
             timestamp: Utc::now(),
             digest: query.digest.clone(),
-            location: app.config.identifier.clone(),
+            location: app.id.clone(),
             user: token.sub.clone(),
         },
     ];
