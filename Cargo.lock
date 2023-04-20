@@ -93,6 +93,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix-request-identifier"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f620de7c806297b88cf39da5ef4293a59f7dc219a9838433e83238e53a9c7057"
+dependencies = [
+ "actix-web",
+ "futures",
+ "uuid",
+]
+
+[[package]]
 name = "actix-router"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -986,6 +997,7 @@ name = "distribd"
 version = "0.4.0"
 dependencies = [
  "actix-files",
+ "actix-request-identifier",
  "actix-web",
  "anyhow",
  "async-trait",

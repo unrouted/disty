@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use actix_request_identifier::RequestIdentifier;
 use actix_web::middleware::Logger;
 use actix_web::middleware::{Compress, NormalizePath};
 use actix_web::web;
@@ -153,6 +154,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     // Start the actix-web server.
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(RequestIdentifier::with_uuid())
             .wrap(PrometheusHttpMetrics::new(app1.clone(), Port::Raft))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
@@ -229,6 +231,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
             .service(registry::head::head);
 
         App::new()
+            .wrap(RequestIdentifier::with_uuid())
             .wrap(PrometheusHttpMetrics::new(app.clone(), Port::Registry))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
@@ -255,6 +258,7 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     // Start the actix-web server.
     let prometheus = HttpServer::new(move || {
         App::new()
+            .wrap(RequestIdentifier::with_uuid())
             .wrap(PrometheusHttpMetrics::new(app4.clone(), Port::Prometheus))
             .wrap(sentry_actix::Sentry::new())
             .wrap(Logger::default())
