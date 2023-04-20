@@ -101,19 +101,19 @@ async fn main() -> anyhow::Result<()> {
             let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.init(address).await?;
-            print!("Cluster initialized");
+            println!("Cluster initialized");
         }
         Action::AddLearner { id, address, port } => {
             let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.add_learner((id, address)).await?;
-            print!("Learner added");
+            println!("Learner added");
         }
         Action::ChangeMembership { ids } => {
             let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let ids = ids.into_iter().collect();
             client.change_membership(&ids).await?;
-            print!("Membership changed");
+            println!("Membership changed");
         }
         Action::Import { path } => {
             let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
