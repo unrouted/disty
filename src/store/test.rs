@@ -14,6 +14,7 @@ use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::StorageError;
 use tempfile::TempDir;
+use tracing_test::traced_test;
 
 use crate::types::Digest;
 use crate::types::RegistryAction;
@@ -109,6 +110,7 @@ impl TestStorage {
 // BLOB TESTS
 
 #[tokio::test]
+#[traced_test]
 async fn blob_not_available_initially() {
     let state = setup_state().await;
 
@@ -118,6 +120,7 @@ async fn blob_not_available_initially() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn blob_becomes_available() {
     let mut state = setup_state().await;
 
@@ -141,6 +144,7 @@ async fn blob_becomes_available() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn blob_metadata() {
     let mut state = setup_state().await;
 
@@ -176,6 +180,7 @@ async fn blob_metadata() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn blob_size() {
     let mut state = setup_state().await;
 
@@ -208,6 +213,7 @@ async fn blob_size() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn blob_becomes_unavailable() {
     let mut state = setup_state().await;
 
@@ -242,6 +248,7 @@ async fn blob_becomes_unavailable() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn blob_becomes_available_again() {
     let mut state = setup_state().await;
 
@@ -295,6 +302,7 @@ async fn blob_becomes_available_again() {
 // MANIFEST TESTS
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_not_available_initially() {
     let state = setup_state().await;
 
@@ -304,6 +312,7 @@ async fn manifest_not_available_initially() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_becomes_available() {
     let mut state = setup_state().await;
 
@@ -327,6 +336,7 @@ async fn manifest_becomes_available() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_metadata() {
     let mut state = setup_state().await;
 
@@ -365,6 +375,7 @@ async fn manifest_metadata() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_size() {
     let mut state = setup_state().await;
 
@@ -397,6 +408,7 @@ async fn manifest_size() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_becomes_unavailable() {
     let mut state = setup_state().await;
 
@@ -430,6 +442,7 @@ async fn manifest_becomes_unavailable() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn manifest_becomes_available_again() {
     let mut state = setup_state().await;
 
@@ -480,6 +493,7 @@ async fn manifest_becomes_available_again() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn can_tag_manifest() {
     let mut state = setup_state().await;
 
@@ -508,6 +522,7 @@ async fn can_tag_manifest() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn can_collect_orphaned_manifests() {
     let mut state = setup_state().await;
 
@@ -568,6 +583,7 @@ async fn can_collect_orphaned_manifests() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn can_collect_orphaned_blobs() {
     let mut state = setup_state().await;
 

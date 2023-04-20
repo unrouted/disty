@@ -27,6 +27,7 @@ use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::Notify;
+use tracing_test::traced_test;
 
 lazy_static! {
     static ref IP_ADDRESSES: ResourcePool<String> = {
@@ -446,6 +447,7 @@ async fn configure() -> anyhow::Result<TestCluster> {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn get_root() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -459,6 +461,7 @@ async fn get_root() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_whole_blob() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -508,6 +511,7 @@ async fn upload_whole_blob() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_whole_blob_bad_digest() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -521,6 +525,7 @@ async fn upload_whole_blob_bad_digest() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_cross_mount() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -576,6 +581,7 @@ async fn upload_cross_mount() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_blob_multiple() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -639,6 +645,7 @@ async fn upload_blob_multiple() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_blob_multiple_kaniko() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -714,6 +721,7 @@ async fn upload_blob_multiple_kaniko() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_blob_multiple_bad_digest() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -757,6 +765,7 @@ async fn upload_blob_multiple_bad_digest() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_blob_multiple_finish_with_put() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -820,6 +829,7 @@ async fn upload_blob_multiple_finish_with_put() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_blob_multiple_finish_with_put_invalid_hash() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -863,6 +873,7 @@ async fn upload_blob_multiple_finish_with_put_invalid_hash() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn delete_blob() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -901,6 +912,7 @@ async fn delete_blob() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn upload_manifest() {
     let cluster = configure().await.unwrap();
 
@@ -1025,6 +1037,7 @@ async fn upload_manifest() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn list_tags() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -1069,6 +1082,7 @@ async fn list_tags() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn delete_tag() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -1136,6 +1150,7 @@ async fn delete_tag() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn delete_upload() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
@@ -1190,6 +1205,7 @@ async fn delete_upload() {
 }
 
 #[tokio::test]
+#[traced_test]
 async fn import_old_snapshot() {
     let cluster = configure().await.unwrap();
     let client = &cluster.peers.get(0).unwrap().client;
