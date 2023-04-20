@@ -53,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test -- --nocapture
+        run: cargo test
 
   coverage:
     name: coverage
