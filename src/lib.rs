@@ -176,8 +176,6 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
             .service(management::export)
             // application API
             .service(api::write)
-            .service(api::read)
-            .service(api::consistent_read)
     })
     .disable_signals();
 

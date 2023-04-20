@@ -65,7 +65,6 @@ pub type RegistryNodeId = u64;
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RegistryRequest {
-    Set { key: String, value: String },
     Transaction { actions: Vec<RegistryAction> },
 }
 
@@ -103,7 +102,6 @@ pub struct SerializableRegistryStateMachine {
     pub last_membership: StoredMembership<RegistryNodeId, BasicNode>,
 
     /// Application data.
-    pub data: BTreeMap<String, String>,
     pub manifests: BTreeMap<Digest, Manifest>,
     pub blobs: BTreeMap<Digest, Blob>,
     pub tags: BTreeMap<RepositoryName, BTreeMap<String, Digest>>,
@@ -122,18 +120,6 @@ pub struct RegistryStateMachine {
 
 impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
     fn from(state: &RegistryStateMachine) -> Self {
-        let mut data_tree = BTreeMap::new();
-        for entry_res in data(&state.db).iter() {
-            let entry = entry_res.expect("read db failed");
-
-            let key: &[u8] = &entry.0;
-            let value: &[u8] = &entry.1;
-            data_tree.insert(
-                String::from_utf8(key.to_vec()).expect("invalid key"),
-                String::from_utf8(value.to_vec()).expect("invalid data"),
-            );
-        }
-
         let mut blob_tree = BTreeMap::new();
         for entry_res in blobs(&state.db).iter() {
             let entry = entry_res.expect("read db failed");
@@ -184,7 +170,6 @@ impl From<&RegistryStateMachine> for SerializableRegistryStateMachine {
         Self {
             last_applied_log: state.get_last_applied_log().expect("last_applied_log"),
             last_membership: state.get_last_membership().expect("last_membership"),
-            data: data_tree,
             manifests: manifest_tree,
             blobs: blob_tree,
             tags: tag_tree,
@@ -318,15 +303,6 @@ impl RegistryStateMachine {
         db: Arc<sled::Db>,
         metrics: StorageMetrics,
     ) -> StorageResult<Self> {
-        let data_tree = data(&db);
-        let mut batch = sled::Batch::default();
-        for (key, value) in sm.data {
-            batch.insert(key.as_bytes(), value.as_bytes())
-        }
-        data_tree.apply_batch(batch).map_err(sm_w_err)?;
-        let flushed = flush_async(&data_tree).await.map_err(s_w_err)?;
-        metrics.flushed_bytes.inc_by(flushed as u64);
-
         let mut pblob = HashSet::new();
         let blob_tree = blobs(&db);
         let mut batch = sled::Batch::default();
@@ -413,45 +389,6 @@ impl RegistryStateMachine {
             blob_waiters: HashMap::new(),
         }
     }
-    fn insert_tx(
-        &self,
-        tx_data_tree: &sled::transaction::TransactionalTree,
-        key: String,
-        value: String,
-    ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
-        tx_data_tree
-            .insert(key.as_bytes(), value.as_bytes())
-            .map_err(ct_err)?;
-        Ok(())
-    }
-    pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
-        let key = key.as_bytes();
-        let data_tree = data(&self.db);
-        data_tree
-            .get(key)
-            .map(|value| {
-                value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data"))
-            })
-            .map_err(|e| {
-                StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into()
-            })
-    }
-    pub fn get_all(&self) -> StorageResult<Vec<String>> {
-        let data_tree = data(&self.db);
-
-        let data = data_tree
-            .iter()
-            .filter_map(|entry_res| {
-                if let Ok(el) = entry_res {
-                    Some(String::from_utf8(el.1.to_vec()).expect("invalid data"))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        Ok(data)
-    }
-
     fn tx_get_blob(
         &self,
         blobs: &TransactionalTree,
@@ -975,86 +912,71 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         entries: &[&Entry<RegistryTypeConfig>],
     ) -> Result<Vec<RegistryResponse>, StorageError<RegistryNodeId>> {
         let state_machine = state_machine(&self.db);
-        let data_tree = data(&self.db);
         let blob_tree = blobs(&self.db);
         let manifest_tree = manifests(&self.db);
         let tag_tree = tags(&self.db);
 
-        let trans_res = (
-            &state_machine,
-            &data_tree,
-            &blob_tree,
-            &manifest_tree,
-            &tag_tree,
-        )
-            .transaction(
-                |(tx_state_machine, tx_data_tree, tx_blob_tree, tx_manifest_tree, tx_tag_tree)| {
-                    let sm = self.state_machine.write().unwrap();
+        let trans_res = (&state_machine, &blob_tree, &manifest_tree, &tag_tree).transaction(
+            |(tx_state_machine, tx_blob_tree, tx_manifest_tree, tx_tag_tree)| {
+                let sm = self.state_machine.write().unwrap();
 
-                    let mut res = Vec::with_capacity(entries.len());
+                let mut res = Vec::with_capacity(entries.len());
 
-                    for entry in entries {
-                        tracing::debug!(%entry.log_id, "replicate to sm");
+                for entry in entries {
+                    tracing::debug!(%entry.log_id, "replicate to sm");
 
-                        sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
+                    sm.set_last_applied_log_tx(tx_state_machine, entry.log_id)?;
 
-                        match entry.payload {
-                            EntryPayload::Blank => res.push(RegistryResponse {
-                                value: entry.log_id.index,
-                            }),
-                            EntryPayload::Normal(ref req) => match req {
-                                RegistryRequest::Set { key, value } => {
-                                    sm.insert_tx(tx_data_tree, key.clone(), value.clone())?;
-                                    res.push(RegistryResponse { value: 0 })
-                                }
-                                RegistryRequest::Transaction { actions } => {
-                                    for action in actions {
-                                        match action {
-                                            RegistryAction::Empty => {}
-                                            RegistryAction::BlobStored {
-                                                timestamp,
-                                                digest,
-                                                location,
-                                                user: _,
-                                            } => {
-                                                let mut blob = sm
-                                                    .tx_get_blob(tx_blob_tree, digest)
-                                                    .unwrap()
-                                                    .unwrap();
+                    match entry.payload {
+                        EntryPayload::Blank => res.push(RegistryResponse {
+                            value: entry.log_id.index,
+                        }),
+                        EntryPayload::Normal(ref req) => match req {
+                            RegistryRequest::Transaction { actions } => {
+                                for action in actions {
+                                    match action {
+                                        RegistryAction::Empty => {}
+                                        RegistryAction::BlobStored {
+                                            timestamp,
+                                            digest,
+                                            location,
+                                            user: _,
+                                        } => {
+                                            let mut blob = sm
+                                                .tx_get_blob(tx_blob_tree, digest)
+                                                .unwrap()
+                                                .unwrap();
+                                            blob.updated = *timestamp;
+                                            blob.locations.insert(*location);
+                                            sm.tx_put_blob(tx_blob_tree, digest, &blob).unwrap();
+                                        }
+                                        RegistryAction::BlobUnstored {
+                                            timestamp,
+                                            digest,
+                                            location,
+                                            user: _,
+                                        } => {
+                                            if let Some(mut blob) =
+                                                sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                            {
                                                 blob.updated = *timestamp;
-                                                blob.locations.insert(*location);
-                                                sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                    .unwrap();
-                                            }
-                                            RegistryAction::BlobUnstored {
-                                                timestamp,
-                                                digest,
-                                                location,
-                                                user: _,
-                                            } => {
-                                                if let Some(mut blob) =
-                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
-                                                {
-                                                    blob.updated = *timestamp;
-                                                    blob.locations.remove(location);
-                                                    if blob.locations.is_empty() {
-                                                        sm.tx_del_blob(tx_blob_tree, digest)
-                                                            .unwrap();
-                                                    } else {
-                                                        sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                            .unwrap();
-                                                    }
+                                                blob.locations.remove(location);
+                                                if blob.locations.is_empty() {
+                                                    sm.tx_del_blob(tx_blob_tree, digest).unwrap();
+                                                } else {
+                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                        .unwrap();
                                                 }
                                             }
-                                            RegistryAction::BlobMounted {
-                                                timestamp,
-                                                digest,
-                                                repository,
-                                                user: _,
-                                            } => {
-                                                let mut blob = match sm
-                                                    .tx_get_blob(tx_blob_tree, digest)
-                                                    .unwrap()
+                                        }
+                                        RegistryAction::BlobMounted {
+                                            timestamp,
+                                            digest,
+                                            repository,
+                                            user: _,
+                                        } => {
+                                            let mut blob =
+                                                match sm.tx_get_blob(tx_blob_tree, digest).unwrap()
                                                 {
                                                     Some(blob) => blob,
                                                     None => Blob {
@@ -1067,226 +989,211 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
                                                         repositories: HashSet::new(),
                                                     },
                                                 };
+                                            blob.updated = *timestamp;
+                                            blob.repositories.insert(repository.clone());
+                                            sm.tx_put_blob(tx_blob_tree, digest, &blob).unwrap();
+                                        }
+                                        RegistryAction::BlobUnmounted {
+                                            timestamp,
+                                            digest,
+                                            repository,
+                                            user: _,
+                                        } => {
+                                            if let Some(mut blob) =
+                                                sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                            {
                                                 blob.updated = *timestamp;
-                                                blob.repositories.insert(repository.clone());
+                                                blob.repositories.remove(repository);
                                                 sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                     .unwrap();
                                             }
-                                            RegistryAction::BlobUnmounted {
-                                                timestamp,
-                                                digest,
-                                                repository,
-                                                user: _,
-                                            } => {
-                                                if let Some(mut blob) =
-                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
-                                                {
-                                                    blob.updated = *timestamp;
-                                                    blob.repositories.remove(repository);
-                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                        .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::BlobInfo {
-                                                timestamp,
-                                                digest,
-                                                dependencies,
-                                                content_type,
-                                            } => {
-                                                if let Some(mut blob) =
-                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
-                                                {
-                                                    blob.updated = *timestamp;
-                                                    blob.dependencies = Some(dependencies.clone());
-                                                    blob.content_type = Some(content_type.clone());
-                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                        .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::BlobStat {
-                                                timestamp,
-                                                digest,
-                                                size,
-                                            } => {
-                                                if let Some(mut blob) =
-                                                    sm.tx_get_blob(tx_blob_tree, digest).unwrap()
-                                                {
-                                                    blob.updated = *timestamp;
-                                                    blob.size = Some(*size);
-                                                    sm.tx_put_blob(tx_blob_tree, digest, &blob)
-                                                        .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::ManifestStored {
-                                                timestamp,
-                                                digest,
-                                                location,
-                                                user: _,
-                                            } => {
-                                                let mut manifest = sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                    .unwrap();
-                                                manifest.updated = *timestamp;
-                                                manifest.locations.insert(*location);
-                                                sm.tx_put_manifest(
-                                                    tx_manifest_tree,
-                                                    digest,
-                                                    &manifest,
-                                                )
-                                                .unwrap();
-                                            }
-                                            RegistryAction::ManifestUnstored {
-                                                timestamp,
-                                                digest,
-                                                location,
-                                                user: _,
-                                            } => {
-                                                if let Some(mut manifest) = sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                {
-                                                    manifest.updated = *timestamp;
-                                                    manifest.locations.remove(location);
-                                                    if manifest.locations.is_empty() {
-                                                        sm.tx_del_manifest(
-                                                            tx_manifest_tree,
-                                                            digest,
-                                                        )
-                                                        .unwrap();
-                                                    } else {
-                                                        sm.tx_put_manifest(
-                                                            tx_manifest_tree,
-                                                            digest,
-                                                            &manifest,
-                                                        )
-                                                        .unwrap();
-                                                    }
-                                                }
-                                            }
-                                            RegistryAction::ManifestMounted {
-                                                timestamp,
-                                                digest,
-                                                repository,
-                                                user: _,
-                                            } => {
-                                                let mut manifest = match sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                {
-                                                    Some(manifest) => manifest,
-                                                    None => Manifest {
-                                                        created: *timestamp,
-                                                        updated: *timestamp,
-                                                        content_type: None,
-                                                        size: None,
-                                                        dependencies: Some(vec![]),
-                                                        locations: HashSet::new(),
-                                                        repositories: HashSet::new(),
-                                                    },
-                                                };
-
-                                                manifest.updated = *timestamp;
-                                                manifest.repositories.insert(repository.clone());
-                                                sm.tx_put_manifest(
-                                                    tx_manifest_tree,
-                                                    digest,
-                                                    &manifest,
-                                                )
-                                                .unwrap();
-                                            }
-                                            RegistryAction::ManifestUnmounted {
-                                                timestamp,
-                                                digest,
-                                                repository,
-                                                user: _,
-                                            } => {
-                                                if let Some(mut manifest) = sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                {
-                                                    manifest.updated = *timestamp;
-                                                    manifest.repositories.remove(repository);
-                                                    sm.tx_put_manifest(
-                                                        tx_manifest_tree,
-                                                        digest,
-                                                        &manifest,
-                                                    )
-                                                    .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::ManifestInfo {
-                                                timestamp,
-                                                digest,
-                                                dependencies,
-                                                content_type,
-                                            } => {
-                                                if let Some(mut manifest) = sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                {
-                                                    manifest.updated = *timestamp;
-                                                    manifest.dependencies =
-                                                        Some(dependencies.clone());
-                                                    manifest.content_type =
-                                                        Some(content_type.clone());
-                                                    sm.tx_put_manifest(
-                                                        tx_manifest_tree,
-                                                        digest,
-                                                        &manifest,
-                                                    )
-                                                    .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::ManifestStat {
-                                                timestamp,
-                                                digest,
-                                                size,
-                                            } => {
-                                                if let Some(mut manifest) = sm
-                                                    .tx_get_manifest(tx_manifest_tree, digest)
-                                                    .unwrap()
-                                                {
-                                                    manifest.updated = *timestamp;
-                                                    manifest.size = Some(*size);
-                                                    sm.tx_put_manifest(
-                                                        tx_manifest_tree,
-                                                        digest,
-                                                        &manifest,
-                                                    )
-                                                    .unwrap();
-                                                }
-                                            }
-                                            RegistryAction::HashTagged {
-                                                timestamp: _,
-                                                digest,
-                                                repository,
-                                                tag,
-                                                user: _,
-                                            } => {
-                                                sm.tx_put_tag(tx_tag_tree, repository, tag, digest)
+                                        }
+                                        RegistryAction::BlobInfo {
+                                            timestamp,
+                                            digest,
+                                            dependencies,
+                                            content_type,
+                                        } => {
+                                            if let Some(mut blob) =
+                                                sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                            {
+                                                blob.updated = *timestamp;
+                                                blob.dependencies = Some(dependencies.clone());
+                                                blob.content_type = Some(content_type.clone());
+                                                sm.tx_put_blob(tx_blob_tree, digest, &blob)
                                                     .unwrap();
                                             }
                                         }
+                                        RegistryAction::BlobStat {
+                                            timestamp,
+                                            digest,
+                                            size,
+                                        } => {
+                                            if let Some(mut blob) =
+                                                sm.tx_get_blob(tx_blob_tree, digest).unwrap()
+                                            {
+                                                blob.updated = *timestamp;
+                                                blob.size = Some(*size);
+                                                sm.tx_put_blob(tx_blob_tree, digest, &blob)
+                                                    .unwrap();
+                                            }
+                                        }
+                                        RegistryAction::ManifestStored {
+                                            timestamp,
+                                            digest,
+                                            location,
+                                            user: _,
+                                        } => {
+                                            let mut manifest = sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                                .unwrap();
+                                            manifest.updated = *timestamp;
+                                            manifest.locations.insert(*location);
+                                            sm.tx_put_manifest(tx_manifest_tree, digest, &manifest)
+                                                .unwrap();
+                                        }
+                                        RegistryAction::ManifestUnstored {
+                                            timestamp,
+                                            digest,
+                                            location,
+                                            user: _,
+                                        } => {
+                                            if let Some(mut manifest) = sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                            {
+                                                manifest.updated = *timestamp;
+                                                manifest.locations.remove(location);
+                                                if manifest.locations.is_empty() {
+                                                    sm.tx_del_manifest(tx_manifest_tree, digest)
+                                                        .unwrap();
+                                                } else {
+                                                    sm.tx_put_manifest(
+                                                        tx_manifest_tree,
+                                                        digest,
+                                                        &manifest,
+                                                    )
+                                                    .unwrap();
+                                                }
+                                            }
+                                        }
+                                        RegistryAction::ManifestMounted {
+                                            timestamp,
+                                            digest,
+                                            repository,
+                                            user: _,
+                                        } => {
+                                            let mut manifest = match sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                            {
+                                                Some(manifest) => manifest,
+                                                None => Manifest {
+                                                    created: *timestamp,
+                                                    updated: *timestamp,
+                                                    content_type: None,
+                                                    size: None,
+                                                    dependencies: Some(vec![]),
+                                                    locations: HashSet::new(),
+                                                    repositories: HashSet::new(),
+                                                },
+                                            };
+
+                                            manifest.updated = *timestamp;
+                                            manifest.repositories.insert(repository.clone());
+                                            sm.tx_put_manifest(tx_manifest_tree, digest, &manifest)
+                                                .unwrap();
+                                        }
+                                        RegistryAction::ManifestUnmounted {
+                                            timestamp,
+                                            digest,
+                                            repository,
+                                            user: _,
+                                        } => {
+                                            if let Some(mut manifest) = sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                            {
+                                                manifest.updated = *timestamp;
+                                                manifest.repositories.remove(repository);
+                                                sm.tx_put_manifest(
+                                                    tx_manifest_tree,
+                                                    digest,
+                                                    &manifest,
+                                                )
+                                                .unwrap();
+                                            }
+                                        }
+                                        RegistryAction::ManifestInfo {
+                                            timestamp,
+                                            digest,
+                                            dependencies,
+                                            content_type,
+                                        } => {
+                                            if let Some(mut manifest) = sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                            {
+                                                manifest.updated = *timestamp;
+                                                manifest.dependencies = Some(dependencies.clone());
+                                                manifest.content_type = Some(content_type.clone());
+                                                sm.tx_put_manifest(
+                                                    tx_manifest_tree,
+                                                    digest,
+                                                    &manifest,
+                                                )
+                                                .unwrap();
+                                            }
+                                        }
+                                        RegistryAction::ManifestStat {
+                                            timestamp,
+                                            digest,
+                                            size,
+                                        } => {
+                                            if let Some(mut manifest) = sm
+                                                .tx_get_manifest(tx_manifest_tree, digest)
+                                                .unwrap()
+                                            {
+                                                manifest.updated = *timestamp;
+                                                manifest.size = Some(*size);
+                                                sm.tx_put_manifest(
+                                                    tx_manifest_tree,
+                                                    digest,
+                                                    &manifest,
+                                                )
+                                                .unwrap();
+                                            }
+                                        }
+                                        RegistryAction::HashTagged {
+                                            timestamp: _,
+                                            digest,
+                                            repository,
+                                            tag,
+                                            user: _,
+                                        } => {
+                                            sm.tx_put_tag(tx_tag_tree, repository, tag, digest)
+                                                .unwrap();
+                                        }
                                     }
-                                    res.push(RegistryResponse {
-                                        value: entry.log_id.index,
-                                    });
                                 }
-                            },
-                            EntryPayload::Membership(ref mem) => {
-                                let membership =
-                                    StoredMembership::new(Some(entry.log_id), mem.clone());
-                                sm.set_last_membership_tx(tx_state_machine, membership)?;
                                 res.push(RegistryResponse {
                                     value: entry.log_id.index,
-                                })
+                                });
                             }
-                        };
-                    }
-                    Ok(res)
-                },
-            );
+                        },
+                        EntryPayload::Membership(ref mem) => {
+                            let membership = StoredMembership::new(Some(entry.log_id), mem.clone());
+                            sm.set_last_membership_tx(tx_state_machine, membership)?;
+                            res.push(RegistryResponse {
+                                value: entry.log_id.index,
+                            })
+                        }
+                    };
+                }
+                Ok(res)
+            },
+        );
         let result_vec = trans_res.map_err(t_err)?;
 
         let flushed = self.flush_async().await.map_err(|e| {
@@ -1486,7 +1393,6 @@ impl RegistryStore {
     ) -> Arc<RegistryStore> {
         let _store = store(&db);
         let _state_machine = state_machine(&db);
-        let _data = data(&db);
         let blobs = blobs(&db);
         let manifests = manifests(&db);
         let _tags = tags(&db);
@@ -1690,9 +1596,6 @@ fn store(db: &sled::Db) -> sled::Tree {
 }
 fn logs(db: &sled::Db) -> sled::Tree {
     db.open_tree("logs").expect("logs open failed")
-}
-fn data(db: &sled::Db) -> sled::Tree {
-    db.open_tree("data").expect("data open failed")
 }
 fn blobs(db: &sled::Db) -> sled::Tree {
     db.open_tree("blobs").expect("blobs open failed")
