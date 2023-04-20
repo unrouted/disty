@@ -98,42 +98,42 @@ async fn main() -> anyhow::Result<()> {
             tasks.notify_one();
         }
         Action::Init { address, port } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.init(address).await?;
             print!("Cluster initialized");
         }
         Action::AddLearner { id, address, port } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let address = format!("{}:{}", address, port);
             client.add_learner((id, address)).await?;
             print!("Learner added");
         }
         Action::ChangeMembership { ids } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let ids = ids.into_iter().collect();
             client.change_membership(&ids).await?;
             print!("Membership changed");
         }
         Action::Import { path } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let payload = tokio::fs::read_to_string(path).await?;
             let body: ImportBody = from_str(&payload)?;
             client.import(&body).await?;
             println!("Data imported");
         }
         Action::Export {} => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let body = client.export().await?;
             println!("{}", serde_json::to_string(&body)?);
         }
         Action::Metrics {} => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let metrics = client.metrics().await?;
             println!("{:?}", metrics);
         }
         Action::Fsck { repair } => {
-            let client = RegistryClient::new(1, "127.0.0.1:8080".to_string(), retry_policy);
+            let client = RegistryClient::new(node_id, "127.0.0.1:8080".to_string(), retry_policy);
             let mut body = client.export().await?;
 
             let mut fixes = vec![];
