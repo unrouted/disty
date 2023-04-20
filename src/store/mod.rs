@@ -264,7 +264,7 @@ impl RegistryStateMachine {
             .insert(b"last_membership", value)
             .map_err(m_w_err)?;
 
-        let flushed = state_machine.flush_async().await.map_err(m_w_err)?;
+        let flushed = flush_async(&state_machine).await.map_err(m_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -297,7 +297,7 @@ impl RegistryStateMachine {
             .insert(b"last_applied_log", value)
             .map_err(l_r_err)?;
 
-        let flushed = state_machine.flush_async().await.map_err(l_r_err)?;
+        let flushed = flush_async(&state_machine).await.map_err(l_r_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -324,7 +324,7 @@ impl RegistryStateMachine {
             batch.insert(key.as_bytes(), value.as_bytes())
         }
         data_tree.apply_batch(batch).map_err(sm_w_err)?;
-        let flushed = data_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&data_tree).await.map_err(s_w_err)?;
         metrics.flushed_bytes.inc_by(flushed as u64);
 
         let mut pblob = HashSet::new();
@@ -340,7 +340,7 @@ impl RegistryStateMachine {
             }
         }
         blob_tree.apply_batch(batch).map_err(sm_w_err)?;
-        let flushed = blob_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&blob_tree).await.map_err(s_w_err)?;
         metrics.flushed_bytes.inc_by(flushed as u64);
 
         let mut pmanifest = HashSet::new();
@@ -356,7 +356,7 @@ impl RegistryStateMachine {
             }
         }
         manifest_tree.apply_batch(batch).map_err(sm_w_err)?;
-        let flushed = manifest_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&manifest_tree).await.map_err(s_w_err)?;
         metrics.flushed_bytes.inc_by(flushed as u64);
 
         let tag_tree = tags(&db);
@@ -374,7 +374,7 @@ impl RegistryStateMachine {
             }
         }
         tag_tree.apply_batch(batch).map_err(sm_w_err)?;
-        let flushed = tag_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&tag_tree).await.map_err(s_w_err)?;
         metrics.flushed_bytes.inc_by(flushed as u64);
 
         let (pending_blobs, _) = channel(pblob);
@@ -605,7 +605,35 @@ fn bin_to_id(buf: &[u8]) -> u64 {
     (&buf[0..8]).read_u64::<BigEndian>().unwrap()
 }
 
+async fn flush_async(tree: &Tree) -> sled::Result<usize> {
+    // Tests were hitting
+    // https://github.com/spacejam/sled/issues/1357
+    // https://github.com/spacejam/sled/issues/1308
+
+    // We need
+    // https://github.com/spacejam/sled/commit/61803984dc1cd8c35a3d537c2a7f5538fa659fac
+
+    let tree = tree.clone();
+    tokio::task::spawn_blocking(move || tree.flush())
+        .await
+        .unwrap()
+}
+
 impl RegistryStore {
+    async fn flush_async(&self) -> sled::Result<usize> {
+        // Tests were hitting
+        // https://github.com/spacejam/sled/issues/1357
+        // https://github.com/spacejam/sled/issues/1308
+
+        // We need
+        // https://github.com/spacejam/sled/commit/61803984dc1cd8c35a3d537c2a7f5538fa659fac
+
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.flush())
+            .await
+            .unwrap()
+    }
+
     fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
         let store_tree = store(&self.db);
         let val = store_tree
@@ -625,7 +653,7 @@ impl RegistryStore {
             .insert(b"last_purged_log_id", val.as_slice())
             .map_err(s_w_err)?;
 
-        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&store_tree).await.map_err(s_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -648,7 +676,7 @@ impl RegistryStore {
             .insert(b"snapshot_index", val.as_slice())
             .map_err(s_w_err)?;
 
-        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&store_tree).await.map_err(s_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -661,7 +689,7 @@ impl RegistryStore {
             .map_err(v_w_err)
             .map(|_| ())?;
 
-        let flushed = store_tree.flush_async().await.map_err(s_w_err)?;
+        let flushed = flush_async(&store_tree).await.map_err(s_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -700,7 +728,7 @@ impl RegistryStore {
                 ),
             })?;
 
-        let flushed = store_tree.flush_async().await.map_err(|e| {
+        let flushed = flush_async(&store_tree).await.map_err(|e| {
             StorageIOError::new(
                 ErrorSubject::Snapshot(meta.signature()),
                 ErrorVerb::Write,
@@ -874,7 +902,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         }
         logs_tree.apply_batch(batch).map_err(l_w_err)?;
 
-        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        let flushed = flush_async(&logs_tree).await.map_err(l_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -896,7 +924,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             batch_del.remove(entry.0);
         }
         logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
-        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        let flushed = flush_async(&logs_tree).await.map_err(l_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -920,7 +948,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
         }
         logs_tree.apply_batch(batch_del).map_err(l_w_err)?;
 
-        let flushed = logs_tree.flush_async().await.map_err(l_w_err)?;
+        let flushed = flush_async(&logs_tree).await.map_err(l_w_err)?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
         Ok(())
     }
@@ -1261,7 +1289,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             );
         let result_vec = trans_res.map_err(t_err)?;
 
-        let flushed = self.db.flush_async().await.map_err(|e| {
+        let flushed = self.flush_async().await.map_err(|e| {
             StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e))
         })?;
         self.metrics.flushed_bytes.inc_by(flushed as u64);
