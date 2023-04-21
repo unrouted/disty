@@ -13,6 +13,9 @@ license = "Apache-2.0"
 repository = "https://github.com/distribd/distribd"
 publish = false
 
+[lib]
+bench = false
+
 [[bin]]
 name = "distribd"
 path = "src/bin/main.rs"
@@ -73,7 +76,7 @@ rstest = "0.17.0"
 lazy_static = "1.4.0"
 simple-pool = "0.0.11"
 tracing-test = { version = "0.2.4", features = ["no-env-filter"] }
-criterion = "0.3"
+criterion = "0.4"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
