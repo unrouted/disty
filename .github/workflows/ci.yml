@@ -64,12 +64,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: criterion
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo criterion
+        run: cargo bench
 
   coverage:
     name: coverage
