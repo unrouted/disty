@@ -1,10 +1,8 @@
-use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
@@ -14,10 +12,8 @@ use distribd::config::PrometheusConfig;
 use distribd::config::RaftConfig;
 use distribd::config::RegistryConfig;
 use distribd::start_raft_node;
-use distribd::types::Digest;
-use lazy_static::lazy_static;
 use maplit::btreeset;
-use reqwest::Response;
+use rand::seq::SliceRandom;
 use reqwest::StatusCode;
 use reqwest::{
     header::{HeaderMap, CONTENT_TYPE},
@@ -26,8 +22,6 @@ use reqwest::{
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde_json::json;
-use serde_json::Value;
-use simple_pool::{ResourcePool, ResourcePoolGuard};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::Notify;
@@ -77,25 +71,7 @@ impl Drop for TestNode {
 
 struct TestCluster {
     peers: Vec<TestNode>,
-}
-
-impl TestCluster {
-    async fn head_all<F: Fn(Response) -> bool>(&self, url: &str, cb: F) {
-        for peer in self.peers.iter() {
-            'peer: {
-                let full_url = peer.url.clone().join(url).unwrap();
-                for _i in 1..10 {
-                    let resp = peer.client.head(full_url.clone()).send().await.unwrap();
-                    if !cb(resp) {
-                        break 'peer;
-                    }
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                }
-
-                panic!("Shouldn't have got here");
-            }
-        }
-    }
+    runtime: Runtime,
 }
 
 impl Drop for TestCluster {
@@ -107,7 +83,7 @@ impl Drop for TestCluster {
     }
 }
 
-async fn configure() -> anyhow::Result<TestCluster> {
+fn configure() -> anyhow::Result<Arc<TestCluster>> {
     let address = "127.0.0.1".to_string();
 
     let mut peers = vec![];
@@ -161,50 +137,62 @@ async fn configure() -> anyhow::Result<TestCluster> {
         });
     }
 
-    // Wait for server to start up.
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let cluster = Arc::new(TestCluster {
+        peers,
+        runtime: Runtime::new().unwrap(),
+    });
+    let cluster2 = cluster.clone();
 
-    let leader = &peers.get(0).unwrap().backend;
-    leader.init(peers.get(0).unwrap().address.clone()).await?;
-    leader
-        .add_learner((2, peers.get(1).unwrap().address.clone()))
-        .await?;
-    leader
-        .add_learner((3, peers.get(2).unwrap().address.clone()))
-        .await?;
-    leader.change_membership(&btreeset! {1,2,3}).await?;
+    cluster2.runtime.block_on(async move {
+        let peers = &cluster.peers;
+        let leader = &peers.get(0).unwrap().backend;
 
-    Ok(TestCluster { peers })
-}
+        // Wait for server to start up.
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
-pub fn manifest_put_get_delete(c: &mut Criterion) {
-    let _handle = tokio::spawn(async {
-        let cluster = configure().await.unwrap();
-        let client = &cluster.peers.get(0).unwrap().client;
-        let url = cluster.peers.get(0).unwrap().url.clone();
+        leader
+            .init(peers.get(0).unwrap().address.clone())
+            .await
+            .unwrap();
+
+        leader
+            .add_learner((2, peers.get(1).unwrap().address.clone()))
+            .await
+            .unwrap();
+        leader
+            .add_learner((3, peers.get(2).unwrap().address.clone()))
+            .await
+            .unwrap();
+
+        leader.change_membership(&btreeset! {1,2,3}).await.unwrap();
     });
 
-    c.bench_function("fib 20", |b| b.iter(|| println!("{}", black_box(20) * 20)));
+    Ok(cluster2)
+}
 
-    /*
-        let payload = json!({
-            "schemaVersion": 2,
-            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
-            "manifests": []
-        });
+async fn async_manifest_put_get_delete(cluster: Arc<TestCluster>) {
+    let client = &cluster.peers.get(0).unwrap().client;
+    let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
+    let url = peer.url.clone();
 
-        {
-            let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+    let payload = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "manifests": []
+    });
 
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                CONTENT_TYPE,
-                "application/vnd.docker.distribution.manifest.list.v2+json"
+    {
+        let url = url.clone().join("foo/bar/manifests/latest").unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
                 .parse()
                 .unwrap(),
-            );
+        );
 
-            let resp = client
+        let resp = client
             .put(url)
             .json(&payload)
             .headers(headers)
@@ -228,26 +216,89 @@ pub fn manifest_put_get_delete(c: &mut Criterion) {
         let resp = client.delete(url).send().await.unwrap();
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
     }
-
-    // Confirm delete worked
-    cluster
-    .head_all("foo/bar/manifests/latest", |resp| {
-        if resp.status() == StatusCode::OK {
-            return true;
-        }
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-        false
-    })
-    .await;
-
-    // Confirm delete worked
-    {
-        let url = url.join("foo/bar/manifests/latest").unwrap();
-        let resp = client.get(url).send().await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-    */
 }
 
-criterion_group!(benches, manifest_put_get_delete);
+pub fn manifest_put_get_delete(c: &mut Criterion) {
+    let cluster = configure().unwrap();
+
+    c.bench_function("manifest::put", |b| {
+        b.to_async(Runtime::new().unwrap())
+            .iter(|| async_manifest_put_get_delete(cluster.clone()))
+    });
+}
+
+async fn async_manifest_get_404(cluster: Arc<TestCluster>) {
+    let client = &cluster.peers.get(0).unwrap().client;
+    let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
+    let url = peer.url.clone().join("foo/bar/manifests/latest").unwrap();
+    let resp = client.get(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+pub fn manifest_get_404(c: &mut Criterion) {
+    let cluster = configure().unwrap();
+
+    c.bench_function("manifest::get (404)", |b| {
+        b.to_async(Runtime::new().unwrap())
+            .iter(|| async_manifest_get_404(cluster.clone()))
+    });
+}
+
+async fn async_manifest_get(cluster: Arc<TestCluster>) {
+    let client = &cluster.peers.get(0).unwrap().client;
+    let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
+    let url = peer.url.clone().join("foo/bar/manifests/latest").unwrap();
+    let resp = client.get(url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+pub fn manifest_get(c: &mut Criterion) {
+    let cluster = configure().unwrap();
+    let cluster2 = cluster.clone();
+
+    cluster2.clone().runtime.block_on(async move {
+        let client = &cluster.peers.get(0).unwrap().client;
+
+        let payload = json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        {
+            let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
+            let url = peer.url.clone().join("foo/bar/manifests/latest").unwrap();
+
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                CONTENT_TYPE,
+                "application/vnd.docker.distribution.manifest.list.v2+json"
+                    .parse()
+                    .unwrap(),
+            );
+
+            let resp = client
+                .put(url)
+                .json(&payload)
+                .headers(headers)
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+    });
+
+    c.bench_function("manifest::get (200)", |b| {
+        b.to_async(Runtime::new().unwrap())
+            .iter(|| async_manifest_get(cluster2.clone()))
+    });
+}
+
+criterion_group!(
+    benches,
+    manifest_get,
+    manifest_get_404,
+    manifest_put_get_delete
+);
 criterion_main!(benches);
