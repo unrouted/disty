@@ -33,7 +33,7 @@ tracing = "0.1.38"
 tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 byteorder = "1.4.3"
-serde = { version = "1.0.160", features = ["derive"] }
+serde = { version = "1.0.162", features = ["derive"] }
 data-encoding = "2.3.2"
 ring = "0.16.20"
 serde_json = "1.0.96"
