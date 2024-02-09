@@ -366,9 +366,9 @@ dependencies = [
 
 [[package]]
 name = "anyerror"
-version = "0.1.8"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eef94a982ad4ebc3036bb072f45fcbb63a6b1b91932a6f5d982a166d8d529916"
+checksum = "bcd04a72664a65fb9adeae7ced0c98efd68a2b7a45adda8319b3bb36538404b8"
 dependencies = [
  "serde",
 ]
