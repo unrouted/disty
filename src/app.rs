@@ -19,14 +19,13 @@ use crate::types::RepositoryName;
 use crate::utils;
 use crate::webhook::Event;
 use crate::RegistryNodeId;
-use crate::RegistryRaft;
 use crate::RegistryStore;
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
 pub struct RegistryApp {
     pub id: RegistryNodeId,
-    pub raft: RegistryRaft,
+    pub raft: crate::RegistryRaft,
     pub store: Arc<RegistryStore>,
     pub config: Configuration,
     pub extractor: Arc<Extractor>,

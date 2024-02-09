@@ -1,5 +1,6 @@
 #![allow(clippy::uninlined_format_args)]
 
+use std::io::Cursor;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -15,8 +16,10 @@ use config::Configuration;
 use extractor::Extractor;
 use middleware::prometheus::Port;
 use middleware::prometheus::PrometheusHttpMetrics;
+use openraft::storage::Adaptor;
 use openraft::BasicNode;
 use openraft::Config;
+use openraft::Entry;
 use openraft::Raft;
 use rustls::ServerConfig;
 use tokio::sync::Notify;
@@ -52,10 +55,18 @@ pub type RegistryNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub RegistryTypeConfig: D = RegistryRequest, R = RegistryResponse, NodeId = RegistryNodeId, Node = BasicNode
+    pub RegistryTypeConfig:
+        D = RegistryRequest,
+        R = RegistryResponse,
+        NodeId = RegistryNodeId,
+        Node = BasicNode,
+        Entry = Entry<RegistryTypeConfig>,
+        SnapshotData = Cursor<Vec<u8>>
 );
 
-pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, Arc<RegistryStore>>;
+pub type LogStore = Adaptor<RegistryTypeConfig, Arc<RegistryStore>>;
+pub type StateMachineStore = Adaptor<RegistryTypeConfig, Arc<RegistryStore>>;
+pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, LogStore, StateMachineStore>;
 
 pub mod typ {
     use openraft::BasicNode;
@@ -125,8 +136,10 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     // will be used in conjunction with the store created above.
     let network = RegistryNetwork {};
 
+    let (log_store, state_machine) = Adaptor::new(store.clone());
+
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone())
+    let raft = Raft::new(node_id, config.clone(), network, log_store, state_machine)
         .await
         .unwrap();
 

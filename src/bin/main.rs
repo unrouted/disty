@@ -4,19 +4,14 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use distribd::client::RegistryClient;
 use distribd::network::management::ImportBody;
-use distribd::network::raft_network_impl::RegistryNetwork;
 use distribd::start_raft_node;
-use distribd::store::{RegistryRequest, RegistryStore};
+use distribd::store::RegistryRequest;
 use distribd::types::RegistryAction;
 use distribd::utils::{get_blob_path, get_manifest_path};
-use distribd::RegistryTypeConfig;
-use openraft::Raft;
 use reqwest_retry::policies::ExponentialBackoff;
 use serde_json::from_str;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
-
-pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, RegistryStore>;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

@@ -144,16 +144,13 @@ pub(crate) fn start_watching_metrics(app: Data<RegistryApp>) {
                     }
                 }
 
-                for (peer, peer_metrics) in &replication.data().replication {
+                for (peer, peer_metrics) in &replication {
                     let labels = RaftPeerLabels { node: *peer };
-                    if let Ok(last_log_index) = peer_metrics.matched().index.try_into() {
-                        mout.matched_index
-                            .get_or_create(&labels)
-                            .set(last_log_index);
-                    }
 
-                    if let Ok(term) = peer_metrics.matched().leader_id.term.try_into() {
-                        mout.matched_term.get_or_create(&labels).set(term);
+                    if let Some(log) = peer_metrics {
+                        if let Ok(log_index) = log.index.try_into() {
+                            mout.matched_index.get_or_create(&labels).set(log_index);
+                        }
                     }
                 }
             } else {

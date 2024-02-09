@@ -29,6 +29,7 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -659,7 +660,7 @@ impl RegistryStore {
             .insert(b"snapshot", val.as_slice())
             .map_err(|e| StorageError::IO {
                 source: StorageIOError::new(
-                    ErrorSubject::Snapshot(snap.meta.signature()),
+                    ErrorSubject::Snapshot(Some(snap.meta.signature())),
                     ErrorVerb::Write,
                     AnyError::new(&e),
                 ),
@@ -667,7 +668,7 @@ impl RegistryStore {
 
         let flushed = flush_async(&store_tree).await.map_err(|e| {
             StorageIOError::new(
-                ErrorSubject::Snapshot(meta.signature()),
+                ErrorSubject::Snapshot(Some(meta.signature())),
                 ErrorVerb::Write,
                 AnyError::new(&e),
             )
@@ -747,12 +748,11 @@ impl RaftLogReader<RegistryTypeConfig> for Arc<RegistryStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistryStore> {
+impl RaftSnapshotBuilder<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<RegistryNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RegistryNodeId>>
-    {
+    ) -> Result<Snapshot<RegistryTypeConfig>, StorageError<RegistryNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -805,7 +805,6 @@ impl RaftSnapshotBuilder<RegistryTypeConfig, Cursor<Vec<u8>>> for Arc<RegistrySt
 
 #[async_trait]
 impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -828,13 +827,16 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<RegistryTypeConfig>]) -> StorageResult<()> {
+    async fn append_to_log<I>(&mut self, entries: I) -> Result<(), StorageError<RegistryNodeId>>
+    where
+        I: IntoIterator<Item = Entry<RegistryTypeConfig>> + Send,
+    {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
-            let value = serde_json::to_vec(entry).map_err(l_w_err)?;
+            let value = serde_json::to_vec(&entry).map_err(l_w_err)?;
             batch.insert(id.as_slice(), value);
         }
         logs_tree.apply_batch(batch).map_err(l_w_err)?;
@@ -909,7 +911,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<RegistryTypeConfig>],
+        entries: &[Entry<RegistryTypeConfig>],
     ) -> Result<Vec<RegistryResponse>, StorageError<RegistryNodeId>> {
         let state_machine = state_machine(&self.db);
         let blob_tree = blobs(&self.db);
@@ -1291,7 +1293,10 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn begin_receiving_snapshot(
         &mut self,
-    ) -> Result<Box<Self::SnapshotData>, StorageError<RegistryNodeId>> {
+    ) -> Result<
+        Box<<RegistryTypeConfig as RaftTypeConfig>::SnapshotData>,
+        StorageError<RegistryNodeId>,
+    > {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
@@ -1299,7 +1304,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<RegistryNodeId, BasicNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<<RegistryTypeConfig as RaftTypeConfig>::SnapshotData>,
     ) -> Result<(), StorageError<RegistryNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
@@ -1316,7 +1321,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
             let updated_state_machine: SerializableRegistryStateMachine =
                 serde_json::from_slice(&new_snapshot.data).map_err(|e| {
                     StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
+                        ErrorSubject::Snapshot(Some(new_snapshot.meta.signature())),
                         ErrorVerb::Read,
                         AnyError::new(&e),
                     )
@@ -1339,10 +1344,7 @@ impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<
-        Option<Snapshot<RegistryNodeId, BasicNode, Self::SnapshotData>>,
-        StorageError<RegistryNodeId>,
-    > {
+    ) -> Result<Option<Snapshot<RegistryTypeConfig>>, StorageError<RegistryNodeId>> {
         match RegistryStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

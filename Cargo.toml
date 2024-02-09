@@ -19,10 +19,10 @@ path = "src/bin/main.rs"
 bench = false
 
 [dependencies]
-openraft = { version="=0.8.3", features=["serde"]}
+openraft = { version="=0.8.8", features=["serde"]}
 actix-web = { version="4.3.1", features=["rustls"]}
 actix-files = "0.6.2"
-async-trait = "0.1.68"
+async-trait = "0.1.77"
 clap = { version = "4.3.23", features = ["derive", "env"] }
 reqwest = { version = "0.11.18", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 tokio = { version = "1.28", default-features = false, features = ["sync"] }
