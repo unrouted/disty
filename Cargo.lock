@@ -2373,9 +2373,9 @@ checksum = "0ab1bc2a289d34bd04a330323ac98a1b4bc82c9d9fcb1e66b63caa84da26b575"
 
 [[package]]
 name = "openraft"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e189b3a5107b4911365ab1d2e26e04f9f30602927ff81265d2cb2f6ee454313c"
+checksum = "242afad6590ba56b402713b6765a89fde68bb7c0d939ad7711f1c009cd9f84aa"
 dependencies = [
  "anyerror",
  "async-trait",
