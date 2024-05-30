@@ -164,9 +164,13 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
     let app3 = app.clone();
     let app4 = app.clone();
 
+    let json_config = web::JsonConfig::default()
+        .limit(4096 * 1024 * 10);
+
     // Start the actix-web server.
     let server = HttpServer::new(move || {
         App::new()
+            .app_data(json_config)
             .wrap(RequestIdentifier::with_uuid())
             .wrap(PrometheusHttpMetrics::new(app1.clone(), Port::Raft))
             .wrap(sentry_actix::Sentry::new())
