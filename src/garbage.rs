@@ -19,7 +19,8 @@ const MINIMUM_GARBAGE_AGE: i64 = 60 * 60 * 12;
 async fn do_garbage_collect_phase1(app: &Arc<RegistryApp>) -> anyhow::Result<()> {
     debug!("Garbage collection: Phase 1: Sweeping for mounted objects with no dependents");
 
-    let minimum_age = chrono::Duration::seconds(MINIMUM_GARBAGE_AGE);
+    let minimum_age = chrono::Duration::try_seconds(MINIMUM_GARBAGE_AGE)
+        .context("Failed to convert i64 to duration")?;
     let mut actions = vec![];
 
     for (digest, manifest) in app.store.get_orphaned_manifests()? {

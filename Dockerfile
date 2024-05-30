@@ -1,17 +1,18 @@
-FROM rust:alpine3.16 as builder
+FROM rust:1.78-bookworm as builder
 WORKDIR /src
 
-RUN apk --no-cache add musl-dev protoc
+RUN apt-get update && apt-get install -y protobuf-compiler git cmake make g++ gcc libclang-16-dev
 RUN USER=root cargo init --name distribd /src
 COPY Cargo.toml Cargo.lock /src/
 RUN mkdir src/bin && mv src/main.rs src/bin/main.rs
-RUN cargo build --target x86_64-unknown-linux-musl --release
+RUN cargo build --release
 
 COPY src /src/src
 RUN touch src/bin/main.rs
-RUN cargo build --target x86_64-unknown-linux-musl --release
+RUN cargo build --release
+RUN ls /src/target/
 
-FROM scratch
+FROM rust:1-bookworm
 STOPSIGNAL SIGINT
-COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/distribd /distribd
+COPY --from=builder /src/target/release/distribd /distribd
 CMD ["/distribd"]
