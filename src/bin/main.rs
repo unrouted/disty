@@ -71,12 +71,15 @@ async fn main() -> anyhow::Result<()> {
     }
     let node_id = config.id()?;
 
-    let retry_policy = Some(ExponentialBackoff {
-        max_n_retries: 3,
-        max_retry_interval: std::time::Duration::from_millis(30),
-        min_retry_interval: std::time::Duration::from_millis(100),
-        backoff_exponent: 2,
-    });
+    let retry_policy = Some(
+        ExponentialBackoff::builder()
+            .retry_bounds(
+                std::time::Duration::from_millis(30),
+                std::time::Duration::from_millis(100),
+            )
+            .base(2)
+            .build_with_max_retries(3),
+    );
 
     match options.action {
         Action::Serve => {

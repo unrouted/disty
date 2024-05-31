@@ -18,8 +18,8 @@ pub enum TokenError {
 }
 
 impl ResponseError for TokenError {
-    fn status_code(&self) -> reqwest::StatusCode {
-        reqwest::StatusCode::FORBIDDEN
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        actix_web::http::StatusCode::FORBIDDEN
     }
 
     fn error_response(&self) -> HttpResponse {
