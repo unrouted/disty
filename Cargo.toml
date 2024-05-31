@@ -52,7 +52,7 @@ thiserror = "1.0.61"
 reqwest-retry = "0.5.0"
 reqwest-middleware = { version="0.3.1", features=["json"] }
 sentry = { version="0.33.0", default-features=false, features=["backtrace", "contexts", "debug-images", "panic", "rustls"] }
-sentry-actix = "0.32.3"
+sentry-actix = "0.33.0"
 rustls = "0.23.8"
 rustls-pemfile = "2.1.2"
 notify = "6.1.1"
@@ -69,7 +69,7 @@ harness = false
 [dev-dependencies]
 maplit = "1.0.2"
 tempfile = { version = "3.10.1" }
-rstest = "0.18.2"
+rstest = "0.20.0"
 lazy_static = "1.4.0"
 simple-pool = "0.0.17"
 tracing-test = { version = "0.2.4", features = ["no-env-filter"] }
