@@ -84,7 +84,7 @@ jobs:
         run: apt-get update && apt-get install -y protobuf-compiler git cmake make g++ gcc libclang-16-dev
 
       - name: Generate code coverage
-        run: cargo tarpaulin --jobs 1 --out xml --engine llvm --timeout 600
+        run: cargo tarpaulin --jobs 1 --out xml --timeout 600
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v3
