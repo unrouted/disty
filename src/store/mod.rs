@@ -16,7 +16,6 @@ use bincode::Options;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
-use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
@@ -678,39 +677,10 @@ impl RegistryStore {
     }
 }
 
-#[async_trait]
 impl RaftLogReader<RegistryTypeConfig> for Arc<RegistryStore> {
-    async fn get_log_state(&mut self) -> StorageResult<LogState<RegistryTypeConfig>> {
-        let last_purged_log_id = self.get_last_purged_()?;
+    
 
-        let logs_tree = logs(&self.db);
-        let last_res = logs_tree.last();
-        if last_res.is_err() {
-            return Ok(LogState {
-                last_purged_log_id,
-                last_log_id: last_purged_log_id,
-            });
-        }
-
-        let last = last_res.unwrap().and_then(|(_, ent)| {
-            Some(
-                serde_json::from_slice::<Entry<RegistryTypeConfig>>(&ent)
-                    .ok()?
-                    .log_id,
-            )
-        });
-
-        let last_log_id = match last {
-            None => last_purged_log_id,
-            Some(x) => Some(x),
-        };
-        Ok(LogState {
-            last_purged_log_id,
-            last_log_id,
-        })
-    }
-
-    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
         range: RB,
     ) -> StorageResult<Vec<Entry<RegistryTypeConfig>>> {
@@ -747,7 +717,6 @@ impl RaftLogReader<RegistryTypeConfig> for Arc<RegistryStore> {
     }
 }
 
-#[async_trait]
 impl RaftSnapshotBuilder<RegistryTypeConfig> for Arc<RegistryStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
@@ -803,10 +772,39 @@ impl RaftSnapshotBuilder<RegistryTypeConfig> for Arc<RegistryStore> {
     }
 }
 
-#[async_trait]
 impl RaftStorage<RegistryTypeConfig> for Arc<RegistryStore> {
     type LogReader = Self;
     type SnapshotBuilder = Self;
+
+    async fn get_log_state(&mut self) -> StorageResult<LogState<RegistryTypeConfig>> {
+        let last_purged_log_id = self.get_last_purged_()?;
+
+        let logs_tree = logs(&self.db);
+        let last_res = logs_tree.last();
+        if last_res.is_err() {
+            return Ok(LogState {
+                last_purged_log_id,
+                last_log_id: last_purged_log_id,
+            });
+        }
+
+        let last = last_res.unwrap().and_then(|(_, ent)| {
+            Some(
+                serde_json::from_slice::<Entry<RegistryTypeConfig>>(&ent)
+                    .ok()?
+                    .log_id,
+            )
+        });
+
+        let last_log_id = match last {
+            None => last_purged_log_id,
+            Some(x) => Some(x),
+        };
+        Ok(LogState {
+            last_purged_log_id,
+            last_log_id,
+        })
+    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(

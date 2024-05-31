@@ -66,7 +66,7 @@ openraft::declare_raft_types!(
 
 pub type LogStore = Adaptor<RegistryTypeConfig, Arc<RegistryStore>>;
 pub type StateMachineStore = Adaptor<RegistryTypeConfig, Arc<RegistryStore>>;
-pub type RegistryRaft = Raft<RegistryTypeConfig, RegistryNetwork, LogStore, StateMachineStore>;
+pub type RegistryRaft = Raft<RegistryTypeConfig>;
 
 pub mod typ {
     use openraft::BasicNode;

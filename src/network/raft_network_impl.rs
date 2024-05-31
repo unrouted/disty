@@ -1,9 +1,9 @@
-use async_trait::async_trait;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
+use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotRequest;
@@ -64,7 +64,6 @@ impl RegistryNetwork {
 
 // NOTE: This could be implemented also on `Arc<RegistryNetwork>`, but since it's empty, implemented
 // directly.
-#[async_trait]
 impl RaftNetworkFactory<RegistryTypeConfig> for RegistryNetwork {
     type Network = RegistryNetworkConnection;
 
@@ -83,11 +82,11 @@ pub struct RegistryNetworkConnection {
     target_node: BasicNode,
 }
 
-#[async_trait]
 impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
-    async fn send_append_entries(
+    async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<RegistryTypeConfig>,
+        option: RPCOption
     ) -> Result<
         AppendEntriesResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
@@ -97,9 +96,10 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
             .await
     }
 
-    async fn send_install_snapshot(
+    async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<RegistryTypeConfig>,
+        option: RPCOption
     ) -> Result<
         InstallSnapshotResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId, InstallSnapshotError>>,
@@ -109,9 +109,10 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
             .await
     }
 
-    async fn send_vote(
+    async fn vote(
         &mut self,
         req: VoteRequest<RegistryNodeId>,
+        option: RPCOption
     ) -> Result<
         VoteResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
