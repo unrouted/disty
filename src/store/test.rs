@@ -37,7 +37,6 @@ pub fn test_raft_store() -> Result<(), StorageError<RegistryNodeId>> {
     Suite::test_all(SledBuilder {})
 }
 
-#[async_trait]
 impl StoreBuilder<RegistryTypeConfig, LogStore, StateMachine, TempDir> for SledBuilder {
     async fn build(
         &self,
