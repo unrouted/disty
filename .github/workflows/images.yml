@@ -3,7 +3,7 @@ name: Container Images
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*.*.*' ]
+    tags: [ '*.*.*' ]
 
 env:
   REGISTRY: ghcr.io
