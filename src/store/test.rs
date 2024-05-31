@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use async_trait::async_trait;
+
 use chrono::Utc;
 use openraft::storage::Adaptor;
 use openraft::testing::StoreBuilder;
