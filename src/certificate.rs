@@ -1,16 +1,18 @@
 use std::sync::{Arc, RwLock};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::{
     channel::mpsc::{channel, Receiver},
     SinkExt, StreamExt,
 };
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use rustls::crypto::aws_lc_rs::sign::RsaSigningKey;
+use rustls::server::ResolvesServerCert;
 use rustls::sign::CertifiedKey;
-use rustls::{server::ResolvesServerCert, sign::RsaSigningKey};
-use rustls::{Certificate, PrivateKey};
-use rustls_pemfile::{certs, pkcs8_private_keys};
+use rustls_pemfile::pkcs8_private_keys;
+use rustls_pki_types::PrivateKeyDer;
 
+#[derive(Debug)]
 pub struct ServerCertificate {
     pub key_path: String,
     pub chain_path: String,
@@ -21,15 +23,20 @@ pub struct ServerCertificate {
 pub async fn get_certified_key(key_path: &String, chain_path: &String) -> Result<CertifiedKey> {
     let key_string = tokio::fs::read_to_string(&key_path).await?;
     let mut key_bytes = key_string.as_bytes();
-    let key = PrivateKey(pkcs8_private_keys(&mut key_bytes)?.remove(0));
+    let key = PrivateKeyDer::Pkcs8(
+        pkcs8_private_keys(&mut key_bytes)
+            .next()
+            .context("No private key found")??,
+    );
     let signing_key = RsaSigningKey::new(&key)?;
 
     let chain_string = tokio::fs::read_to_string(&chain_path).await?;
     let mut chain_bytes = chain_string.as_bytes();
-    let chain = certs(&mut chain_bytes)?
-        .into_iter()
-        .map(Certificate)
-        .collect();
+
+    let mut chain = vec![];
+    for item in rustls_pemfile::certs(&mut chain_bytes) {
+        chain.push(item?.into_owned());
+    }
 
     Ok(CertifiedKey::new(chain, Arc::new(signing_key)))
 }

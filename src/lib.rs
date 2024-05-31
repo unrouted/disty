@@ -199,11 +199,10 @@ pub async fn start_raft_node(conf: Configuration) -> anyhow::Result<Arc<Notify>>
         Some(tls) => {
             let certificate = ServerCertificate::new(tls.key.clone(), tls.chain.clone()).await?;
             let config = ServerConfig::builder()
-                .with_safe_defaults()
                 .with_no_client_auth()
                 .with_cert_resolver(Arc::new(certificate));
 
-            server.bind_rustls(
+            server.bind_rustls_0_23(
                 (
                     app2.config.raft.address.clone().as_str(),
                     app2.config.raft.port,
