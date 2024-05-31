@@ -145,13 +145,13 @@ fn configure() -> anyhow::Result<Arc<TestCluster>> {
 
     cluster2.runtime.block_on(async move {
         let peers = &cluster.peers;
-        let leader = &peers.get(0).unwrap().backend;
+        let leader = &peers.first().unwrap().backend;
 
         // Wait for server to start up.
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
         leader
-            .init(peers.get(0).unwrap().address.clone())
+            .init(peers.first().unwrap().address.clone())
             .await
             .unwrap();
 
@@ -171,7 +171,7 @@ fn configure() -> anyhow::Result<Arc<TestCluster>> {
 }
 
 async fn async_manifest_put_get_delete(cluster: Arc<TestCluster>) {
-    let client = &cluster.peers.get(0).unwrap().client;
+    let client = &cluster.peers.first().unwrap().client;
     let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
     let url = peer.url.clone();
 
@@ -228,7 +228,7 @@ pub fn manifest_put_get_delete(c: &mut Criterion) {
 }
 
 async fn async_manifest_get_404(cluster: Arc<TestCluster>) {
-    let client = &cluster.peers.get(0).unwrap().client;
+    let client = &cluster.peers.first().unwrap().client;
     let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
     let url = peer.url.clone().join("foo/bar/manifests/latest").unwrap();
     let resp = client.get(url).send().await.unwrap();
@@ -245,7 +245,7 @@ pub fn manifest_get_404(c: &mut Criterion) {
 }
 
 async fn async_manifest_get(cluster: Arc<TestCluster>) {
-    let client = &cluster.peers.get(0).unwrap().client;
+    let client = &cluster.peers.first().unwrap().client;
     let peer = cluster.peers.choose(&mut rand::thread_rng()).unwrap();
     let url = peer.url.clone().join("foo/bar/manifests/latest").unwrap();
     let resp = client.get(url).send().await.unwrap();
@@ -257,7 +257,7 @@ pub fn manifest_get(c: &mut Criterion) {
     let cluster2 = cluster.clone();
 
     cluster2.clone().runtime.block_on(async move {
-        let client = &cluster.peers.get(0).unwrap().client;
+        let client = &cluster.peers.first().unwrap().client;
 
         let payload = json!({
             "schemaVersion": 2,

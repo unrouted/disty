@@ -114,7 +114,7 @@ impl RegistryApp {
             let values = sm
                 .blob_waiters
                 .entry(digest.clone())
-                .or_insert_with(std::vec::Vec::new);
+                .or_default();
 
             values.push(tx);
 
@@ -144,7 +144,7 @@ impl RegistryApp {
             let values = sm
                 .manifest_waiters
                 .entry(digest.clone())
-                .or_insert_with(std::vec::Vec::new);
+                .or_default();
 
             values.push(tx);
 

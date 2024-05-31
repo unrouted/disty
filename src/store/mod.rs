@@ -1562,9 +1562,7 @@ impl RegistryStore {
                     Some(dependencies) => {
                         visiting.extend(
                             dependencies
-                                .iter()
-                                .cloned()
-                                .filter(|digest| !visited.contains(digest)),
+                                .iter().filter(|&digest| !visited.contains(digest)).cloned(),
                         );
                     }
                     None => {}

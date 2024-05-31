@@ -430,8 +430,8 @@ async fn configure() -> anyhow::Result<TestCluster> {
     // Wait for server to start up.
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
-    let leader = &peers.get(0).unwrap().backend;
-    leader.init(peers.get(0).unwrap().address.clone()).await?;
+    let leader = &peers.first().unwrap().backend;
+    leader.init(peers.first().unwrap().address.clone()).await?;
     leader
         .add_learner((2, peers.get(1).unwrap().address.clone()))
         .await?;
@@ -450,8 +450,8 @@ async fn configure() -> anyhow::Result<TestCluster> {
 #[traced_test]
 async fn get_root() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let resp = client.get(url.clone()).send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -464,8 +464,8 @@ async fn get_root() {
 #[traced_test]
 async fn upload_whole_blob() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     {
         let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -514,8 +514,8 @@ async fn upload_whole_blob() {
 #[traced_test]
 async fn upload_whole_blob_bad_digest() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     {
         let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -528,8 +528,8 @@ async fn upload_whole_blob_bad_digest() {
 #[traced_test]
 async fn upload_cross_mount() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     {
         let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -584,8 +584,8 @@ async fn upload_cross_mount() {
 #[traced_test]
 async fn upload_blob_multiple() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -648,8 +648,8 @@ async fn upload_blob_multiple() {
 #[traced_test]
 async fn upload_blob_multiple_kaniko() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads/").unwrap();
@@ -724,8 +724,8 @@ async fn upload_blob_multiple_kaniko() {
 #[traced_test]
 async fn upload_blob_multiple_bad_digest() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -768,8 +768,8 @@ async fn upload_blob_multiple_bad_digest() {
 #[traced_test]
 async fn upload_blob_multiple_finish_with_put() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -832,8 +832,8 @@ async fn upload_blob_multiple_finish_with_put() {
 #[traced_test]
 async fn upload_blob_multiple_finish_with_put_invalid_hash() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let upload_id = {
         let url = url.clone().join("foo/bar/blobs/uploads").unwrap();
@@ -876,8 +876,8 @@ async fn upload_blob_multiple_finish_with_put_invalid_hash() {
 #[traced_test]
 async fn delete_blob() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     {
         let url = url.clone().join("foo/bar/blobs/uploads?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").unwrap();
@@ -1040,8 +1040,8 @@ async fn upload_manifest() {
 #[traced_test]
 async fn list_tags() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let payload = json!({
         "schemaVersion": 2,
@@ -1085,8 +1085,8 @@ async fn list_tags() {
 #[traced_test]
 async fn delete_tag() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     let payload = json!({
         "schemaVersion": 2,
@@ -1153,8 +1153,8 @@ async fn delete_tag() {
 #[traced_test]
 async fn delete_upload() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
-    let url = cluster.peers.get(0).unwrap().url.clone();
+    let client = &cluster.peers.first().unwrap().client;
+    let url = cluster.peers.first().unwrap().url.clone();
 
     // Initiate a multi-part upload
     let upload_id = {
@@ -1208,12 +1208,11 @@ async fn delete_upload() {
 #[traced_test]
 async fn import_old_snapshot() {
     let cluster = configure().await.unwrap();
-    let client = &cluster.peers.get(0).unwrap().client;
+    let client = &cluster.peers.first().unwrap().client;
 
     let blob_path = distribd::utils::get_blob_path(
         &cluster
-            .peers
-            .get(0)
+            .peers.first()
             .unwrap()
             ._tempdir
             .path()
@@ -1228,8 +1227,7 @@ async fn import_old_snapshot() {
 
     let manifest_path = distribd::utils::get_manifest_path(
         &cluster
-            .peers
-            .get(0)
+            .peers.first()
             .unwrap()
             ._tempdir
             .path()
@@ -1274,7 +1272,7 @@ async fn import_old_snapshot() {
 
     let url = Url::parse(&format!(
         "http://{}/import",
-        cluster.peers.get(0).unwrap().address
+        cluster.peers.first().unwrap().address
     ))
     .unwrap();
     let resp = client.post(url).json(&payload).send().await.unwrap();
