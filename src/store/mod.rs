@@ -678,8 +678,6 @@ impl RegistryStore {
 }
 
 impl RaftLogReader<RegistryTypeConfig> for Arc<RegistryStore> {
-    
-
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
         range: RB,
@@ -1562,7 +1560,9 @@ impl RegistryStore {
                     Some(dependencies) => {
                         visiting.extend(
                             dependencies
-                                .iter().filter(|&digest| !visited.contains(digest)).cloned(),
+                                .iter()
+                                .filter(|&digest| !visited.contains(digest))
+                                .cloned(),
                         );
                     }
                     None => {}

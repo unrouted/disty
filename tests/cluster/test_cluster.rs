@@ -1212,7 +1212,8 @@ async fn import_old_snapshot() {
 
     let blob_path = distribd::utils::get_blob_path(
         &cluster
-            .peers.first()
+            .peers
+            .first()
             .unwrap()
             ._tempdir
             .path()
@@ -1227,7 +1228,8 @@ async fn import_old_snapshot() {
 
     let manifest_path = distribd::utils::get_manifest_path(
         &cluster
-            .peers.first()
+            .peers
+            .first()
             .unwrap()
             ._tempdir
             .path()

@@ -111,10 +111,7 @@ impl RegistryApp {
         {
             let mut sm = self.store.state_machine.write().unwrap();
 
-            let values = sm
-                .blob_waiters
-                .entry(digest.clone())
-                .or_default();
+            let values = sm.blob_waiters.entry(digest.clone()).or_default();
 
             values.push(tx);
 
@@ -141,10 +138,7 @@ impl RegistryApp {
         {
             let mut sm = self.store.state_machine.write().unwrap();
 
-            let values = sm
-                .manifest_waiters
-                .entry(digest.clone())
-                .or_default();
+            let values = sm.manifest_waiters.entry(digest.clone()).or_default();
 
             values.push(tx);
 

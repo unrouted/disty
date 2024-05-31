@@ -86,7 +86,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn append_entries(
         &mut self,
         req: AppendEntriesRequest<RegistryTypeConfig>,
-        _option: RPCOption
+        _option: RPCOption,
     ) -> Result<
         AppendEntriesResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
@@ -99,7 +99,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<RegistryTypeConfig>,
-        _option: RPCOption
+        _option: RPCOption,
     ) -> Result<
         InstallSnapshotResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId, InstallSnapshotError>>,
@@ -112,7 +112,7 @@ impl RaftNetwork<RegistryTypeConfig> for RegistryNetworkConnection {
     async fn vote(
         &mut self,
         req: VoteRequest<RegistryNodeId>,
-        _option: RPCOption
+        _option: RPCOption,
     ) -> Result<
         VoteResponse<RegistryNodeId>,
         RPCError<RegistryNodeId, BasicNode, RaftError<RegistryNodeId>>,
