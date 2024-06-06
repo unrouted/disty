@@ -51,7 +51,7 @@ futures-util = "0.3.30"
 thiserror = "1.0.61"
 reqwest-retry = "0.5.0"
 reqwest-middleware = { version="0.3.1", features=["json"] }
-sentry = { version="0.33.0", default-features=false, features=["backtrace", "contexts", "debug-images", "panic", "rustls"] }
+sentry = { version="0.34.0", default-features=false, features=["backtrace", "contexts", "debug-images", "panic", "rustls"] }
 sentry-actix = "0.34.0"
 rustls = "0.23.9"
 rustls-pemfile = "2.1.2"
