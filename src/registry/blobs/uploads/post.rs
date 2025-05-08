@@ -18,7 +18,7 @@ pub struct BlobUploadRequest {
 }
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadPostQuery {
-    mount: Option<String>,
+    mount: Option<Digest>,
     from: Option<String>,
     digest: Option<Digest>,
 }
@@ -64,27 +64,9 @@ pub(crate) async fn post(
         //    return Err(RegistryError::UploadInvalid {});
         //}
 
-        if let Some(blob) = app.get_blob(mount) {
+        if let Some(blob) = registry.get_blob(&mount).await? {
             if blob.repositories.contains(from) {
-                // INSERT OR IGNORE INTO repositories (name)
-                // VALUES ('library/ubuntu');
-
-                // Insert repository id
-                //registry.client.execute(
-                //    "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
-                //    , params!(digest.to_string(), 1, stat.len() as u32, "application/octet-stream", 1)
-                //).await?;
-
-                let actions = vec![RegistryAction::BlobMounted {
-                    timestamp: Utc::now(),
-                    digest: mount.clone(),
-                    repository: path.repository.clone(),
-                    user: token.sub.clone(),
-                }];
-
-                if !app.consistent_write(actions).await {
-                    return Err(RegistryError::UploadInvalid {});
-                }
+                registry.mount_blob(&mount, &repository).await?;
 
                 /*
                 201 Created
@@ -93,11 +75,9 @@ pub(crate) async fn post(
                 Content-Length: 0
                 Docker-Content-Digest: <digest>
                 */
-                return Ok(Response::builder().status(StatusCode::CREATED)
-                    .header(
-                        "Location",
-                        format!("/v2/{}/blobs/{}", repository, mount),
-                    )
+                return Ok(Response::builder()
+                    .status(StatusCode::CREATED)
+                    .header("Location", format!("/v2/{}/blobs/{}", repository, mount))
                     .header("Range", "0-0")
                     .header("Content-Length", "0")
                     .header("Docker-Content-Digest", mount.to_string())
@@ -111,14 +91,14 @@ pub(crate) async fn post(
         Some(digest) => {
             let filename = registry.upload_path(&upload_id);
 
-            upload_part(&filename, body.into_body().into_data_stream()).await?; 
+            upload_part(&filename, body.into_body().into_data_stream()).await?;
 
             // Validate upload
             if !validate_hash(&filename, digest).await {
                 return Err(RegistryError::DigestInvalid {});
             }
 
-            let dest = app.get_blob_path(digest);
+            let dest = registry.get_blob_path(digest);
 
             let stat = match tokio::fs::metadata(&filename).await {
                 Ok(result) => result,
@@ -148,10 +128,7 @@ pub(crate) async fn post(
             */
             Ok(Response::builder()
                 .status(StatusCode::CREATED)
-                .header(
-                    "Location",
-                    format!("/v2/{}/blobs/{}", repository, digest),
-                )
+                .header("Location", format!("/v2/{}/blobs/{}", repository, digest))
                 .header("Range", "0-0")
                 .header("Content-Length", "0")
                 .header("Docker-Content-Digest", digest.to_string())

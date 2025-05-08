@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, head, patch, post, put},
 };
 
 use crate::state::RegistryState;
@@ -36,15 +36,8 @@ pub fn router(state: RegistryState) -> Router {
             "/v2/:repository/blobs/uploads",
             post(blobs::uploads::post::post),
         )
-        //.route("/v2/:repository/:image/blobs/:digest", head(blob_check))
-        //.route("/v2/:repository/:image/blobs/:digest", get(blob_get))
-        //.route(
-        //    "/v2/:repository/:image/manifests/:reference",
-        //    put(manifest_put),
-        // )
-        //.route(
-        //    "/v2/:repository/:image/manifests/:reference",
-        //    get(manifest_get),
-        // )
+        .route("/:repository/blobs/:digest", head(blobs::head::head))
+        .route("/:repository/blobs/:digest", get(blobs::get::get))
+        .route("/:repository/blobs/:digest", delete(blobs::delete::delete))
         .with_state(Arc::new(state))
 }

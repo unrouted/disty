@@ -9,6 +9,7 @@ use headers::ContentRange;
 use serde::Deserialize;
 
 use crate::error::RegistryError;
+use crate::registry::utils::upload_part;
 use crate::state::RegistryState;
 
 #[derive(Debug, Deserialize)]
@@ -66,14 +67,8 @@ pub(crate) async fn patch(
             }
         }
     }
-    use futures_util::stream::StreamExt;
-    let body = body.into_body();
-    let stream = body.into_data_stream();
-    let foo = stream.next().await;
 
-    if !upload_part(&filename, body).await {
-        return Err(RegistryError::UploadInvalid {});
-    }
+    upload_part(&filename, body.into_body().into_data_stream()).await?;
 
     let size = match tokio::fs::metadata(filename).await {
         Ok(result) => result.len(),

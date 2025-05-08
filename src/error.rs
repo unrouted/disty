@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -23,14 +24,16 @@ pub(crate) enum RegistryError {
     Unhandled(anyhow::Error),
 }
 
-pub(crate) fn simple_oci_error(code: &str, message: &str) -> String {
-    serde_json::json!({
-        "errors": [{
-            "code": code,
-            "message": message
-        }]
-    })
-    .to_string()
+pub(crate) fn simple_oci_error(code: &str, message: &str) -> Body {
+    Body::from(
+        serde_json::json!({
+            "errors": [{
+                "code": code,
+                "message": message
+            }]
+        })
+        .to_string(),
+    )
 }
 
 impl IntoResponse for RegistryError {
@@ -108,7 +111,7 @@ impl IntoResponse for RegistryError {
                 Docker-Upload-UUID: <uuid>
                 */
 
-                let range_end = if size > &0 { size - 1 } else { 0 };
+                let range_end = if size > 0 { size - 1 } else { 0 };
 
                 Response::builder()
                     .status(StatusCode::RANGE_NOT_SATISFIABLE)
@@ -120,12 +123,13 @@ impl IntoResponse for RegistryError {
                     .header("Content-Length", "0")
                     .header("Blob-Upload-Session-ID", upload_id.clone())
                     .header("Docker-Upload-UUID", upload_id.clone())
-                    .unwrap()
+                    .body(Body::empty())
             }
             Self::Unhandled(err) => Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .unwrap(),
+                .body(Body::empty()),
         }
+        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response())
     }
 }
 

@@ -9,7 +9,12 @@ use axum::{
 use hiqlite_macros::params;
 use serde::Deserialize;
 
-use crate::{digest::Digest, error::RegistryError, registry::utils::{upload_part, validate_hash}, state::RegistryState};
+use crate::{
+    digest::Digest,
+    error::RegistryError,
+    registry::utils::{upload_part, validate_hash},
+    state::RegistryState,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -58,7 +63,7 @@ pub(crate) async fn put(
         return Err(RegistryError::DigestInvalid {});
     }
 
-    let dest = app.get_blob_path(&digest);
+    let dest = registry.get_blob_path(&digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,

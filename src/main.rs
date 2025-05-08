@@ -10,10 +10,10 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
+mod digest;
 mod error;
 mod registry;
 mod state;
-mod digest;
 
 #[derive(Embed)]
 #[folder = "migrations"]

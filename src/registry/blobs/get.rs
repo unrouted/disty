@@ -1,33 +1,28 @@
-use crate::app::RegistryApp;
-use crate::extractors::Token;
-use crate::registry::errors::RegistryError;
-use crate::types::Digest;
-use crate::types::RepositoryName;
-use actix_files::NamedFile;
-use actix_web::HttpRequest;
-use actix_web::HttpResponseBuilder;
-use actix_web::Responder;
-use actix_web::get;
-use actix_web::http::StatusCode;
-use actix_web::web::Data;
-use actix_web::web::Path;
+use std::sync::Arc;
+
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    http::{StatusCode, header},
+    response::Response,
+};
 use serde::Deserialize;
-use tracing::debug;
+use tokio::fs::File;
+use tokio_util::io::ReaderStream;
+
+use crate::{digest::Digest, error::RegistryError, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
-    repository: RepositoryName,
+    repository: String,
     digest: Digest,
 }
 
-#[get("/{repository:[^{}]+}/blobs/{digest}")]
 pub(crate) async fn get(
-    app: Data<RegistryApp>,
-    req: HttpRequest,
-    path: Path<BlobRequest>,
-    token: Token,
-) -> Result<impl Responder, RegistryError> {
-    if !token.validated_token {
+    Path(BlobRequest { repository, digest }): Path<BlobRequest>,
+    State(registry): State<Arc<RegistryState>>,
+) -> Result<Response, RegistryError> {
+    /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_pull_challenge(&path.repository),
         });
@@ -36,48 +31,34 @@ pub(crate) async fn get(
     if !token.has_permission(&path.repository, "pull") {
         debug!("Token does not have access to perform this action");
         return Err(RegistryError::AccessDenied {});
-    }
+    }*/
 
-    let blob = match app.get_blob(&path.digest) {
+    let blob = match registry.get_blob(&digest).await? {
         Some(blob) => blob,
         None => return Err(RegistryError::BlobNotFound {}),
     };
 
-    if !blob.repositories.contains(&path.repository) {
-        tracing::debug!("Blob exists but not in repostitory: {}", path.repository);
+    if !blob.repositories.contains(&repository) {
+        tracing::debug!("Blob exists but not in repostitory: {}", repository);
         return Err(RegistryError::BlobNotFound {});
     }
 
-    if !blob.locations.contains(&app.id) {
+    /*if !blob.locations.contains(&app.id) {
         app.wait_for_blob(&path.digest).await;
-    }
+    }*/
 
-    let content_type = match blob.content_type {
-        Some(content_type) => content_type,
-        _ => "application/octet-steam".to_string(),
-    };
-
-    let _content_length = match blob.size {
-        Some(content_length) => content_length,
-        _ => {
-            tracing::debug!("Blob was present but size not available");
-            return Err(RegistryError::BlobNotFound {});
-        }
-    };
-
-    let blob_path = app.get_blob_path(&path.digest);
+    let blob_path = registry.get_blob_path(&digest);
     if !blob_path.is_file() {
         tracing::info!("Blob was not present on disk");
         return Err(RegistryError::BlobNotFound {});
     }
 
-    let blob = NamedFile::open_async(blob_path)
-        .await
-        .unwrap()
-        .into_response(&req);
+    let blob_file = tokio::fs::File::open(blob_path).await?;
 
-    Ok(HttpResponseBuilder::new(StatusCode::OK)
-        .content_type(content_type)
-        .append_header(("Docker-Content-Digest", path.digest.to_string()))
-        .body(blob.into_body()))
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Docker-Content-Digest", digest.to_string())
+        .header(header::CONTENT_TYPE, blob.media_type)
+        // .header(header::CONTENT_LENGTH, blob.size)
+        .body(Body::from_stream(ReaderStream::new(blob_file)))?)
 }
