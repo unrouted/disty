@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
+use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::registry::utils::{upload_part, validate_hash};
 use crate::state::RegistryState;
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use chrono::Utc;
 use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ pub struct BlobUploadRequest {
 pub struct BlobUploadPostQuery {
     mount: Option<String>,
     from: Option<String>,
-    digest: Option<String>,
+    digest: Option<Digest>,
 }
 
 pub(crate) async fn post(
@@ -66,6 +66,15 @@ pub(crate) async fn post(
 
         if let Some(blob) = app.get_blob(mount) {
             if blob.repositories.contains(from) {
+                // INSERT OR IGNORE INTO repositories (name)
+                // VALUES ('library/ubuntu');
+
+                // Insert repository id
+                //registry.client.execute(
+                //    "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
+                //    , params!(digest.to_string(), 1, stat.len() as u32, "application/octet-stream", 1)
+                //).await?;
+
                 let actions = vec![RegistryAction::BlobMounted {
                     timestamp: Utc::now(),
                     digest: mount.clone(),
@@ -84,27 +93,25 @@ pub(crate) async fn post(
                 Content-Length: 0
                 Docker-Content-Digest: <digest>
                 */
-                return Ok(HttpResponseBuilder::new(StatusCode::CREATED)
-                    .append_header((
+                return Ok(Response::builder().status(StatusCode::CREATED)
+                    .header(
                         "Location",
-                        format!("/v2/{}/blobs/{}", path.repository, mount),
-                    ))
-                    .append_header(("Range", "0-0"))
-                    .append_header(("Content-Length", "0"))
-                    .append_header(("Docker-Content-Digest", mount.to_string()))
-                    .finish());
+                        format!("/v2/{}/blobs/{}", repository, mount),
+                    )
+                    .header("Range", "0-0")
+                    .header("Content-Length", "0")
+                    .header("Docker-Content-Digest", mount.to_string())
+                    .body(Body::empty())?);
             }
         }
     }
     let upload_id = Uuid::new_v4().as_hyphenated().to_string();
 
-    match &query.digest {
+    match &digest {
         Some(digest) => {
-            let filename = app.get_upload_path(&upload_id);
+            let filename = registry.upload_path(&upload_id);
 
-            if !upload_part(&filename, body).await {
-                return Err(RegistryError::UploadInvalid {});
-            }
+            upload_part(&filename, body.into_body().into_data_stream()).await?; 
 
             // Validate upload
             if !validate_hash(&filename, digest).await {
@@ -129,7 +136,7 @@ pub(crate) async fn post(
 
             registry.client.execute(
                 "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
-                , params!(digest, 1, stat.len(), "application/octet-stream", 1)
+                , params!(digest.to_string(), 1, stat.len() as u32, "application/octet-stream", 1)
             ).await?;
 
             /*
@@ -143,7 +150,7 @@ pub(crate) async fn post(
                 .status(StatusCode::CREATED)
                 .header(
                     "Location",
-                    format!("/v2/{}/blobs/{}", path.repository, digest),
+                    format!("/v2/{}/blobs/{}", repository, digest),
                 )
                 .header("Range", "0-0")
                 .header("Content-Length", "0")
@@ -168,7 +175,7 @@ pub(crate) async fn post(
                 .status(StatusCode::ACCEPTED)
                 .header(
                     "Location",
-                    format!("/v2/{}/blobs/uploads/{}", path.repository, upload_id),
+                    format!("/v2/{}/blobs/uploads/{}", repository, upload_id),
                 )
                 .header("Range", format!("0-{}", 0))
                 .header("Content-Length", "0")
