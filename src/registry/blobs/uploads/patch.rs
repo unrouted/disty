@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
-use crate::error::RegistryError;
-use crate::state::RegistryState;
-use axum::extract::{Path, State};
+use axum::body::Body;
+use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
 use axum::response::Response;
+use axum_extra::TypedHeader;
+use headers::ContentRange;
 use serde::Deserialize;
+
+use crate::error::RegistryError;
+use crate::state::RegistryState;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -13,30 +17,14 @@ pub struct BlobUploadRequest {
     upload_id: String,
 }
 
-fn get_http_range(req: &HttpRequest) -> Option<(u64, u64)> {
-    let token = req.headers().get("content-range");
-    match token {
-        Some(token) => match token.to_str().unwrap().split_once('-') {
-            Some((start, stop)) => {
-                let start: u64 = match start.parse() {
-                    Ok(value) => value,
-                    _ => return None,
-                };
-                let stop: u64 = match stop.parse() {
-                    Ok(value) => value,
-                    _ => return None,
-                };
-                Some((start, stop))
-            }
-            _ => None,
-        },
-        None => None,
-    }
-}
-
 pub(crate) async fn patch(
-    Path(BlobUploadRequest { repository, upload_id }): Path<BlobUploadRequest>,
+    Path(BlobUploadRequest {
+        repository,
+        upload_id,
+    }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
+    content_range: Option<TypedHeader<ContentRange>>,
+    body: Request<Body>,
 ) -> Result<Response, RegistryError> {
     /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
@@ -54,28 +42,34 @@ pub(crate) async fn patch(
         return Err(RegistryError::UploadInvalid {});
     }
 
-    if let Some((start, stop)) = get_http_range(&req) {
-        let size = match tokio::fs::metadata(&filename).await {
-            Ok(value) => value.len(),
-            _ => 0,
-        };
+    if let Some(content_range) = content_range {
+        if let Some((start, stop)) = content_range.bytes_range() {
+            let size = match tokio::fs::metadata(&filename).await {
+                Ok(value) => value.len(),
+                _ => 0,
+            };
 
-        if stop < start {
-            return Err(RegistryError::RangeNotSatisfiable {
-                repository: repository.clone(),
-                upload_id: upload_id.clone(),
-                size,
-            });
-        }
+            if stop < start {
+                return Err(RegistryError::RangeNotSatisfiable {
+                    repository: repository.clone(),
+                    upload_id: upload_id.clone(),
+                    size,
+                });
+            }
 
-        if start != size {
-            return Err(RegistryError::RangeNotSatisfiable {
-                repository: repository.clone(),
-                upload_id: upload_id.clone(),
-                size,
-            });
+            if start != size {
+                return Err(RegistryError::RangeNotSatisfiable {
+                    repository: repository.clone(),
+                    upload_id: upload_id.clone(),
+                    size,
+                });
+            }
         }
     }
+    use futures_util::stream::StreamExt;
+    let body = body.into_body();
+    let stream = body.into_data_stream();
+    let foo = stream.next().await;
 
     if !upload_part(&filename, body).await {
         return Err(RegistryError::UploadInvalid {});
@@ -98,7 +92,8 @@ pub(crate) async fn patch(
 
     let range_end = if size > 0 { size - 1 } else { 0 };
 
-    Ok(Response::builder().status(StatusCode::ACCEPTED)
+    Ok(Response::builder()
+        .status(StatusCode::ACCEPTED)
         .header(
             "Location",
             format!("/v2/{}/blobs/uploads/{}", repository, upload_id),
@@ -107,5 +102,5 @@ pub(crate) async fn patch(
         .header("Content-Length", "0")
         .header("Blob-Upload-Session-ID", &upload_id)
         .header("Docker-Upload-UUID", &upload_id)
-        .unwrap())
+        .body(Body::empty())?)
 }

@@ -1,4 +1,7 @@
-use axum::{http::StatusCode, response::{IntoResponse, Response}};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 
 pub(crate) enum RegistryError {
     MustAuthenticate {
@@ -32,11 +35,12 @@ pub(crate) fn simple_oci_error(code: &str, message: &str) -> String {
 
 impl IntoResponse for RegistryError {
     fn into_response(self) -> Response {
-    match self {
+        match self {
             Self::MustAuthenticate { challenge } => {
                 let body = simple_oci_error("UNAUTHORIZED", "authentication required");
 
-                Response::builder().status(StatusCode::UNAUTHORIZED)
+                Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
                     .header("Www-Authenticate", challenge.clone())
                     .body(body)
             }
@@ -59,7 +63,9 @@ impl IntoResponse for RegistryError {
             Self::ManifestInvalid {} => {
                 let body = simple_oci_error("MANIFEST_INVALID", "upload was invalid");
 
-                Response::builder().status(StatusCode::BAD_REQUEST).body(body)
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(body)
             }
             Self::DigestInvalid {} => {
                 let body = simple_oci_error(
@@ -67,7 +73,9 @@ impl IntoResponse for RegistryError {
                     "provided digest did not match uploaded content",
                 );
 
-                Response::builder().status(StatusCode::BAD_REQUEST).body(body)
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(body)
             }
             Self::BlobNotFound {} => {
                 let body = simple_oci_error("BLOB_NOT_FOUND", "blob not found");
@@ -83,7 +91,9 @@ impl IntoResponse for RegistryError {
             Self::UploadInvalid {} => {
                 let body = simple_oci_error("BLOB_UPLOAD_INVALID", "the upload was invalid");
 
-                Response::builder().status(StatusCode::BAD_REQUEST).body(body)
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(body)
             }
             Self::RangeNotSatisfiable {
                 repository,
@@ -100,7 +110,8 @@ impl IntoResponse for RegistryError {
 
                 let range_end = if size > &0 { size - 1 } else { 0 };
 
-                Response::builder().status(StatusCode::RANGE_NOT_SATISFIABLE)
+                Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
                     .header(
                         "Location",
                         format!("/v2/{repository}/blobs/uploads/{upload_id}"),
@@ -111,10 +122,9 @@ impl IntoResponse for RegistryError {
                     .header("Docker-Upload-UUID", upload_id.clone())
                     .unwrap()
             }
-            Self::Unhandled(err) => {
-                Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR)
-                .unwrap()
-            }
+            Self::Unhandled(err) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .unwrap(),
         }
     }
 }

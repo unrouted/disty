@@ -5,12 +5,12 @@ use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RegistryAction;
 use crate::types::RepositoryName;
+use actix_web::HttpResponse;
+use actix_web::HttpResponseBuilder;
 use actix_web::delete;
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
-use actix_web::HttpResponse;
-use actix_web::HttpResponseBuilder;
 use chrono::prelude::*;
 use serde::Deserialize;
 

@@ -25,8 +25,13 @@ pub struct BlobUploadPostQuery {
 
 pub(crate) async fn post(
     Path(BlobUploadRequest { repository }): Path<BlobUploadRequest>,
-    Query(BlobUploadPostQuery { mount, from, digest}): Query<BlobUploadPostQuery>,
+    Query(BlobUploadPostQuery {
+        mount,
+        from,
+        digest,
+    }): Query<BlobUploadPostQuery>,
     State(registry): State<Arc<RegistryState>>,
+    body: Request<Body>,
 ) -> Result<Response, RegistryError> {
     /*if !token.validated_token {
         let mut access = vec![Access {
@@ -134,7 +139,8 @@ pub(crate) async fn post(
             Content-Length: 0
             Docker-Content-Digest: <digest>
             */
-            Ok(Response::builder().status(StatusCode::CREATED)
+            Ok(Response::builder()
+                .status(StatusCode::CREATED)
                 .header(
                     "Location",
                     format!("/v2/{}/blobs/{}", path.repository, digest),
@@ -158,7 +164,8 @@ pub(crate) async fn post(
                 _ => return Err(RegistryError::UploadInvalid {}),
             }
 
-            Ok(Response::builder().status(StatusCode::ACCEPTED)
+            Ok(Response::builder()
+                .status(StatusCode::ACCEPTED)
                 .header(
                     "Location",
                     format!("/v2/{}/blobs/uploads/{}", path.repository, upload_id),

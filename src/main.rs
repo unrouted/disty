@@ -10,9 +10,9 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
+mod error;
 mod registry;
 mod state;
-mod error;
 
 #[derive(Embed)]
 #[folder = "migrations"]
@@ -26,7 +26,6 @@ struct Entity {
     pub num: i64,
     pub description: Option<String>,
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {

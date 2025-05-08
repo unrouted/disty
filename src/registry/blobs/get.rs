@@ -4,13 +4,13 @@ use crate::registry::errors::RegistryError;
 use crate::types::Digest;
 use crate::types::RepositoryName;
 use actix_files::NamedFile;
+use actix_web::HttpRequest;
+use actix_web::HttpResponseBuilder;
+use actix_web::Responder;
 use actix_web::get;
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::web::Path;
-use actix_web::HttpRequest;
-use actix_web::HttpResponseBuilder;
-use actix_web::Responder;
 use serde::Deserialize;
 use tracing::debug;
 

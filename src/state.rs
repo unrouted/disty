@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use hiqlite::Client;
 
 pub struct RegistryState {
@@ -5,7 +7,7 @@ pub struct RegistryState {
 }
 
 impl RegistryState {
-    pub fn upload_path(&self, upload_id: &str) -> String {
-        format!("uploads/{upload_id}")
+    pub fn upload_path(&self, upload_id: &str) -> PathBuf {
+        PathBuf::from(format!("uploads/{upload_id}"))
     }
 }

@@ -1,7 +1,12 @@
 use std::sync::Arc;
 
 use crate::{error::RegistryError, state::RegistryState};
-use axum::{body::Body, extract::{Path, State}, http::StatusCode, response::Response};
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    http::StatusCode,
+    response::Response,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -10,9 +15,11 @@ pub struct BlobUploadRequest {
     upload_id: String,
 }
 
-
 pub(crate) async fn get(
-    Path(BlobUploadRequest { repository, upload_id }): Path<BlobUploadRequest>,
+    Path(BlobUploadRequest {
+        repository,
+        upload_id,
+    }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
     /*if !token.validated_token {
@@ -40,7 +47,8 @@ pub(crate) async fn get(
 
     let range_end = size - 1;
 
-    Ok(Response::builder().status(StatusCode::NO_CONTENT)
+    Ok(Response::builder()
+        .status(StatusCode::NO_CONTENT)
         .header(
             "Location",
             format!("/v2/{}/blobs/uploads/{}", repository, upload_id),

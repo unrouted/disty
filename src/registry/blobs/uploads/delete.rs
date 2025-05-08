@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use axum::{body::Body, extract::{Path, State}, http::StatusCode, response::Response};
+use axum::{
+    body::Body,
+    extract::{Path, State},
+    http::StatusCode,
+    response::Response,
+};
 use serde::Deserialize;
 
 use crate::{error::RegistryError, state::RegistryState};
@@ -12,7 +17,10 @@ pub struct BlobUploadRequest {
 }
 
 pub(crate) async fn delete(
-    Path(BlobUploadRequest { repository, upload_id }): Path<BlobUploadRequest>,
+    Path(BlobUploadRequest {
+        repository,
+        upload_id,
+    }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
     /*if !token.validated_token {
@@ -36,5 +44,8 @@ pub(crate) async fn delete(
         return Err(RegistryError::UploadInvalid {});
     }
 
-    Ok(Response::builder().status(StatusCode::NO_CONTENT).body(Body::empty()).unwrap())
+    Ok(Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(Body::empty())
+        .unwrap())
 }

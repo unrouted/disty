@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 axum = "0.8.4"
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
+futures = "0.3.31"
+futures-util = "0.3.31"
+headers = "0.4.0"
 hiqlite = { version = "0.6.0", features = ["shutdown-handle"] }
 hiqlite-macros = "0.6.0"
 serde = { version = "1.0.219", features = ["derive"] }

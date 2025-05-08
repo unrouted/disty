@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
-use axum::{extract::{Path, State}, response::Response};
+use axum::{
+    body::Body,
+    extract::{Path, Query, Request, State},
+    http::StatusCode,
+    response::Response,
+};
+use hiqlite_macros::params;
 use serde::Deserialize;
 
-use crate::{error::RegistryError, state::RegistryState};
+use crate::{error::RegistryError, registry::utils::upload_part, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -13,12 +19,17 @@ pub struct BlobUploadRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadPutQuery {
-    digest: Digest,
+    digest: String,
 }
 
 pub(crate) async fn put(
-    Path(BlobUploadRequest { repository, upload_id }): Path<BlobUploadRequest>,
+    Path(BlobUploadRequest {
+        repository,
+        upload_id,
+    }): Path<BlobUploadRequest>,
+    Query(BlobUploadPutQuery { digest }): Query<BlobUploadPutQuery>,
     State(registry): State<Arc<RegistryState>>,
+    body: Request<Body>,
 ) -> Result<Response, RegistryError> {
     /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
@@ -40,16 +51,14 @@ pub(crate) async fn put(
         return Err(RegistryError::UploadInvalid {});
     }
 
-    if !upload_part(&filename, body).await {
-        return Err(RegistryError::UploadInvalid {});
-    }
+    upload_part(&filename, body.into_body().into_data_stream()).await?;
 
     // Validate upload
     if !validate_hash(&filename, &digest).await {
         return Err(RegistryError::DigestInvalid {});
     }
 
-    let dest = app.get_blob_path(&query.digest);
+    let dest = app.get_blob_path(&digest);
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,
@@ -58,36 +67,12 @@ pub(crate) async fn put(
         }
     };
 
-    match tokio::fs::rename(filename.clone(), dest.clone()).await {
-        Ok(_) => {}
-        Err(_e) => {
-            return Err(RegistryError::UploadInvalid {});
-        }
-    }
+    tokio::fs::rename(filename.clone(), dest.clone()).await?;
 
-    let actions = vec![
-        RegistryAction::BlobMounted {
-            timestamp: Utc::now(),
-            digest: query.digest.clone(),
-            repository: path.repository.clone(),
-            user: token.sub.clone(),
-        },
-        RegistryAction::BlobStat {
-            timestamp: Utc::now(),
-            digest: query.digest.clone(),
-            size: stat.len(),
-        },
-        RegistryAction::BlobStored {
-            timestamp: Utc::now(),
-            digest: query.digest.clone(),
-            location: app.id,
-            user: token.sub.clone(),
-        },
-    ];
-
-    if !app.consistent_write(actions).await {
-        return Err(RegistryError::UploadInvalid {});
-    }
+    registry.client.execute(
+        "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
+        , params!(digest, 1, stat.len(), "application/octet-stream", 1)
+    ).await?;
 
     /*
     201 Created
@@ -96,13 +81,11 @@ pub(crate) async fn put(
     Content-Length: 0
     Docker-Content-Digest: <digest>
     */
-    Ok(HttpResponseBuilder::new(StatusCode::CREATED)
-        .append_header((
-            "Location",
-            format!("/v2/{}/blobs/{}", path.repository, query.digest),
-        ))
-        .append_header(("Range", "0-0"))
-        .append_header(("Content-Length", "0"))
-        .append_header(("Docker-Content-Digest", query.digest.to_string()))
-        .finish())
+    Ok(Response::builder()
+        .status(StatusCode::CREATED)
+        .header("Location", format!("/v2/{}/blobs/{}", repository, digest))
+        .header("Range", "0-0")
+        .header("Content-Length", "0")
+        .header("Docker-Content-Digest", digest.to_string())
+        .body(Body::empty())?)
 }
