@@ -22,8 +22,10 @@ struct RepositoryRow {
     name: String,
 }
 
+#[derive(PartialEq, Debug)]
 pub struct Blob {
     pub digest: Digest,
+    pub size: u32,
     pub media_type: String,
     pub location: u32,
     pub repositories: HashSet<String>,
@@ -73,13 +75,6 @@ impl RegistryState {
     }
 
     pub async fn get_blob(&self, digest: &Digest) -> Result<Option<Blob>> {
-        /*let res: Option<BlobRow> = self
-        .client
-        .query_as_optional(
-            "SELECT * FROM blobs WHERE digest = '$1'",
-            params!(digest.to_string()),
-        )
-        .await?;*/
         let res: Option<BlobRow> = self
             .client
             .query_as_optional(
@@ -91,12 +86,24 @@ impl RegistryState {
         Ok(match res {
             Some(row) => Some(Blob {
                 digest: row.digest,
+                size: row.size,
                 media_type: row.media_type,
                 location: row.location,
                 repositories: HashSet::new(),
             }),
             None => None,
         })
+    }
+
+    pub async fn insert_blob(&self, digest: &Digest, size: u32, media_type: &str) -> Result<()> {
+        self.client
+            .execute(
+                "INSERT INTO blobs (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
+                params!(digest.to_string(), size, media_type, 1),
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub async fn mount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
@@ -237,7 +244,20 @@ mod tests {
             .parse()
             .unwrap();
 
-        registry.get_blob(&digest).await?;
+        assert_eq!(None, registry.get_blob(&digest).await?);
+
+        registry
+            .insert_blob(&digest, 55, "application/octet-stream")
+            .await?;
+
+        let blob = match registry.get_blob(&digest).await? {
+            Some(blob) => blob,
+            None => panic!("no blob"),
+        };
+
+        assert_eq!(blob.digest, digest);
+        assert_eq!(blob.size, 55);
+        assert_eq!(blob.media_type, "application/octet-stream");
 
         registry.teardown().await?;
 

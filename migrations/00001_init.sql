@@ -7,28 +7,24 @@ CREATE TABLE repositories (
 
 -- Blobs: image layers or configs, associated with a repository
 CREATE TABLE blobs (
-    digest TEXT PRIMARY KEY,  -- e.g., sha256:...
-    repository_id INTEGER NOT NULL,
+    digest TEXT PRIMARY KEY,
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset of where content exists in the cluster
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Timestamp when the record was last updated
-    deleted_at DATETIME,  -- Soft delete time, null if not deleted
-    FOREIGN KEY(repository_id) REFERENCES repositories(id)
+    deleted_at DATETIME
 );
 
 -- Manifests: associated with a repository, includes size, media type, location, and update timestamp
 CREATE TABLE manifests (
     digest TEXT PRIMARY KEY,
-    repository_id INTEGER NOT NULL,
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset of where content exists in the cluster
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Timestamp when the record was last updated
-    deleted_at DATETIME,  -- Soft delete time, null if not deleted
-    FOREIGN KEY(repository_id) REFERENCES repositories(id)
+    deleted_at DATETIME
 );
 
 -- Manifest layers: many-to-many between manifests and blobs, capturing the order of layers

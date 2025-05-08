@@ -74,10 +74,9 @@ pub(crate) async fn put(
 
     tokio::fs::rename(filename.clone(), dest.clone()).await?;
 
-    registry.client.execute(
-        "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
-        , params!(digest.to_string(), 1, stat.len() as u32, "application/octet-stream", 1)
-    ).await?;
+    registry
+        .insert_blob(&digest, stat.len() as u32, "application/octet-stream")
+        .await?;
 
     /*
     201 Created
