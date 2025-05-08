@@ -13,6 +13,7 @@ use tracing_subscriber::EnvFilter;
 mod error;
 mod registry;
 mod state;
+mod digest;
 
 #[derive(Embed)]
 #[folder = "migrations"]

@@ -9,7 +9,7 @@ use axum::{
 use hiqlite_macros::params;
 use serde::Deserialize;
 
-use crate::{error::RegistryError, registry::utils::upload_part, state::RegistryState};
+use crate::{digest::Digest, error::RegistryError, registry::utils::{upload_part, validate_hash}, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -19,7 +19,7 @@ pub struct BlobUploadRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadPutQuery {
-    digest: String,
+    digest: Digest,
 }
 
 pub(crate) async fn put(
@@ -71,7 +71,7 @@ pub(crate) async fn put(
 
     registry.client.execute(
         "INSERT INTO blobs (digest, repository_id, size, media_type, location) VALUES ($1, $2, $3, $4, $5);"
-        , params!(digest, 1, stat.len(), "application/octet-stream", 1)
+        , params!(digest.to_string(), 1, stat.len() as u32, "application/octet-stream", 1)
     ).await?;
 
     /*
