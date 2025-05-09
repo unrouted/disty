@@ -16,6 +16,14 @@ CREATE TABLE blobs (
     deleted_at DATETIME
 );
 
+CREATE TABLE blobs_repositories (
+    digest TEXT NOT NULL,
+    repository_id INTEGER NOT NULL,
+    PRIMARY KEY (digest, repository_id),
+    FOREIGN KEY(repository_id) REFERENCES repositories(id),
+    FOREIGN KEY(digest) REFERENCES blobs(digest)
+);
+
 -- Manifests: associated with a repository, includes size, media type, location, and update timestamp
 CREATE TABLE manifests (
     digest TEXT PRIMARY KEY,

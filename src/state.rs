@@ -7,10 +7,9 @@ use serde::Deserialize;
 
 use crate::digest::Digest;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct BlobRow {
     digest: Digest,
-    repository_id: u32,
     size: u32,
     media_type: String,
     location: u32,
@@ -78,7 +77,15 @@ impl RegistryState {
         let res: Option<BlobRow> = self
             .client
             .query_as_optional(
-                "SELECT * FROM blobs WHERE digest = $1",
+                "SELECT * FROM blobs WHERE digest = $1;",
+                params!(digest.to_string()),
+            )
+            .await?;
+
+        let repositories: Vec<String> = self
+            .client
+            .query_as(
+                "SELECT name FROM repositories, blobs_repositories WHERE blobs_repositories.digest = $1 AND blobs_repositories.repository_id = repositories.id;",
                 params!(digest.to_string()),
             )
             .await?;
@@ -89,7 +96,7 @@ impl RegistryState {
                 size: row.size,
                 media_type: row.media_type,
                 location: row.location,
-                repositories: HashSet::new(),
+                repositories: repositories.into_iter().collect(),
             }),
             None => None,
         })
@@ -111,7 +118,7 @@ impl RegistryState {
 
         self.client
             .execute(
-                "INSERT OR IGNORE INTO blob_repositories(digest, repository) VALUES('$1', $2);",
+                "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, $2);",
                 params!(digest.to_string(), repository_id),
             )
             .await?;
@@ -123,7 +130,7 @@ impl RegistryState {
         if let Some(repository_id) = self.get_repository(repository).await? {
             self.client
                 .execute(
-                    "DELETE FROM blob_repositories WHERE digest = '$1' AND repository = $2;",
+                    "DELETE FROM blobs_repositories WHERE digest = $1 AND repository_id = $2;",
                     params!(digest.to_string(), repository_id),
                 )
                 .await?;
@@ -135,12 +142,13 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, ops::Deref};
+    use std::{borrow::Cow, ops::Deref, time::Duration};
 
     use hiqlite::{Node, NodeConfig};
     use once_cell::sync::Lazy;
     use tempfile::{TempDir, tempdir};
     use tokio::sync::Mutex;
+    use tracing_subscriber::EnvFilter;
 
     use crate::Migrations;
 
@@ -150,19 +158,14 @@ mod tests {
 
     #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
     struct Fixture {
-        dir: TempDir,
         _guard: Box<dyn std::any::Any + Send>,
-        registry: RegistryState,
+        dirs: Vec<TempDir>,
+        registries: Vec<RegistryState>,
     }
 
     impl Fixture {
         async fn new() -> Result<Self> {
             let lock = EXCLUSIVE_TEST_LOCK.lock().await;
-
-            let dir = tempdir()?;
-
-            let data_dir = dir.path();
-
             unsafe {
                 std::env::set_var("ENC_KEY_ACTIVE", "828W10qknpOT");
                 std::env::set_var(
@@ -172,32 +175,50 @@ mod tests {
             }
 
             let config = NodeConfig {
-                node_id: 1,
                 secret_api: "aaaaaaaaaaaaaaaa".into(),
                 secret_raft: "bbbbbbbbbbbbbbbb".into(),
-                data_dir: Cow::Owned(data_dir.to_string_lossy().into_owned()),
+                log_statements: true,
                 nodes: vec![Node {
                     id: 1,
+                    addr_raft: "127.0.0.1:9999".to_string(),
+                    addr_api: "127.0.0.1:9998".to_string(),
                     ..Default::default()
                 }],
                 ..Default::default()
             };
 
-            let client = hiqlite::start_node(config).await?;
+            let mut registries = vec![];
+            let mut dirs = vec![];
 
-            client.migrate::<Migrations>().await?;
+            for node in config.nodes.iter() {
+                let dir = tempdir()?;
+                let data_dir = dir.path();
 
-            let registry = RegistryState { client };
+                let client = hiqlite::start_node(NodeConfig {
+                    node_id: node.id,
+                    data_dir: Cow::Owned(data_dir.to_string_lossy().into_owned()),
+                    ..config.clone()
+                })
+                .await?;
+
+                dirs.push(dir);
+                registries.push(RegistryState { client });
+            }
+
+            registries[0].client.wait_until_healthy_db().await;
+            registries[0].client.migrate::<Migrations>().await?;
 
             Ok(Fixture {
-                dir,
-                registry,
+                dirs,
+                registries,
                 _guard: Box::new(lock),
             })
         }
 
         async fn teardown(self) -> Result<()> {
-            self.registry.client.shutdown().await?;
+            for registry in self.registries {
+                registry.client.shutdown().await?;
+            }
             Ok(())
         }
     }
@@ -206,7 +227,7 @@ mod tests {
         type Target = RegistryState;
 
         fn deref(&self) -> &Self::Target {
-            &self.registry
+            &self.registries[0]
         }
     }
 
@@ -238,6 +259,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_blob() -> Result<()> {
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_level(true)
+            .with_env_filter(EnvFilter::from("info"))
+            .init();
+
         let registry = Fixture::new().await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
@@ -250,14 +277,46 @@ mod tests {
             .insert_blob(&digest, 55, "application/octet-stream")
             .await?;
 
-        let blob = match registry.get_blob(&digest).await? {
-            Some(blob) => blob,
-            None => panic!("no blob"),
-        };
+        let blob = registry.get_blob(&digest).await?.unwrap();
 
         assert_eq!(blob.digest, digest);
-        assert_eq!(blob.size, 55);
-        assert_eq!(blob.media_type, "application/octet-stream");
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_blob_mount() -> Result<()> {
+        tracing_subscriber::fmt()
+            .with_target(true)
+            .with_level(true)
+            .with_env_filter(EnvFilter::from("info"))
+            .init();
+
+        let registry = Fixture::new().await?;
+
+        let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_blob(&digest, 55, "application/octet-stream")
+            .await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
+        assert_eq!(blob.repositories, HashSet::new());
+
+        registry.mount_blob(&digest, "ubuntu/trusty").await?;
+        let blob = registry.get_blob(&digest).await?.unwrap();
+        assert_eq!(
+            blob.repositories,
+            ["ubuntu/trusty".to_string()].into_iter().collect()
+        );
+
+        registry.unmount_blob(&digest, "ubuntu/trusty").await?;
+        let blob = registry.get_blob(&digest).await?.unwrap();
+        assert_eq!(blob.repositories, HashSet::new());
 
         registry.teardown().await?;
 
