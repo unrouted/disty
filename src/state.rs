@@ -15,6 +15,14 @@ struct BlobRow {
     location: u32,
 }
 
+#[derive(Debug, Deserialize)]
+struct ManifestRow {
+    digest: Digest,
+    size: u32,
+    media_type: String,
+    location: u32,
+}
+
 #[derive(Deserialize)]
 struct RepositoryRow {
     id: u32,
@@ -23,6 +31,15 @@ struct RepositoryRow {
 
 #[derive(PartialEq, Debug)]
 pub struct Blob {
+    pub digest: Digest,
+    pub size: u32,
+    pub media_type: String,
+    pub location: u32,
+    pub repositories: HashSet<String>,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Manifest {
     pub digest: Digest,
     pub size: u32,
     pub media_type: String,
@@ -43,6 +60,9 @@ impl RegistryState {
         PathBuf::from("blobs").join(digest.to_path())
     }
 
+    pub fn get_manifest_path(&self, digest: &Digest) -> PathBuf {
+        PathBuf::from("manifests").join(digest.to_path())
+    }
     async fn get_repository(&self, repository: &str) -> Result<Option<u32>> {
         let res: Option<RepositoryRow> = self
             .client
@@ -131,6 +151,77 @@ impl RegistryState {
             self.client
                 .execute(
                     "DELETE FROM blobs_repositories WHERE digest = $1 AND repository_id = $2;",
+                    params!(digest.to_string(), repository_id),
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_manifest(&self, digest: &Digest) -> Result<Option<Manifest>> {
+        let res: Option<ManifestRow> = self
+            .client
+            .query_as_optional(
+                "SELECT * FROM manifests WHERE digest = $1;",
+                params!(digest.to_string()),
+            )
+            .await?;
+
+        let repositories: Vec<String> = self
+            .client
+            .query_as(
+                "SELECT name FROM repositories, manifests_repositories WHERE manifests_repositories.digest = $1 AND manifests_repositories.repository_id = repositories.id;",
+                params!(digest.to_string()),
+            )
+            .await?;
+
+        Ok(match res {
+            Some(row) => Some(Manifest {
+                digest: row.digest,
+                size: row.size,
+                media_type: row.media_type,
+                location: row.location,
+                repositories: repositories.into_iter().collect(),
+            }),
+            None => None,
+        })
+    }
+
+    pub async fn insert_manifest(
+        &self,
+        digest: &Digest,
+        size: u32,
+        media_type: &str,
+    ) -> Result<()> {
+        self.client
+            .execute(
+                "INSERT INTO manifests (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
+                params!(digest.to_string(), size, media_type, 1),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn mount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
+        let repository_id = self.get_or_create_repository(repository).await?;
+
+        self.client
+            .execute(
+                "INSERT OR IGNORE INTO manifests_repositories(digest, repository_id) VALUES($1, $2);",
+                params!(digest.to_string(), repository_id),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn unmount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
+        if let Some(repository_id) = self.get_repository(repository).await? {
+            self.client
+                .execute(
+                    "DELETE FROM manifests_repositories WHERE digest = $1 AND repository_id = $2;",
                     params!(digest.to_string(), repository_id),
                 )
                 .await?;

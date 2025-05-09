@@ -7,10 +7,10 @@ use axum::{
 
 use crate::state::RegistryState;
 
-pub mod blobs;
+mod blobs;
+mod manifests;
 mod root;
 mod utils;
-// pub mod manifests;
 // pub mod tags;
 
 pub fn router(state: RegistryState) -> Router {
@@ -39,5 +39,15 @@ pub fn router(state: RegistryState) -> Router {
         .route("/:repository/blobs/:digest", head(blobs::head::head))
         .route("/:repository/blobs/:digest", get(blobs::get::get))
         .route("/:repository/blobs/:digest", delete(blobs::delete::delete))
+        .route(
+            "/:repository/manifests/:digest",
+            head(manifests::head::head),
+        )
+        .route("/:repository/manifests/:digest", get(manifests::get::get))
+        .route(
+            "/:repository/manifests/:digest",
+            delete(manifests::delete::delete),
+        )
+        .route("/:repository/manifests/:tag", put(manifests::put::put))
         .with_state(Arc::new(state))
 }

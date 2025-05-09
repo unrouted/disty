@@ -1,38 +1,32 @@
-use crate::app::RegistryApp;
-use crate::extractors::Token;
-use crate::registry::errors::RegistryError;
-use crate::registry::utils::get_hash;
-use crate::types::RegistryAction;
-use crate::types::RepositoryName;
-use crate::webhook::Event;
-use actix_web::http::StatusCode;
-use actix_web::put;
-use actix_web::web::Data;
-use actix_web::web::Path;
-use actix_web::web::Payload;
-use actix_web::HttpRequest;
-use actix_web::HttpResponse;
-use actix_web::HttpResponseBuilder;
-use chrono::prelude::*;
+use std::sync::Arc;
+
+use crate::{
+    error::RegistryError,
+    registry::utils::{get_hash, upload_part},
+    state::RegistryState,
+};
+use axum::{
+    body::Body,
+    extract::{Path, Request, State},
+    http::StatusCode,
+    response::Response,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct ManifestPutRequest {
-    repository: RepositoryName,
+    repository: String,
     tag: String,
 }
 
-#[put("/{repository:[^{}]+}/manifests/{tag}")]
 pub(crate) async fn put(
-    app: Data<RegistryApp>,
-    req: HttpRequest,
-    path: Path<ManifestPutRequest>,
-    body: Payload,
-    token: Token,
-) -> Result<HttpResponse, RegistryError> {
+    Path(ManifestPutRequest { repository, tag }): Path<ManifestPutRequest>,
+    State(registry): State<Arc<RegistryState>>,
+    body: Request<Body>,
+) -> Result<Response, RegistryError> {
     let extractor = &app.extractor;
 
-    if !token.validated_token {
+    /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_push_challenge(&path.repository),
         });
@@ -40,13 +34,11 @@ pub(crate) async fn put(
 
     if !token.has_permission(&path.repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }
+    }*/
 
     let upload_path = app.get_temp_path();
 
-    if !crate::registry::utils::upload_part(&upload_path, body).await {
-        return Err(RegistryError::ManifestInvalid {});
-    }
+    upload_part(&upload_path, body.into_body().into_data_stream()).await?;
 
     let size = match tokio::fs::metadata(&upload_path).await {
         Ok(result) => result.len(),
@@ -138,11 +130,12 @@ pub(crate) async fn put(
     Content-Length: 0
     Docker-Content-Digest: <digest>
     */
-    Ok(HttpResponseBuilder::new(StatusCode::CREATED)
-        .append_header((
+    Ok(Response::builder()
+        .status(StatusCode::CREATED)
+        .header(
             "Location",
-            format!("/v2/{}/manifests/{}", path.repository, digest),
-        ))
-        .append_header(("Docker-Content-Digest", digest.to_string()))
-        .finish())
+            format!("/v2/{}/manifests/{}", repository, digest),
+        )
+        .header("Docker-Content-Digest", digest.to_string())
+        .body(Body::empty())?)
 }
