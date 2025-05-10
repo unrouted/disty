@@ -50,15 +50,7 @@ pub(crate) async fn head(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    let digest = match registry.get_tag(&repository, &tag) {
-        Some(tag) => tag,
-        None => {
-            debug!("No such tag");
-            return Err(RegistryError::ManifestNotFound {});
-        }
-    };
-
-    let manifest = match app.get_manifest(&digest) {
+    let manifest = match registry.get_manifest_by_tag_or_digest(tag).await? {
         Some(manifest) => {
             if !manifest.repositories.contains(&repository) {
                 return Err(RegistryError::ManifestNotFound {});
@@ -72,7 +64,7 @@ pub(crate) async fn head(
     //    app.wait_for_manifest(&digest).await;
     // }
 
-    let manifest_path = registry.get_manifest_path(&digest);
+    let manifest_path = registry.get_manifest_path(&manifest.digest);
     if !manifest_path.is_file() {
         debug!("Expected manifest file does not exist");
         return Err(RegistryError::ManifestNotFound {});
@@ -80,7 +72,7 @@ pub(crate) async fn head(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header("Docker-Content-Digest", digest.to_string())
+        .header("Docker-Content-Digest", manifest.digest.to_string())
         .header(header::CONTENT_TYPE, manifest.media_type)
         .header(header::CONTENT_LENGTH, manifest.size)
         .body(Body::empty())?)

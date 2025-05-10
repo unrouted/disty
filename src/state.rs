@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use hiqlite::Client;
 use hiqlite_macros::params;
 use serde::Deserialize;
@@ -157,6 +157,40 @@ impl RegistryState {
         }
 
         Ok(())
+    }
+
+    pub async fn get_manifest_by_tag_or_digest(&self, tag: String) -> Result<Option<Manifest>> {
+        if let Ok(digest) = Digest::try_from(tag.clone()) {
+            return Ok(self.get_manifest(&digest).await?);
+        }
+        let res: Option<ManifestRow> = self
+            .client
+            .query_as_optional(
+                "SELECT * FROM manifests, manifests_repositories, tags WHERE tags.name = $1 AND tags.repository_id = manifests_repositories.repository_id AND manifests_repositories.digest=tags.digest;",
+                params!(tag),
+            )
+            .await?;
+
+        Ok(match res {
+            Some(row) => {
+                let repositories: Vec<String> = self
+                    .client
+                    .query_as(
+                        "SELECT name FROM repositories, manifests_repositories WHERE manifests_repositories.digest = $1 AND manifests_repositories.repository_id = repositories.id;",
+                        params!(row.digest.to_string()),
+                    )
+                    .await?;
+
+                Some(Manifest {
+                    digest: row.digest,
+                    size: row.size,
+                    media_type: row.media_type,
+                    location: row.location,
+                    repositories: repositories.into_iter().collect(),
+                })
+            }
+            None => None,
+        })
     }
 
     pub async fn get_manifest(&self, digest: &Digest) -> Result<Option<Manifest>> {

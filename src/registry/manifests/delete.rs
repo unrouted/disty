@@ -30,7 +30,7 @@ pub(crate) async fn delete(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    if let Some(manifest) = registry.get_manifest(&digest).await? {
+    if let Some(manifest) = registry.get_manifest_by_tag_or_digest(tag).await? {
         if !manifest.repositories.contains(&repository) {
             return Err(RegistryError::ManifestNotFound {});
         }
