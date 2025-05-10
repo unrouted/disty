@@ -60,26 +60,6 @@ pub(crate) async fn put(
         .extract(&app, &path.repository, &digest, content_type, &upload_path)
         .await;
 
-    let mut actions = vec![
-        RegistryAction::ManifestMounted {
-            timestamp: Utc::now(),
-            digest: digest.clone(),
-            repository: path.repository.clone(),
-            user: token.sub.clone(),
-        },
-        RegistryAction::ManifestStored {
-            timestamp: Utc::now(),
-            digest: digest.clone(),
-            location: app.id,
-            user: token.sub.clone(),
-        },
-        RegistryAction::ManifestStat {
-            timestamp: Utc::now(),
-            digest: digest.clone(),
-            size,
-        },
-    ];
-
     let extracted = match extracted {
         Ok(extracted_actions) => extracted_actions,
         Err(e) => {
@@ -96,7 +76,7 @@ pub(crate) async fn put(
         user: token.sub.clone(),
     }]);
 
-    let dest = app.get_manifest_path(&digest);
+    let dest = registry.get_manifest_path(&digest);
 
     match tokio::fs::rename(upload_path, dest).await {
         Ok(_) => {}
@@ -105,10 +85,9 @@ pub(crate) async fn put(
         }
     }
 
-    if !app.consistent_write(actions).await {
-        tracing::error!("Raft storage failed");
-        return Err(RegistryError::ManifestInvalid {});
-    }
+    registry
+        .insert_manifest(&digest, size, content_type)
+        .await?;
 
     let resp = app
         .webhooks
