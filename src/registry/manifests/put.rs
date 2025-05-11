@@ -11,6 +11,8 @@ use axum::{
     http::StatusCode,
     response::Response,
 };
+use axum_extra::TypedHeader;
+use headers::ContentType;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +23,7 @@ pub struct ManifestPutRequest {
 
 pub(crate) async fn put(
     Path(ManifestPutRequest { repository, tag }): Path<ManifestPutRequest>,
+    content_type: TypedHeader<ContentType>,
     State(registry): State<Arc<RegistryState>>,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
@@ -54,10 +57,14 @@ pub(crate) async fn put(
         }
     };
 
-    let content_type = req.headers().get("content-type").unwrap().to_str().unwrap();
-
     let extracted = extractor
-        .extract(&app, &path.repository, &digest, content_type, &upload_path)
+        .extract(
+            &app,
+            &path.repository,
+            &digest,
+            content_type.to_string(),
+            &upload_path,
+        )
         .await;
 
     let extracted = match extracted {
@@ -86,7 +93,7 @@ pub(crate) async fn put(
     }
 
     registry
-        .insert_manifest(&digest, size, content_type)
+        .insert_manifest(&digest, size, &content_type.to_string())
         .await?;
 
     let resp = app
@@ -95,7 +102,7 @@ pub(crate) async fn put(
             repository: path.repository.clone(),
             digest: digest.clone(),
             tag: path.tag.to_owned(),
-            content_type: content_type.to_owned(),
+            content_type: content_type.to_string(),
         })
         .await;
 
