@@ -1,4 +1,5 @@
 use axum::Router;
+use extractor::Extractor;
 use hiqlite::Client;
 use hiqlite::{Error, NodeConfig, Row, StmtIndex};
 use hiqlite_macros::embed::*;
@@ -12,6 +13,7 @@ use tracing_subscriber::EnvFilter;
 
 mod digest;
 mod error;
+mod extractor;
 mod registry;
 mod state;
 
@@ -47,7 +49,9 @@ async fn main() -> Result<(), Error> {
     log("Apply our database migrations");
     client.migrate::<Migrations>().await?;
 
-    let state = RegistryState { client };
+    let extractor = Extractor::new();
+
+    let state = RegistryState { client, extractor };
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();

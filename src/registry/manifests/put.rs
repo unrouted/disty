@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     error::RegistryError,
+    extractor::Report,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
 };
@@ -27,7 +28,7 @@ pub(crate) async fn put(
     State(registry): State<Arc<RegistryState>>,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    let extractor = &app.extractor;
+    let extractor = &registry.extractor;
 
     /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
@@ -59,10 +60,10 @@ pub(crate) async fn put(
 
     let extracted = extractor
         .extract(
-            &app,
-            &path.repository,
+            &registry,
+            &repository,
             &digest,
-            content_type.to_string(),
+            &content_type.to_string(),
             &upload_path,
         )
         .await;
@@ -74,7 +75,7 @@ pub(crate) async fn put(
             return Err(RegistryError::ManifestInvalid {});
         }
     };
-    actions.append(&mut extracted.clone());
+
     actions.append(&mut vec![RegistryAction::HashTagged {
         timestamp: Utc::now(),
         repository: path.repository.clone(),
@@ -95,6 +96,21 @@ pub(crate) async fn put(
     registry
         .insert_manifest(&digest, size, &content_type.to_string())
         .await?;
+
+    for report in extracted {
+        match report {
+            Report::Manifest {
+                digest,
+                content_type: _,
+                dependencies,
+            } => {
+                registry
+                    .insert_manifest_dependencies(&digest, dependencies)
+                    .await?;
+            }
+            _ => {}
+        }
+    }
 
     let resp = app
         .webhooks

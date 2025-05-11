@@ -5,12 +5,12 @@ use hiqlite::Client;
 use hiqlite_macros::params;
 use serde::Deserialize;
 
-use crate::digest::Digest;
+use crate::{digest::Digest, extractor::Extractor};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
     digest: Digest,
-    size: u32,
+    size: u64,
     media_type: String,
     location: u32,
 }
@@ -32,7 +32,7 @@ struct RepositoryRow {
 #[derive(PartialEq, Debug)]
 pub struct Blob {
     pub digest: Digest,
-    pub size: u32,
+    pub size: u64,
     pub media_type: String,
     pub location: u32,
     pub repositories: HashSet<String>,
@@ -49,6 +49,7 @@ pub struct Manifest {
 
 pub struct RegistryState {
     pub client: Client,
+    pub extractor: Extractor,
 }
 
 impl RegistryState {
@@ -238,6 +239,15 @@ impl RegistryState {
         Ok(())
     }
 
+    pub async fn insert_manifest_dependencies(
+        &self,
+        digest: &Digest,
+        dependencies: Vec<Digest>,
+    ) -> Result<()> {
+        assert!(false);
+        Ok(())
+    }
+
     pub async fn mount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
         let repository_id = self.get_or_create_repository(repository).await?;
 
@@ -327,7 +337,10 @@ mod tests {
                 .await?;
 
                 dirs.push(dir);
-                registries.push(RegistryState { client });
+                registries.push(RegistryState {
+                    client,
+                    extractor: Extractor::new(),
+                });
             }
 
             registries[0].client.wait_until_healthy_db().await;
