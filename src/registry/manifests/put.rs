@@ -98,6 +98,8 @@ pub(crate) async fn put(
         .insert_manifest(&digest, size, &content_type.to_string())
         .await?;
 
+    registry.mount_manifest(&digest, &repository).await?;
+
     for report in extracted {
         match report {
             Report::Manifest {
