@@ -5,7 +5,7 @@ use hiqlite::Client;
 use hiqlite_macros::params;
 use serde::Deserialize;
 
-use crate::{digest::Digest, extractor::Extractor};
+use crate::{digest::Digest, extractor::Extractor, webhook::WebhookService};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
@@ -50,6 +50,7 @@ pub struct Manifest {
 pub struct RegistryState {
     pub client: Client,
     pub extractor: Extractor,
+    pub webhooks: WebhookService,
 }
 
 impl RegistryState {
@@ -279,10 +280,12 @@ impl RegistryState {
 mod tests {
     use std::{borrow::Cow, ops::Deref, time::Duration};
 
+    use futures::future::Join;
     use hiqlite::{Node, NodeConfig};
     use once_cell::sync::Lazy;
+    use prometheus_client::registry::Registry;
     use tempfile::{TempDir, tempdir};
-    use tokio::sync::Mutex;
+    use tokio::{sync::Mutex, task::JoinSet};
     use tracing_subscriber::EnvFilter;
 
     use crate::Migrations;
@@ -296,6 +299,7 @@ mod tests {
         _guard: Box<dyn std::any::Any + Send>,
         dirs: Vec<TempDir>,
         registries: Vec<RegistryState>,
+        tasks: JoinSet<Result<()>>,
     }
 
     impl Fixture {
@@ -322,12 +326,15 @@ mod tests {
                 ..Default::default()
             };
 
+            let mut tasks = JoinSet::new();
             let mut registries = vec![];
             let mut dirs = vec![];
 
             for node in config.nodes.iter() {
                 let dir = tempdir()?;
                 let data_dir = dir.path();
+
+                let mut registry = Registry::with_prefix("disty");
 
                 let client = hiqlite::start_node(NodeConfig {
                     node_id: node.id,
@@ -340,6 +347,7 @@ mod tests {
                 registries.push(RegistryState {
                     client,
                     extractor: Extractor::new(),
+                    webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
                 });
             }
 
@@ -350,13 +358,15 @@ mod tests {
                 dirs,
                 registries,
                 _guard: Box::new(lock),
+                tasks,
             })
         }
 
-        async fn teardown(self) -> Result<()> {
+        async fn teardown(mut self) -> Result<()> {
             for registry in self.registries {
                 registry.client.shutdown().await?;
             }
+            self.tasks.shutdown().await;
             Ok(())
         }
     }

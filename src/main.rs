@@ -4,11 +4,13 @@ use hiqlite::Client;
 use hiqlite::{Error, NodeConfig, Row, StmtIndex};
 use hiqlite_macros::embed::*;
 use hiqlite_macros::params;
+use prometheus_client::registry::Registry;
 use registry::router;
 use serde::{Deserialize, Serialize};
 use state::RegistryState;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
+use tokio::task::JoinSet;
 use tracing_subscriber::EnvFilter;
 
 mod digest;
@@ -16,6 +18,7 @@ mod error;
 mod extractor;
 mod registry;
 mod state;
+mod webhook;
 
 #[derive(Embed)]
 #[folder = "migrations"]
@@ -38,6 +41,8 @@ async fn main() -> Result<(), Error> {
         .with_env_filter(EnvFilter::from("info"))
         .init();
 
+    let mut registry = Registry::with_prefix("disty");
+
     let config = NodeConfig::from_env_file("config");
     let client = hiqlite::start_node(config).await?;
 
@@ -51,11 +56,26 @@ async fn main() -> Result<(), Error> {
 
     let extractor = Extractor::new();
 
-    let state = RegistryState { client, extractor };
+    let mut tasks = JoinSet::new();
+
+    let webhooks = crate::webhook::WebhookService::start(&mut tasks, vec![], &mut registry);
+
+    let state = RegistryState {
+        client,
+        extractor,
+        webhooks,
+    };
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    tasks.spawn(async move {
+        axum::serve(listener, app).await?;
+        Ok(())
+    });
+
+    let res = tasks.join_next().await;
+
+    tasks.shutdown().await;
 
     /*
     log("Insert a row");

@@ -5,6 +5,7 @@ use crate::{
     extractor::Report,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
+    webhook::Event,
 };
 use axum::{
     body::Body,
@@ -112,19 +113,10 @@ pub(crate) async fn put(
         }
     }
 
-    let resp = app
+    registry
         .webhooks
-        .send(Event {
-            repository: path.repository.clone(),
-            digest: digest.clone(),
-            tag: path.tag.to_owned(),
-            content_type: content_type.to_string(),
-        })
+        .send(&repository, &digest, &tag, &content_type.to_string())
         .await;
-
-    if let Err(err) = resp {
-        tracing::error!("Error queueing webhook: {err}");
-    }
 
     /*
     201 Created
