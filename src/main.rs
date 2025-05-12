@@ -44,6 +44,7 @@ async fn main() -> Result<(), Error> {
     let mut registry = Registry::with_prefix("disty");
 
     let config = NodeConfig::from_env_file("config");
+    let node_id = config.node_id;
     let client = hiqlite::start_node(config).await?;
 
     // Let's register our shutdown handle to always perform a graceful shutdown and remove lock files.
@@ -61,6 +62,7 @@ async fn main() -> Result<(), Error> {
     let webhooks = crate::webhook::WebhookService::start(&mut tasks, vec![], &mut registry);
 
     let state = RegistryState {
+        node_id,
         client,
         extractor,
         webhooks,

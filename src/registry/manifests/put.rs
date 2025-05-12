@@ -41,7 +41,7 @@ pub(crate) async fn put(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    let upload_path = app.get_temp_path();
+    let upload_path = registry.get_temp_path();
 
     upload_part(&upload_path, body.into_body().into_data_stream()).await?;
 
@@ -77,14 +77,6 @@ pub(crate) async fn put(
         }
     };
 
-    actions.append(&mut vec![RegistryAction::HashTagged {
-        timestamp: Utc::now(),
-        repository: path.repository.clone(),
-        digest: digest.clone(),
-        tag: path.tag.clone(),
-        user: token.sub.clone(),
-    }]);
-
     let dest = registry.get_manifest_path(&digest);
 
     match tokio::fs::rename(upload_path, dest).await {
@@ -95,10 +87,8 @@ pub(crate) async fn put(
     }
 
     registry
-        .insert_manifest(&digest, size, &content_type.to_string())
+        .insert_manifest(&repository, &tag, &digest, size, &content_type.to_string())
         .await?;
-
-    registry.mount_manifest(&digest, &repository).await?;
 
     for report in extracted {
         match report {
@@ -118,7 +108,7 @@ pub(crate) async fn put(
     registry
         .webhooks
         .send(&repository, &digest, &tag, &content_type.to_string())
-        .await;
+        .await?;
 
     /*
     201 Created

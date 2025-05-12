@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use hiqlite::Client;
 use hiqlite_macros::params;
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{digest::Digest, extractor::Extractor, webhook::WebhookService};
 
@@ -48,6 +49,7 @@ pub struct Manifest {
 }
 
 pub struct RegistryState {
+    pub node_id: u64,
     pub client: Client,
     pub extractor: Extractor,
     pub webhooks: WebhookService,
@@ -56,6 +58,10 @@ pub struct RegistryState {
 impl RegistryState {
     pub fn upload_path(&self, upload_id: &str) -> PathBuf {
         PathBuf::from(format!("uploads/{upload_id}"))
+    }
+
+    pub fn get_temp_path(&self) -> PathBuf {
+        self.upload_path(&Uuid::new_v4().as_hyphenated().to_string())
     }
 
     pub fn get_blob_path(&self, digest: &Digest) -> PathBuf {
@@ -125,10 +131,11 @@ impl RegistryState {
     }
 
     pub async fn insert_blob(&self, digest: &Digest, size: u32, media_type: &str) -> Result<()> {
+        let location = 1 << (self.node_id - 1);
         self.client
             .execute(
                 "INSERT INTO blobs (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
-                params!(digest.to_string(), size, media_type, 1),
+                params!(digest.to_string(), size, media_type, location),
             )
             .await?;
 
@@ -226,16 +233,29 @@ impl RegistryState {
 
     pub async fn insert_manifest(
         &self,
+        repository: &str,
+        tag: &str,
         digest: &Digest,
-        size: u32,
+        size: u64,
         media_type: &str,
     ) -> Result<()> {
+        let location = 1 << (self.node_id - 1);
         self.client
-            .execute(
-                "INSERT INTO manifests (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
-                params!(digest.to_string(), size, media_type, 1),
-            )
-            .await?;
+         .txn([
+                (
+                    "INSERT INTO manifests (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
+                    params!(digest.to_string(), size as u32, media_type, location),
+                ),
+                (
+                    "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
+                    params!(repository),
+                ),
+                (
+                    "INSERT INTO tags (name, repository_id, digest) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), $3);",
+                    params!(tag, repository, digest.to_string())
+                )
+         ])
+         .await?;
 
         Ok(())
     }
@@ -345,6 +365,7 @@ mod tests {
 
                 dirs.push(dir);
                 registries.push(RegistryState {
+                    node_id: node.id,
                     client,
                     extractor: Extractor::new(),
                     webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
