@@ -91,10 +91,11 @@ pub(crate) async fn put(
 
     for report in extracted {
         if let Report::Manifest {
-                digest,
-                content_type: _,
-                dependencies,
-            } = report {
+            digest,
+            content_type: _,
+            dependencies,
+        } = report
+        {
             registry
                 .insert_manifest_dependencies(&digest, dependencies)
                 .await?;
