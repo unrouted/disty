@@ -7,6 +7,7 @@ use axum::response::Response;
 use serde::Deserialize;
 use tracing::debug;
 
+use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::state::RegistryState;
 
@@ -50,13 +51,13 @@ pub(crate) async fn head(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    let manifest = match registry.get_manifest_by_tag_or_digest(tag).await? {
-        Some(manifest) => {
-            if !manifest.repositories.contains(&repository) {
-                return Err(RegistryError::ManifestNotFound {});
-            }
-            manifest
-        }
+    let manifest = match Digest::try_from(tag.clone()) {
+        Ok(digest) => registry.get_manifest(&repository, &digest).await?,
+        Err(_) => registry.get_tag(&repository, &tag).await?,
+    };
+
+    let manifest = match manifest {
+        Some(manifest) => manifest,
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 

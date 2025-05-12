@@ -5,17 +5,18 @@ CREATE TABLE repositories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Blobs: image layers or configs, associated with a repository
+-- Blobs: content-addressable image layers or configs
 CREATE TABLE blobs (
     digest TEXT PRIMARY KEY,
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
-    location INTEGER NOT NULL,  -- Bitset of where content exists in the cluster
+    location INTEGER NOT NULL,  -- Bitset indicating which hosts store this blob
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Timestamp when the record was last updated
-    deleted_at DATETIME
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME  -- Null if not deleted (used for garbage collection)
 );
 
+-- Association of blobs with repositories
 CREATE TABLE blobs_repositories (
     digest TEXT NOT NULL,
     repository_id INTEGER NOT NULL,
@@ -24,37 +25,41 @@ CREATE TABLE blobs_repositories (
     FOREIGN KEY(digest) REFERENCES blobs(digest)
 );
 
--- Manifests: associated with a repository, includes size, media type, location, and update timestamp
+-- Manifests: represent image manifests, associated with a repository
 CREATE TABLE manifests (
-    digest TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repository_id INTEGER NOT NULL,
+    digest TEXT NOT NULL,
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
-    location INTEGER NOT NULL,  -- Bitset of where content exists in the cluster
+    location INTEGER NOT NULL,  -- Bitset indicating which hosts store this manifest
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Timestamp when the record was last updated
-    deleted_at DATETIME
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME,  -- Null if not deleted
+    FOREIGN KEY(repository_id) REFERENCES repositories(id),
+    UNIQUE(repository_id, digest)
 );
 
--- Manifest layers: many-to-many between manifests and blobs, capturing the order of layers
+-- Layers that make up a manifest, in order
 CREATE TABLE manifest_layers (
-    manifest_digest TEXT NOT NULL,
+    manifest_id INTEGER NOT NULL,
     blob_digest TEXT NOT NULL,
-    position INTEGER NOT NULL,  -- Order of the layers
-    PRIMARY KEY (manifest_digest, blob_digest),
-    FOREIGN KEY(manifest_digest) REFERENCES manifests(digest),
+    position INTEGER NOT NULL,  -- Layer order in the manifest
+    PRIMARY KEY (manifest_id, blob_digest),
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     FOREIGN KEY(blob_digest) REFERENCES blobs(digest)
 );
 
--- Tags: point to a specific manifest, supports soft delete, and includes update timestamp
+-- Tags: named references to manifests, unique per repository
 CREATE TABLE tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     repository_id INTEGER NOT NULL,
     name TEXT NOT NULL,
-    manifest_digest TEXT NOT NULL,
+    manifest_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- Timestamp when the record was last updated
-    deleted_at DATETIME,  -- Soft delete time, null if not deleted
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME,  -- Null if not deleted
     FOREIGN KEY(repository_id) REFERENCES repositories(id),
-    FOREIGN KEY(manifest_digest) REFERENCES manifests(digest),
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     UNIQUE(repository_id, name)
 );

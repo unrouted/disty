@@ -45,7 +45,7 @@ pub struct Manifest {
     pub size: u32,
     pub media_type: String,
     pub location: u32,
-    pub repositories: HashSet<String>,
+    pub repository: String,
 }
 
 pub struct RegistryState {
@@ -168,54 +168,16 @@ impl RegistryState {
         Ok(())
     }
 
-    pub async fn get_manifest_by_tag_or_digest(&self, tag: String) -> Result<Option<Manifest>> {
-        if let Ok(digest) = Digest::try_from(tag.clone()) {
-            return Ok(self.get_manifest(&digest).await?);
-        }
+    pub async fn get_tag(&self, repository: &str, tag: &str) -> Result<Option<Manifest>> {
         let res: Option<ManifestRow> = self
             .client
             .query_as_optional(
-                "SELECT * FROM manifests, manifests_repositories, tags WHERE tags.name = $1 AND tags.repository_id = manifests_repositories.repository_id AND manifests_repositories.digest=tags.digest;",
-                params!(tag),
-            )
-            .await?;
-
-        Ok(match res {
-            Some(row) => {
-                let repositories: Vec<String> = self
-                    .client
-                    .query_as(
-                        "SELECT name FROM repositories, manifests_repositories WHERE manifests_repositories.digest = $1 AND manifests_repositories.repository_id = repositories.id;",
-                        params!(row.digest.to_string()),
-                    )
-                    .await?;
-
-                Some(Manifest {
-                    digest: row.digest,
-                    size: row.size,
-                    media_type: row.media_type,
-                    location: row.location,
-                    repositories: repositories.into_iter().collect(),
-                })
-            }
-            None => None,
-        })
-    }
-
-    pub async fn get_manifest(&self, digest: &Digest) -> Result<Option<Manifest>> {
-        let res: Option<ManifestRow> = self
-            .client
-            .query_as_optional(
-                "SELECT * FROM manifests WHERE digest = $1;",
-                params!(digest.to_string()),
-            )
-            .await?;
-
-        let repositories: Vec<String> = self
-            .client
-            .query_as(
-                "SELECT name FROM repositories, manifests_repositories WHERE manifests_repositories.digest = $1 AND manifests_repositories.repository_id = repositories.id;",
-                params!(digest.to_string()),
+                "SELECT m.*
+                    FROM repositories r
+                    JOIN tags t ON t.repository_id = r.id
+                    JOIN manifests m ON t.manifest_id = m.id
+                    WHERE r.name = $1 AND t.name = $2 AND t.deleted_at IS NULL AND m.deleted_at IS NULL;",
+                params!(repository, tag),
             )
             .await?;
 
@@ -225,7 +187,37 @@ impl RegistryState {
                 size: row.size,
                 media_type: row.media_type,
                 location: row.location,
-                repositories: repositories.into_iter().collect(),
+                repository: repository.to_string(),
+            }),
+            None => None,
+        })
+    }
+
+    pub async fn get_manifest(
+        &self,
+        repository: &str,
+        digest: &Digest,
+    ) -> Result<Option<Manifest>> {
+        let res: Option<ManifestRow> = self
+            .client
+            .query_as_optional(
+                "SELECT m.*
+                        FROM manifests m
+                        JOIN repositories r ON m.repository_id = r.id
+                        WHERE m.digest = $1
+                        AND r.name = $2
+                        AND m.deleted_at IS NULL;",
+                params!(digest.to_string(), repository),
+            )
+            .await?;
+
+        Ok(match res {
+            Some(row) => Some(Manifest {
+                digest: row.digest,
+                size: row.size,
+                media_type: row.media_type,
+                location: row.location,
+                repository: repository.to_string(),
             }),
             None => None,
         })
@@ -243,15 +235,15 @@ impl RegistryState {
         self.client
          .txn([
                 (
-                    "INSERT INTO manifests (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
-                    params!(digest.to_string(), size as u32, media_type, location),
-                ),
-                (
                     "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
                     params!(repository),
                 ),
                 (
-                    "INSERT INTO tags (name, repository_id, digest) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), $3);",
+                    "INSERT INTO manifests (digest, size, media_type, location, repository_id) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5));",
+                    params!(digest.to_string(), size as u32, media_type, location, repository),
+                ),
+                (
+                    "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id));",
                     params!(tag, repository, digest.to_string())
                 )
          ])
@@ -269,29 +261,33 @@ impl RegistryState {
         Ok(())
     }
 
-    pub async fn mount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
-        let repository_id = self.get_or_create_repository(repository).await?;
-
+    pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
         self.client
             .execute(
-                "INSERT OR IGNORE INTO manifests_repositories(digest, repository_id) VALUES($1, $2);",
-                params!(digest.to_string(), repository_id),
+                "DELETE FROM manifests
+                      WHERE digest = $1
+                      AND repository_id = (
+                        SELECT id FROM repositories WHERE name = $2
+                    );
+                ",
+                params!(digest.to_string(), repository),
             )
             .await?;
-
         Ok(())
     }
 
-    pub async fn unmount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
-        if let Some(repository_id) = self.get_repository(repository).await? {
-            self.client
-                .execute(
-                    "DELETE FROM manifests_repositories WHERE digest = $1 AND repository_id = $2;",
-                    params!(digest.to_string(), repository_id),
-                )
-                .await?;
-        }
-
+    pub async fn delete_tag(&self, repository: &str, tag: &str) -> Result<()> {
+        self.client
+            .execute(
+                "DELETE FROM tags
+                      WHERE name = $1
+                      AND repository_id = (
+                        SELECT id FROM repositories WHERE name = $2
+                    );
+                ",
+                params!(tag, repository),
+            )
+            .await?;
         Ok(())
     }
 }
@@ -300,13 +296,12 @@ impl RegistryState {
 mod tests {
     use std::{borrow::Cow, ops::Deref, time::Duration};
 
-    use futures::future::Join;
     use hiqlite::{Node, NodeConfig};
     use once_cell::sync::Lazy;
     use prometheus_client::registry::Registry;
     use tempfile::{TempDir, tempdir};
+    use test_log::test;
     use tokio::{sync::Mutex, task::JoinSet};
-    use tracing_subscriber::EnvFilter;
 
     use crate::Migrations;
 
@@ -400,7 +395,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_get_repository() -> Result<()> {
         let registry = Fixture::new().await?;
 
@@ -426,14 +421,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_blob() -> Result<()> {
-        tracing_subscriber::fmt()
-            .with_target(true)
-            .with_level(true)
-            .with_env_filter(EnvFilter::from("info"))
-            .init();
-
         let registry = Fixture::new().await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
@@ -455,14 +444,40 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_blob_mount() -> Result<()> {
-        tracing_subscriber::fmt()
-            .with_target(true)
-            .with_level(true)
-            .with_env_filter(EnvFilter::from("info"))
-            .init();
+    #[test(tokio::test)]
+    async fn test_manifest() -> Result<()> {
+        let registry = Fixture::new().await?;
 
+        let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        assert_eq!(None, registry.get_manifest("library/nginx", &digest).await?);
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest,
+                55,
+                "application/octet-stream",
+            )
+            .await?;
+
+        let manifest = registry
+            .get_manifest("library/nginx", &digest)
+            .await?
+            .unwrap();
+
+        assert_eq!(manifest.digest, digest);
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_blob_mount() -> Result<()> {
         let registry = Fixture::new().await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"

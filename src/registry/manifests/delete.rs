@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{error::RegistryError, state::RegistryState};
+use crate::{digest::Digest, error::RegistryError, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct ManifestDeleteRequest {
@@ -30,14 +30,20 @@ pub(crate) async fn delete(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    if let Some(manifest) = registry.get_manifest_by_tag_or_digest(tag).await? {
-        if !manifest.repositories.contains(&repository) {
-            return Err(RegistryError::ManifestNotFound {});
+    if let Ok(digest) = Digest::try_from(tag.clone()) {
+        if let Some(_manifest) = registry.get_manifest(&repository, &digest).await? {
+            registry.delete_manifest(&repository, &digest).await?;
+
+            return Ok(Response::builder()
+                .status(StatusCode::ACCEPTED)
+                .body(Body::empty())?);
         }
 
-        registry
-            .unmount_manifest(&manifest.digest, &repository)
-            .await?;
+        return Err(RegistryError::ManifestNotFound {});
+    }
+
+    if let Some(manifest) = registry.get_tag(&repository, &tag).await? {
+        registry.delete_tag(&repository, &tag).await?;
 
         return Ok(Response::builder()
             .status(StatusCode::ACCEPTED)

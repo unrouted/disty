@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 use tracing::debug;
 
-use crate::{error::RegistryError, state::RegistryState};
+use crate::{digest::Digest, error::RegistryError, state::RegistryState};
 
 /*
 200 OK
@@ -52,13 +52,13 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }*/
 
-    let manifest = match registry.get_manifest_by_tag_or_digest(tag).await? {
-        Some(manifest) => {
-            if !manifest.repositories.contains(&repository) {
-                return Err(RegistryError::ManifestNotFound {});
-            }
-            manifest
-        }
+    let manifest = match Digest::try_from(tag.clone()) {
+        Ok(digest) => registry.get_manifest(&repository, &digest).await?,
+        Err(_) => registry.get_tag(&repository, &tag).await?,
+    };
+
+    let manifest = match manifest {
+        Some(manifest) => manifest,
         None => return Err(RegistryError::ManifestNotFound {}),
     };
 
