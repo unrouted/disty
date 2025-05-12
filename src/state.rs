@@ -249,6 +249,10 @@ impl RegistryState {
          ])
          .await?;
 
+        self.webhooks
+            .send(&repository, &digest, &tag, &media_type.to_string())
+            .await?;
+
         Ok(())
     }
 

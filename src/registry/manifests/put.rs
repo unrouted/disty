@@ -105,11 +105,6 @@ pub(crate) async fn put(
         }
     }
 
-    registry
-        .webhooks
-        .send(&repository, &digest, &tag, &content_type.to_string())
-        .await?;
-
     /*
     201 Created
     Location: <url>
