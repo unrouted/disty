@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use hiqlite::Client;
 use hiqlite_macros::params;
 use serde::Deserialize;
@@ -250,7 +250,7 @@ impl RegistryState {
          .await?;
 
         self.webhooks
-            .send(&repository, &digest, &tag, &media_type.to_string())
+            .send(repository, digest, tag, media_type)
             .await?;
 
         Ok(())
@@ -298,7 +298,7 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, ops::Deref, time::Duration};
+    use std::{borrow::Cow, ops::Deref};
 
     use hiqlite::{Node, NodeConfig};
     use once_cell::sync::Lazy;

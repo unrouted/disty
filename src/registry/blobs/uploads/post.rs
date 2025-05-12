@@ -8,7 +8,6 @@ use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
 

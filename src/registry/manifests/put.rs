@@ -5,7 +5,6 @@ use crate::{
     extractor::Report,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
-    webhook::Event,
 };
 use axum::{
     body::Body,
@@ -91,17 +90,14 @@ pub(crate) async fn put(
         .await?;
 
     for report in extracted {
-        match report {
-            Report::Manifest {
+        if let Report::Manifest {
                 digest,
                 content_type: _,
                 dependencies,
-            } => {
-                registry
-                    .insert_manifest_dependencies(&digest, dependencies)
-                    .await?;
-            }
-            _ => {}
+            } = report {
+            registry
+                .insert_manifest_dependencies(&digest, dependencies)
+                .await?;
         }
     }
 

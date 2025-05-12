@@ -7,7 +7,6 @@ use axum::{
     response::Response,
 };
 use serde::Deserialize;
-use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::{digest::Digest, error::RegistryError, state::RegistryState};

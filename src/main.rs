@@ -1,15 +1,11 @@
-use axum::Router;
 use extractor::Extractor;
-use hiqlite::Client;
-use hiqlite::{Error, NodeConfig, Row, StmtIndex};
+use hiqlite::{Error, NodeConfig};
 use hiqlite_macros::embed::*;
-use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
 use registry::router;
 use serde::{Deserialize, Serialize};
 use state::RegistryState;
 use std::fmt::{Debug, Display};
-use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing_subscriber::EnvFilter;
 

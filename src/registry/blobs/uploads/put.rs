@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
     response::Response,
 };
-use hiqlite_macros::params;
 use serde::Deserialize;
 
 use crate::{
