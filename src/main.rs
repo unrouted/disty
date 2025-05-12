@@ -237,7 +237,3 @@ async fn main() -> Result<(), Error> {
 fn log<S: Display>(s: S) {
     println!("\n\n>>> {}\n", s);
 }
-
-fn debug<S: Debug>(s: &S) {
-    println!("\n\n>>> {:?}\n", s);
-}

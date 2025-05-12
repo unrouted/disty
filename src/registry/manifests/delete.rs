@@ -42,7 +42,7 @@ pub(crate) async fn delete(
         return Err(RegistryError::ManifestNotFound {});
     }
 
-    if let Some(manifest) = registry.get_tag(&repository, &tag).await? {
+    if let Some(_manifest) = registry.get_tag(&repository, &tag).await? {
         registry.delete_tag(&repository, &tag).await?;
 
         return Ok(Response::builder()
