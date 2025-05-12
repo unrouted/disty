@@ -8,7 +8,7 @@ use axum::{
 
 use crate::state::RegistryState;
 
-pub async fn get(State(registry): State<Arc<RegistryState>>) -> Response<Body> {
+pub async fn get(State(_registry): State<Arc<RegistryState>>) -> Response<Body> {
     /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_general_challenge(),

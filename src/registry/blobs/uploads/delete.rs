@@ -18,7 +18,7 @@ pub struct BlobUploadRequest {
 
 pub(crate) async fn delete(
     Path(BlobUploadRequest {
-        repository,
+        repository: _,
         upload_id,
     }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
