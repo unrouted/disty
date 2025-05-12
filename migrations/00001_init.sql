@@ -44,7 +44,6 @@ CREATE TABLE manifests (
 CREATE TABLE manifest_layers (
     manifest_id INTEGER NOT NULL,
     blob_digest TEXT NOT NULL,
-    position INTEGER NOT NULL,  -- Layer order in the manifest
     PRIMARY KEY (manifest_id, blob_digest),
     FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     FOREIGN KEY(blob_digest) REFERENCES blobs(digest)

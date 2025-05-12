@@ -85,10 +85,7 @@ pub(crate) async fn put(
         }
     }
 
-    registry
-        .insert_manifest(&repository, &tag, &digest, size, &content_type.to_string())
-        .await?;
-
+    let mut collected_dependencies = vec![];
     for report in extracted {
         if let Report::Manifest {
             digest,
@@ -96,11 +93,20 @@ pub(crate) async fn put(
             dependencies,
         } = report
         {
-            registry
-                .insert_manifest_dependencies(&digest, dependencies)
-                .await?;
+            collected_dependencies.extend(dependencies.into_iter());
         }
     }
+
+    registry
+        .insert_manifest(
+            &repository,
+            &tag,
+            &digest,
+            size,
+            &content_type.to_string(),
+            &collected_dependencies,
+        )
+        .await?;
 
     /*
     201 Created

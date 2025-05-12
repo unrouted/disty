@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
 use anyhow::{Result, bail};
-use hiqlite::Client;
+use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -230,24 +230,38 @@ impl RegistryState {
         digest: &Digest,
         size: u64,
         media_type: &str,
+        dependencies: &Vec<Digest>,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
-        self.client
-         .txn([
-                (
-                    "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
-                    params!(repository),
+        let mut sql = vec![
+            (
+                "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
+                params!(repository),
+            ),
+            (
+                "INSERT INTO manifests (digest, size, media_type, location, repository_id) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5)) RETURNING manifests.id;",
+                params!(
+                    digest.to_string(),
+                    size as u32,
+                    media_type,
+                    location,
+                    repository
                 ),
-                (
-                    "INSERT INTO manifests (digest, size, media_type, location, repository_id) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5));",
-                    params!(digest.to_string(), size as u32, media_type, location, repository),
-                ),
-                (
-                    "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id));",
-                    params!(tag, repository, digest.to_string())
-                )
-         ])
-         .await?;
+            ),
+            (
+                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id));",
+                params!(tag, repository, digest.to_string()),
+            ),
+        ];
+
+        sql.extend(dependencies.iter().map(|digest| {
+            (
+                "INSERT INTO manifest_layers(manifest_id, blob_digest) VALUES ($1, $2);",
+                params!(StmtIndex(1).column("id"), digest.to_string()),
+            )
+        }));
+
+        self.client.txn(sql).await?;
 
         self.webhooks
             .send(repository, digest, tag, media_type)
@@ -452,6 +466,14 @@ mod tests {
     async fn test_manifest() -> Result<()> {
         let registry = Fixture::new().await?;
 
+        let blob = "sha256:b9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_blob(&blob, 1, "application/octet-stream")
+            .await?;
+
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
             .parse()
             .unwrap();
@@ -465,6 +487,7 @@ mod tests {
                 &digest,
                 55,
                 "application/octet-stream",
+                &vec![blob],
             )
             .await?;
 
