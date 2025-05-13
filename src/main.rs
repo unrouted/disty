@@ -17,6 +17,9 @@ mod registry;
 mod state;
 mod webhook;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Embed)]
 #[folder = "migrations"]
 struct Migrations;

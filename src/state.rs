@@ -270,15 +270,6 @@ impl RegistryState {
         Ok(())
     }
 
-    pub async fn insert_manifest_dependencies(
-        &self,
-        digest: &Digest,
-        dependencies: Vec<Digest>,
-    ) -> Result<()> {
-        assert!(false);
-        Ok(())
-    }
-
     pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
         self.client
             .execute(
@@ -312,110 +303,15 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, ops::Deref};
-
-    use hiqlite::{Node, NodeConfig};
-    use once_cell::sync::Lazy;
-    use prometheus_client::registry::Registry;
-    use tempfile::{TempDir, tempdir};
     use test_log::test;
-    use tokio::{sync::Mutex, task::JoinSet};
 
-    use crate::Migrations;
+    use crate::tests::StateFixture;
 
     use super::*;
 
-    pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-
-    #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
-    struct Fixture {
-        _guard: Box<dyn std::any::Any + Send>,
-        dirs: Vec<TempDir>,
-        registries: Vec<RegistryState>,
-        tasks: JoinSet<Result<()>>,
-    }
-
-    impl Fixture {
-        async fn new() -> Result<Self> {
-            let lock = EXCLUSIVE_TEST_LOCK.lock().await;
-            unsafe {
-                std::env::set_var("ENC_KEY_ACTIVE", "828W10qknpOT");
-                std::env::set_var(
-                    "ENC_KEYS",
-                    "828W10qknpOT/CIneMTth3mnRZZq0PMtztfWrnU+5xeiS0jrTB8iq6xc=",
-                );
-            }
-
-            let config = NodeConfig {
-                secret_api: "aaaaaaaaaaaaaaaa".into(),
-                secret_raft: "bbbbbbbbbbbbbbbb".into(),
-                log_statements: true,
-                nodes: vec![Node {
-                    id: 1,
-                    addr_raft: "127.0.0.1:9999".to_string(),
-                    addr_api: "127.0.0.1:9998".to_string(),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            };
-
-            let mut tasks = JoinSet::new();
-            let mut registries = vec![];
-            let mut dirs = vec![];
-
-            for node in config.nodes.iter() {
-                let dir = tempdir()?;
-                let data_dir = dir.path();
-
-                let mut registry = Registry::with_prefix("disty");
-
-                let client = hiqlite::start_node(NodeConfig {
-                    node_id: node.id,
-                    data_dir: Cow::Owned(data_dir.to_string_lossy().into_owned()),
-                    ..config.clone()
-                })
-                .await?;
-
-                dirs.push(dir);
-                registries.push(RegistryState {
-                    node_id: node.id,
-                    client,
-                    extractor: Extractor::new(),
-                    webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
-                });
-            }
-
-            registries[0].client.wait_until_healthy_db().await;
-            registries[0].client.migrate::<Migrations>().await?;
-
-            Ok(Fixture {
-                dirs,
-                registries,
-                _guard: Box::new(lock),
-                tasks,
-            })
-        }
-
-        async fn teardown(mut self) -> Result<()> {
-            for registry in self.registries {
-                registry.client.shutdown().await?;
-            }
-            self.tasks.shutdown().await;
-            Ok(())
-        }
-    }
-
-    impl Deref for Fixture {
-        type Target = RegistryState;
-
-        fn deref(&self) -> &Self::Target {
-            &self.registries[0]
-        }
-    }
-
     #[test(tokio::test)]
     async fn test_get_repository() -> Result<()> {
-        let registry = Fixture::new().await?;
+        let registry = StateFixture::new().await?;
 
         // At the start the repository shouldn't exist
         assert_eq!(None, registry.get_repository("foo/bar").await?);
@@ -441,7 +337,7 @@ mod tests {
 
     #[test(tokio::test)]
     async fn test_blob() -> Result<()> {
-        let registry = Fixture::new().await?;
+        let registry = StateFixture::new().await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
             .parse()
@@ -464,7 +360,7 @@ mod tests {
 
     #[test(tokio::test)]
     async fn test_manifest() -> Result<()> {
-        let registry = Fixture::new().await?;
+        let registry = StateFixture::new().await?;
 
         let blob = "sha256:b9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
             .parse()
@@ -505,7 +401,7 @@ mod tests {
 
     #[test(tokio::test)]
     async fn test_blob_mount() -> Result<()> {
-        let registry = Fixture::new().await?;
+        let registry = StateFixture::new().await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
             .parse()
