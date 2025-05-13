@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
-use crate::digest::Digest;
-use crate::error::RegistryError;
-use crate::registry::utils::{upload_part, validate_hash};
-use crate::state::RegistryState;
+use anyhow::Context;
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde::Deserialize;
+use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::digest::Digest;
+use crate::error::RegistryError;
+use crate::registry::utils::{upload_part, validate_hash};
+use crate::state::RegistryState;
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
     repository: String,
@@ -90,10 +92,13 @@ pub(crate) async fn post(
         Some(digest) => {
             let filename = registry.upload_path(&upload_id);
 
-            upload_part(&filename, body.into_body().into_data_stream()).await?;
+            upload_part(&filename, body.into_body().into_data_stream())
+                .await
+                .context("Unable to upload part")?;
 
             // Validate upload
             if !validate_hash(&filename, digest).await {
+                info!("Upload rejecte due to invalid hash");
                 return Err(RegistryError::DigestInvalid {});
             }
 
@@ -106,9 +111,13 @@ pub(crate) async fn post(
                 }
             };
 
-            match tokio::fs::rename(filename, dest).await {
+            let parent = dest.parent().context("Couldn't find parent directory")?;
+            tokio::fs::create_dir_all(parent).await?;
+
+            match tokio::fs::rename(&filename, &dest).await {
                 Ok(_) => {}
-                Err(_) => {
+                Err(e) => {
+                    error!("Failed to rename file {filename:?} to {dest:?} ({e:?}");
                     return Err(RegistryError::UploadInvalid {});
                 }
             }
@@ -159,5 +168,47 @@ pub(crate) async fn post(
                 .header("Docker-Upload-UUID", upload_id)
                 .body(Body::empty())?)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use test_log::test;
+    use tower::util::ServiceExt;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn upload_whole_blob() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture
+            .router
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").body(Body::from("FOOBAR"))?)
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // FIXME: Test body is on disk
+        // And returned headers are correct
+
+        let res = fixture
+            .router
+            .clone()
+            .oneshot(Request::builder().method("GET").uri("/v2/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").body(Body::empty())?)
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"FOOBAR");
+
+        fixture.teardown().await
     }
 }

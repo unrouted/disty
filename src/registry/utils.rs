@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::body::BodyDataStream;
 use futures_util::StreamExt;
 use tokio::fs::{File, OpenOptions};
@@ -10,18 +10,28 @@ pub(crate) async fn upload_part(
     filename: &std::path::Path,
     mut body: BodyDataStream,
 ) -> Result<()> {
+    let parent = filename
+        .parent()
+        .context("Could not construct parent path")?;
+    tokio::fs::create_dir_all(parent)
+        .await
+        .context("Failed to ensure path exists")?;
+
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
         .open(&filename)
-        .await?;
+        .await
+        .with_context(|| format!("Unable to create and open file: {:?}", &filename))?;
 
     while let Some(item) = body.next().await {
-        let item = item?;
-        file.write_all(&item).await?;
+        let item = item.context("Unable to stream from client")?;
+        file.write_all(&item)
+            .await
+            .context("Unable to write to open file")?;
     }
 
-    file.sync_all().await?;
+    file.sync_all().await.context("Failed to fsync")?;
 
     Ok(())
 }

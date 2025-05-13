@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use tracing::error;
 
 pub(crate) enum RegistryError {
     MustAuthenticate {
@@ -22,6 +23,15 @@ pub(crate) enum RegistryError {
         size: u64,
     },
     Unhandled(anyhow::Error),
+}
+
+fn format_error(e: &anyhow::Error) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("{}", e));
+    for cause in e.chain().skip(1) {
+        s.push_str(&format!("\nCaused by: {}", cause));
+    }
+    s
 }
 
 pub(crate) fn simple_oci_error(code: &str, message: &str) -> Body {
@@ -125,9 +135,16 @@ impl IntoResponse for RegistryError {
                     .header("Docker-Upload-UUID", upload_id.clone())
                     .body(Body::empty())
             }
-            Self::Unhandled(err) => Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::empty()),
+            Self::Unhandled(err) => {
+                error!(
+                    error = %format_error(&err),
+                    backtrace = ?err.backtrace(),
+                    "Registry error"
+                );
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+            }
         }
         .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response())
     }

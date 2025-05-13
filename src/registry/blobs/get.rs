@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
+use tracing::error;
 
 use crate::{digest::Digest, error::RegistryError, state::RegistryState};
 
@@ -31,6 +32,8 @@ pub(crate) async fn get(
         debug!("Token does not have access to perform this action");
         return Err(RegistryError::AccessDenied {});
     }*/
+
+    error!("Weeeee");
 
     let blob = match registry.get_blob(&digest).await? {
         Some(blob) => blob,

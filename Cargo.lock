@@ -920,6 +920,7 @@ dependencies = [
  "headers",
  "hiqlite",
  "hiqlite-macros",
+ "http-body-util",
  "json",
  "jsonschema",
  "once_cell",

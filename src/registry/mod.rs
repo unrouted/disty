@@ -24,17 +24,17 @@ pub fn router(state: Arc<RegistryState>) -> Router {
                 .put(blobs::uploads::put::put),
         )
         .route(
-            "/v2/{repository}/blobs/uploads",
+            "/v2/{repository}/blobs/uploads/",
             post(blobs::uploads::post::post),
         )
         .route(
-            "/{repository}/blobs/{digest}",
+            "/v2/{repository}/blobs/{digest}",
             head(blobs::head::head)
                 .get(blobs::get::get)
                 .delete(blobs::delete::delete),
         )
         .route(
-            "/{repository}/manifests/{digest}",
+            "/v2/{repository}/manifests/{digest}",
             head(manifests::head::head)
                 .get(manifests::get::get)
                 .delete(manifests::delete::delete)

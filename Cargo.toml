@@ -33,3 +33,4 @@ uuid = { version = "1.16.0", features = ["v4"] }
 tempfile = "3.20"
 once_cell = "1.21"
 test-log = { version = "0.2", features = ["trace"] }
+http-body-util = "0.1.3"
