@@ -5,7 +5,7 @@ use prometheus_client::registry::Registry;
 use registry::router;
 use serde::{Deserialize, Serialize};
 use state::RegistryState;
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 use tokio::task::JoinSet;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Error> {
         extractor,
         webhooks,
     };
-    let app = router(state);
+    let app = router(Arc::new(state));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tasks.spawn(async move {

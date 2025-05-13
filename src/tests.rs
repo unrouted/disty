@@ -1,24 +1,24 @@
-
 use std::{borrow::Cow, ops::Deref};
 
 use anyhow::Result;
+use axum::Router;
 use hiqlite::{Node, NodeConfig};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
 
-use crate::{webhook::WebhookService, Migrations};
+use crate::{Migrations, webhook::WebhookService};
 
 use super::*;
 
 pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
-pub (crate) struct StateFixture {
+pub(crate) struct StateFixture {
     _guard: Box<dyn std::any::Any + Send>,
     dirs: Vec<TempDir>,
-    registries: Vec<RegistryState>,
+    registries: Vec<Arc<RegistryState>>,
     tasks: JoinSet<Result<()>>,
 }
 
@@ -64,12 +64,12 @@ impl StateFixture {
             .await?;
 
             dirs.push(dir);
-            registries.push(RegistryState {
+            registries.push(Arc::new(RegistryState {
                 node_id: node.id,
                 client,
                 extractor: Extractor::new(),
                 webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
-            });
+            }));
         }
 
         registries[0].client.wait_until_healthy_db().await;
@@ -97,5 +97,24 @@ impl Deref for StateFixture {
 
     fn deref(&self) -> &Self::Target {
         &self.registries[0]
+    }
+}
+
+pub(crate) struct RegistryFixture {
+    state: StateFixture,
+    pub router: Router<()>,
+}
+
+impl RegistryFixture {
+    pub async fn new() -> Result<RegistryFixture> {
+        let state = StateFixture::new().await?;
+
+        let router = crate::router(state.registries[0].clone());
+
+        Ok(RegistryFixture { state, router })
+    }
+
+    pub async fn teardown(self) -> Result<()> {
+        Ok(self.state.teardown().await?)
     }
 }
