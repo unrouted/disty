@@ -10,8 +10,8 @@ use crate::state::RegistryState;
 mod blobs;
 mod manifests;
 mod root;
+mod tags;
 mod utils;
-// pub mod tags;
 
 pub fn router(state: Arc<RegistryState>) -> Router {
     Router::new()
@@ -40,5 +40,6 @@ pub fn router(state: Arc<RegistryState>) -> Router {
                 .delete(manifests::delete::delete)
                 .put(manifests::put::put),
         )
+        .route("/v2/{repository}/tags/list", get(tags::get::get))
         .with_state(state)
 }

@@ -116,8 +116,7 @@ impl RegistryFixture {
     }
 
     pub async fn request(&self, req: Request<Body>) -> Result<Response> {
-        self
-            .router
+        self.router
             .clone()
             .oneshot(req)
             .await

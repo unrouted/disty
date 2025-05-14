@@ -1,16 +1,25 @@
-use crate::app::RegistryApp;
-use crate::extractors::Token;
-use crate::registry::errors::RegistryError;
-use crate::types::RepositoryName;
-use actix_web::http::StatusCode;
-use actix_web::web::{Data, Path};
-use actix_web::{get, HttpRequest, HttpResponse, HttpResponseBuilder};
+use std::sync::Arc;
+
+use anyhow::Context;
+use axum::{
+    body::Body,
+    extract::{Path, Query, State},
+    response::Response,
+};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::{error::RegistryError, state::RegistryState};
+
 #[derive(Debug, Deserialize)]
 pub struct TagRequest {
-    repository: RepositoryName,
+    repository: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TagList {
+    repository: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -19,15 +28,12 @@ pub struct TagQuery {
     n: Option<usize>,
 }
 
-#[get("/{repository:[^{}]+}/tags/list")]
 pub(crate) async fn get(
-    app: Data<RegistryApp>,
-    _req: HttpRequest,
-    path: Path<TagRequest>,
-    query: actix_web::web::Query<TagQuery>,
-    token: Token,
-) -> Result<HttpResponse, RegistryError> {
-    if !token.validated_token {
+    Path(TagList { repository }): Path<TagList>,
+    Query(TagQuery { last, n }): Query<TagQuery>,
+    State(registry): State<Arc<RegistryState>>,
+) -> Result<Response, RegistryError> {
+    /*if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_pull_challenge(&path.repository),
         });
@@ -35,62 +41,118 @@ pub(crate) async fn get(
 
     if !token.has_permission(&path.repository, "pull") {
         return Err(RegistryError::AccessDenied {});
+    }*/
+
+    let mut tags = registry.get_tags(&repository).await?;
+
+    if let Some(last) = &last {
+        let index = tags.iter().position(|r| r == last).unwrap();
+        tags = tags[index..].to_vec();
     }
 
-    match app.get_tags(&path.repository) {
-        Some(mut tags) => {
-            tags.sort();
+    let mut include_link = false;
 
-            if let Some(last) = &query.last {
-                let index = tags.iter().position(|r| r == last).unwrap();
-                tags = tags[index..].to_vec();
-            }
-
-            let mut include_link = false;
-
-            if let Some(n) = query.n {
-                if n < tags.len() {
-                    include_link = true;
-                }
-                tags = tags[..n].to_vec();
-            }
-
-            let body = json!(
-                {
-                    "name": path.repository.clone(),
-                    "tags": tags,
-                }
-            )
-            .to_string();
-
-            let mut builder = HttpResponseBuilder::new(StatusCode::OK);
-
-            if include_link {
-                let mut fragments = vec![];
-
-                if let Some(tag) = tags.last() {
-                    fragments.push(format!("last={tag}"))
-                }
-
-                if let Some(n) = query.n {
-                    fragments.push(format!("n={n}"))
-                }
-
-                let suffix = if !fragments.is_empty() {
-                    let joined = fragments.join("&");
-                    format!("?{joined}")
-                } else {
-                    "".to_string()
-                };
-
-                builder.append_header((
-                    "Link",
-                    format!("/v2/{}/tags/list{}; rel=\"next\"", path.repository, suffix),
-                ));
-            }
-
-            Ok(builder.body(body))
+    if let Some(n) = n {
+        if n < tags.len() {
+            include_link = true;
         }
-        None => Err(RegistryError::RepositoryNotFound {}),
+        tags = tags[..n].to_vec();
+    }
+
+    let body = json!(
+        {
+            "name": repository.clone(),
+            "tags": tags,
+        }
+    )
+    .to_string();
+
+    let builder = Response::builder().status(StatusCode::OK);
+
+    let builder = if include_link {
+        let mut fragments = vec![];
+
+        if let Some(tag) = tags.last() {
+            fragments.push(format!("last={tag}"))
+        }
+
+        if let Some(n) = n {
+            fragments.push(format!("n={n}"))
+        }
+
+        let suffix = if !fragments.is_empty() {
+            let joined = fragments.join("&");
+            format!("?{joined}")
+        } else {
+            "".to_string()
+        };
+
+        builder.header(
+            "Link",
+            format!("/v2/{}/tags/list{}; rel=\"next\"", repository, suffix),
+        )
+    } else {
+        builder
+    };
+
+    Ok(builder.body(Body::from(body))?)
+}
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use reqwest::header::CONTENT_TYPE;
+    use serde_json::Value;
+    use test_log::test;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn upload_manifest() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let payload = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .header(
+                        CONTENT_TYPE,
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                    )
+                    .uri("/v2/foo/manifests/latest")
+                    .body(Body::from(payload.to_string()))?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/foo/tags/list")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        println!("{:?}", body);
+        let value: Value = serde_json::from_slice(&body)?;
+
+        assert_eq!(value, json!({"name": "foo", "tags": ["latest"]}));
+
+        fixture.teardown().await
     }
 }

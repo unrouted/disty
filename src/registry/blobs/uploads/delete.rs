@@ -54,7 +54,7 @@ pub(crate) async fn delete(
 mod test {
     use anyhow::{Context, Result};
     use axum::http::Request;
-    
+
     use test_log::test;
 
     use crate::tests::RegistryFixture;

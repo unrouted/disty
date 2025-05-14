@@ -285,6 +285,20 @@ impl RegistryState {
         Ok(())
     }
 
+    pub async fn get_tags(&self, repository: &str) -> Result<Vec<String>> {
+        Ok(self
+            .client
+            .query_as(
+                "SELECT tags.name
+                FROM tags
+                JOIN repositories ON tags.repository_id = repositories.id
+                WHERE repositories.name = $1
+                ORDER BY tags.name;",
+                params!(repository),
+            )
+            .await?)
+    }
+
     pub async fn delete_tag(&self, repository: &str, tag: &str) -> Result<()> {
         self.client
             .execute(
