@@ -1,12 +1,13 @@
 use std::{borrow::Cow, ops::Deref};
 
-use anyhow::Result;
-use axum::Router;
+use anyhow::{Context, Result};
+use axum::{Router, body::Body, http::Request, response::Response};
 use hiqlite::{Node, NodeConfig};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
+use tower::ServiceExt;
 
 use crate::{Migrations, webhook::WebhookService};
 
@@ -112,6 +113,15 @@ impl RegistryFixture {
         let router = crate::router(state.registries[0].clone());
 
         Ok(RegistryFixture { state, router })
+    }
+
+    pub async fn request(&self, req: Request<Body>) -> Result<Response> {
+        Ok(self
+            .router
+            .clone()
+            .oneshot(req)
+            .await
+            .context("Failed to make test request")?)
     }
 
     pub async fn teardown(self) -> Result<()> {

@@ -177,7 +177,6 @@ mod test {
     use axum::http::Request;
     use http_body_util::BodyExt;
     use test_log::test;
-    use tower::util::ServiceExt;
 
     use crate::tests::RegistryFixture;
 
@@ -187,27 +186,45 @@ mod test {
     pub async fn upload_whole_blob() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 
-        let res = fixture
-            .router
-            .clone()
-            .oneshot(Request::builder().method("POST").uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").body(Body::from("FOOBAR"))?)
-            .await?;
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::from("FOOBAR"))?
+            ).await?;
 
         assert_eq!(res.status(), StatusCode::CREATED);
 
         // FIXME: Test body is on disk
         // And returned headers are correct
 
-        let res = fixture
-            .router
-            .clone()
-            .oneshot(Request::builder().method("GET").uri("/v2/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5").body(Body::empty())?)
-            .await?;
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
 
         assert_eq!(res.status(), StatusCode::OK);
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         assert_eq!(&body[..], b"FOOBAR");
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn upload_whole_blob_invalid_digest() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::from("FOOBARR"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
         fixture.teardown().await
     }

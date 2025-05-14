@@ -27,7 +27,6 @@ mod test {
     use anyhow::Result;
     use axum::http::Request;
     use test_log::test;
-    use tower::util::ServiceExt;
 
     use crate::tests::RegistryFixture;
 
@@ -38,9 +37,7 @@ mod test {
         let fixture = RegistryFixture::new().await?;
 
         let res = fixture
-            .router
-            .clone()
-            .oneshot(Request::builder().uri("/v2/").body(Body::empty())?)
+            .request(Request::builder().uri("/v2/").body(Body::empty())?)
             .await?;
 
         assert_eq!(res.status(), StatusCode::OK);
