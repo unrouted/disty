@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    routing::{delete, get, head, patch, post, put},
+    routing::{delete, get, head, post},
 };
 
 use crate::state::RegistryState;

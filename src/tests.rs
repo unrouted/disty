@@ -116,15 +116,15 @@ impl RegistryFixture {
     }
 
     pub async fn request(&self, req: Request<Body>) -> Result<Response> {
-        Ok(self
+        self
             .router
             .clone()
             .oneshot(req)
             .await
-            .context("Failed to make test request")?)
+            .context("Failed to make test request")
     }
 
     pub async fn teardown(self) -> Result<()> {
-        Ok(self.state.teardown().await?)
+        self.state.teardown().await
     }
 }
