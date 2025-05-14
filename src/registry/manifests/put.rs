@@ -95,7 +95,7 @@ pub(crate) async fn put(
     let mut collected_dependencies = vec![];
     for report in extracted {
         if let Report::Manifest {
-            digest,
+            digest: _,
             content_type: _,
             dependencies,
         } = report

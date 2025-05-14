@@ -42,7 +42,6 @@ impl StateFixture {
                 id: 1,
                 addr_raft: "127.0.0.1:9999".to_string(),
                 addr_api: "127.0.0.1:9998".to_string(),
-                ..Default::default()
             }],
             ..Default::default()
         };

@@ -230,7 +230,7 @@ impl RegistryState {
         digest: &Digest,
         size: u64,
         media_type: &str,
-        dependencies: &Vec<Digest>,
+        dependencies: &[Digest],
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         let mut sql = vec![
