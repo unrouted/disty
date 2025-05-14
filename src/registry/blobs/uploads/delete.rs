@@ -49,3 +49,72 @@ pub(crate) async fn delete(
         .body(Body::empty())
         .unwrap())
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::{Context, Result};
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use test_log::test;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn upload_multiple() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/foo/blobs/uploads/")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::ACCEPTED);
+
+        let upload_id = res
+            .headers()
+            .get("Docker-Upload-UUID")
+            .context("No Docker-Upload-UUID header")?
+            .to_str()?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v2/bar/blobs/uploads/{upload_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v2/bar/blobs/uploads/{upload_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v2/bar/blobs/uploads/{upload_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        fixture.teardown().await
+    }
+}

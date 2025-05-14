@@ -195,8 +195,7 @@ mod test {
 
         assert_eq!(res.status(), StatusCode::CREATED);
 
-        // FIXME: Test body is on disk
-        // And returned headers are correct
+        // FIXME: Test returned headers are correct
 
         let res = fixture.request(
             Request::builder()
@@ -225,6 +224,64 @@ mod test {
             ).await?;
 
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn cross_mount() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::from("FOOBAR"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/bar/blobs/uploads/?from=foo&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // Test old location still accessible
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/foo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Test new location still accessible
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"FOOBAR");
+
+        // Test not accessible elsewhere
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/baz/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
         fixture.teardown().await
     }

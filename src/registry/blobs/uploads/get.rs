@@ -45,7 +45,7 @@ pub(crate) async fn get(
         }
     };
 
-    let range_end = size - 1;
+    let range_end = if size > 0 { size - 1 } else { 0 };
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)

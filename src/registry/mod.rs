@@ -34,7 +34,7 @@ pub fn router(state: Arc<RegistryState>) -> Router {
                 .delete(blobs::delete::delete),
         )
         .route(
-            "/v2/{repository}/manifests/{digest}",
+            "/v2/{repository}/manifests/{tag}",
             head(manifests::head::head)
                 .get(manifests::get::get)
                 .delete(manifests::delete::delete)

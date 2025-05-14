@@ -6,6 +6,7 @@ use crate::{
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
 };
+use anyhow::Context;
 use axum::{
     body::Body,
     extract::{Path, Request, State},
@@ -15,6 +16,7 @@ use axum::{
 use axum_extra::TypedHeader;
 use headers::ContentType;
 use serde::Deserialize;
+use tracing::error;
 
 #[derive(Debug, Deserialize)]
 pub struct ManifestPutRequest {
@@ -39,6 +41,8 @@ pub(crate) async fn put(
     if !token.has_permission(&path.repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }*/
+
+    error!("Floob");
 
     let upload_path = registry.get_temp_path();
 
@@ -77,6 +81,9 @@ pub(crate) async fn put(
     };
 
     let dest = registry.get_manifest_path(&digest);
+
+    let parent = dest.parent().context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
 
     match tokio::fs::rename(upload_path, dest).await {
         Ok(_) => {}
@@ -122,4 +129,55 @@ pub(crate) async fn put(
         )
         .header("Docker-Content-Digest", digest.to_string())
         .body(Body::empty())?)
+}
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use axum::http::Request;
+    use reqwest::header::CONTENT_TYPE;
+    use test_log::test;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn upload_manifest() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let payload = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .header(
+                        CONTENT_TYPE,
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                    )
+                    .uri("/v2/foo/manifests/latest")
+                    .body(Body::from(payload.to_string()))?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/foo/manifests/latest")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        fixture.teardown().await
+    }
 }

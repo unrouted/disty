@@ -44,3 +44,56 @@ pub(crate) async fn delete(
         .status(StatusCode::ACCEPTED)
         .body(Body::empty())?)
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use axum::http::Request;
+    use test_log::test;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn delete() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/bar/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::from("FOOBAR"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::ACCEPTED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        fixture.teardown().await
+    }
+}
