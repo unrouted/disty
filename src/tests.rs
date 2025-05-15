@@ -54,6 +54,8 @@ impl StateFixture {
             let dir = tempdir()?;
             let data_dir = dir.path();
 
+            let configuration = config::Configuration::config(None)?;
+
             let mut registry = Registry::with_prefix("disty");
 
             let client = hiqlite::start_node(NodeConfig {
@@ -66,6 +68,7 @@ impl StateFixture {
             dirs.push(dir);
             registries.push(Arc::new(RegistryState {
                 node_id: node.id,
+                config: configuration,
                 client,
                 extractor: Extractor::new(),
                 webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),

@@ -48,12 +48,7 @@ async fn main() -> Result<()> {
     let config = crate::config::Configuration::config(None)?;
 
     let node_id = config.id()?;
-    let client = hiqlite::start_node(config.into()).await?;
-
-    // Let's register our shutdown handle to always perform a graceful shutdown and remove lock files.
-    // You can do this manually by calling `.shutdown()` at the end as well, if you already have
-    // something like that.
-    let mut shutdown_handle = client.shutdown_handle()?;
+    let client = hiqlite::start_node(config.clone().into()).await?;
 
     info!("Apply our database migrations");
     client.migrate::<Migrations>().await?;
@@ -64,13 +59,14 @@ async fn main() -> Result<()> {
 
     let webhooks = crate::webhook::WebhookService::start(&mut tasks, vec![], &mut registry);
 
-    let state = RegistryState {
+    let state = Arc::new(RegistryState {
         node_id,
+        config,
         client,
         extractor,
         webhooks,
-    };
-    let app = router(Arc::new(state));
+    });
+    let app = router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tasks.spawn(async move {
@@ -82,7 +78,7 @@ async fn main() -> Result<()> {
 
     tasks.shutdown().await;
 
-    shutdown_handle.wait().await?;
+    state.shutdown().await?;
 
     Ok(())
 }

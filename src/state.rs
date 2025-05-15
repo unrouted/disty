@@ -1,12 +1,12 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{digest::Digest, extractor::Extractor, webhook::WebhookService};
+use crate::{config::Configuration, digest::Digest, extractor::Extractor, webhook::WebhookService};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
@@ -50,6 +50,7 @@ pub struct Manifest {
 
 pub struct RegistryState {
     pub node_id: u64,
+    pub config: Configuration,
     pub client: Client,
     pub extractor: Extractor,
     pub webhooks: WebhookService,
@@ -312,6 +313,13 @@ impl RegistryState {
             )
             .await?;
         Ok(())
+    }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        self.client
+            .shutdown()
+            .await
+            .context("Failed to shutdown metadata db")
     }
 }
 

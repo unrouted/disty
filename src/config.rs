@@ -8,6 +8,13 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use x509_parser::prelude::Pem;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DistyNode {
+    pub id: u64,
+    pub addr_raft: String,
+    pub addr_api: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TlsConfig {
     pub key: String,
@@ -140,6 +147,7 @@ pub struct SentryConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub identifier: String,
+    pub nodes: Vec<DistyNode>,
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
     pub prometheus: PrometheusConfig,
@@ -156,7 +164,8 @@ impl Configuration {
         let config_dir = app_dirs.config_dir;
         let config_path = config_dir.join("config.yaml");
 
-        let s = config::Config::builder().add_source(config::File::from(config_path).required(false));
+        let s =
+            config::Config::builder().add_source(config::File::from(config_path).required(false));
 
         let s = match config {
             Some(config) => s.add_source(config::File::from(config).required(false)),
@@ -188,7 +197,19 @@ impl Configuration {
 
 impl From<Configuration> for NodeConfig {
     fn from(item: Configuration) -> Self {
+        let nodes = item
+            .nodes
+            .iter()
+            .map(|n| Node {
+                id: n.id,
+                addr_api: n.addr_api.clone(),
+                addr_raft: n.addr_raft.clone(),
+            })
+            .collect();
+
         Self {
+            node_id: item.id().unwrap(),
+            nodes,
             ..Default::default()
         }
     }
@@ -206,10 +227,10 @@ impl Default for Configuration {
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
             sentry: None,
+            nodes: vec![],
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
