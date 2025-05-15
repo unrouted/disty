@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use extractor::Extractor;
 use hiqlite::{Error, NodeConfig};
 use hiqlite_macros::embed::*;
@@ -10,6 +11,7 @@ use tokio::task::JoinSet;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+mod config;
 mod digest;
 mod error;
 mod extractor;
@@ -34,7 +36,7 @@ struct Entity {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_target(true)
         .with_level(true)
@@ -43,9 +45,10 @@ async fn main() -> Result<(), Error> {
 
     let mut registry = Registry::with_prefix("disty");
 
-    let config = NodeConfig::from_env_file("config");
-    let node_id = config.node_id;
-    let client = hiqlite::start_node(config).await?;
+    let config = crate::config::Configuration::config(None)?;
+
+    let node_id = config.id()?;
+    let client = hiqlite::start_node(config.into()).await?;
 
     // Let's register our shutdown handle to always perform a graceful shutdown and remove lock files.
     // You can do this manually by calling `.shutdown()` at the end as well, if you already have

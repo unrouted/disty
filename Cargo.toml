@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.98"
 axum = "0.8.4"
 axum-extra = { version = "0.10.1", features = ["typed-header", "file-stream"] }
+config = "0.15.11"
 data-encoding = "2.9.0"
 futures = "0.3.31"
 futures-util = "0.3.31"
@@ -15,6 +16,8 @@ hiqlite = { version = "0.6.0", features = ["shutdown-handle"] }
 hiqlite-macros = "0.6.0"
 json = "0.12.4"
 jsonschema = "0.30.0"
+jwt-simple = "0.12.12"
+platform-dirs = "0.3.0"
 prometheus-client = "0.23.1"
 regex = "1.11.1"
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
@@ -22,12 +25,14 @@ ring = "0.17.14"
 schema = "0.1.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
+serde_regex = "1.1.0"
 tokio = { version = "1.45.0", features = ["fs", "rt-multi-thread"] }
 tokio-util = "0.7.15"
 tower = "0.5.2"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.16.0", features = ["v4"] }
+x509-parser = "0.17.0"
 
 [dev-dependencies]
 tempfile = "3.20"
