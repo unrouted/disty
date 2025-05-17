@@ -17,6 +17,7 @@ pub struct DistyNode {
     pub id: u64,
     pub addr_raft: String,
     pub addr_api: String,
+    pub addr_registry: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

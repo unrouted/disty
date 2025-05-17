@@ -19,6 +19,7 @@ jsonschema = "0.30.0"
 jwt-simple = "0.12.12"
 platform-dirs = "0.3.0"
 prometheus-client = "0.23.1"
+rand = "0.9.1"
 regex = "1.11.1"
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 ring = "0.17.14"
