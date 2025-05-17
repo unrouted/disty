@@ -15,6 +15,8 @@ mod config;
 mod digest;
 mod error;
 mod extractor;
+mod mirror;
+mod notify;
 mod registry;
 mod state;
 mod webhook;
@@ -66,6 +68,9 @@ async fn main() -> Result<()> {
         extractor,
         webhooks,
     });
+
+    crate::mirror::start_mirror(&mut tasks, state.clone())?;
+
     let app = router(state.clone());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();

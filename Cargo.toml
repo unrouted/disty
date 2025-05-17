@@ -7,8 +7,8 @@ edition = "2024"
 anyhow = "1.0.98"
 axum = "0.8.4"
 axum-extra = { version = "0.10.1", features = ["typed-header", "file-stream"] }
-config = "0.15.11"
 data-encoding = "2.9.0"
+figment = { version = "0.10.19", features = ["env", "yaml"] }
 futures = "0.3.31"
 futures-util = "0.3.31"
 headers = "0.4.0"

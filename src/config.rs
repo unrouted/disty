@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use figment::{
+    Figment,
+    providers::{Env, Format, Serialized, Yaml},
+};
 use hiqlite::{Node, NodeConfig};
 use jwt_simple::prelude::ES256PublicKey;
 use platform_dirs::AppDirs;
@@ -164,19 +168,19 @@ impl Configuration {
         let config_dir = app_dirs.config_dir;
         let config_path = config_dir.join("config.yaml");
 
-        let s =
-            config::Config::builder().add_source(config::File::from(config_path).required(false));
+        let mut fig = Figment::from(Serialized::defaults(Configuration::default()));
 
-        let s = match config {
-            Some(config) => s.add_source(config::File::from(config).required(false)),
-            None => s,
+        fig = match config {
+            Some(config_path) => fig.merge(Yaml::file(config_path)),
+            None => match config_path.exists() {
+                true => fig.merge(Yaml::file(config_path)),
+                false => fig,
+            },
         };
 
-        let s = s
-            .add_source(config::Environment::with_prefix("DISTY"))
-            .build()?;
-
-        s.try_deserialize().context("Unable to parse configuration")
+        fig.merge(Env::prefixed("DISTRIBD_"))
+            .extract()
+            .context("Failed to load configuration")
     }
 
     pub fn id(&self) -> Result<u64> {

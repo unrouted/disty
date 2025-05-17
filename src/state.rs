@@ -114,7 +114,10 @@ impl RegistryState {
         let repositories: Vec<String> = self
             .client
             .query_as(
-                "SELECT name FROM repositories, blobs_repositories WHERE blobs_repositories.digest = $1 AND blobs_repositories.repository_id = repositories.id;",
+                "SELECT repositories.name
+                        FROM blobs_repositories
+                        JOIN repositories ON blobs_repositories.repository_id = repositories.id
+                        WHERE blobs_repositories.digest = $1;",
                 params!(digest.to_string()),
             )
             .await?;
@@ -313,6 +316,40 @@ impl RegistryState {
             )
             .await?;
         Ok(())
+    }
+
+    pub async fn get_missing_blobs(&self) -> Result<Vec<Blob>> {
+        let blobs: Vec<BlobRow> = self
+            .client
+            .query_as(
+                "SELECT * FROM blobs WHERE (location & $1) = 0;",
+                params!(self.node_id as u32),
+            )
+            .await?;
+        let mut res = vec![];
+
+        for blob in blobs.into_iter() {
+            res.push(Blob {
+                digest: blob.digest.clone(),
+                size: blob.size,
+                media_type: blob.media_type,
+                location: blob.location,
+                repositories: self
+                    .client
+                    .query_as(
+                        "SELECT repositories.name
+                                FROM blobs_repositories
+                                JOIN repositories ON blobs_repositories.repository_id = repositories.id
+                                WHERE blobs_repositories.digest = $1;",
+                        params!(blob.digest.to_string()),
+                    )
+                    .await?
+                    .into_iter()
+                    .collect(),
+            });
+        }
+
+        Ok(res)
     }
 
     pub async fn shutdown(&self) -> Result<()> {
