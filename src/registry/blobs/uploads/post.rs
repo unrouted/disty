@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -13,6 +14,7 @@ use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::registry::utils::{upload_part, validate_hash};
 use crate::state::RegistryState;
+use crate::token::{Access, Token};
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
     repository: String,
@@ -32,15 +34,16 @@ pub(crate) async fn post(
         digest,
     }): Query<BlobUploadPostQuery>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         let mut access = vec![Access {
-            repository: path.repository.clone(),
+            repository: repository.clone(),
             permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
         }];
 
-        if let Some(from) = &query.from {
+        if let Some(from) = &from {
             access.push(Access {
                 repository: from.clone(),
                 permissions: HashSet::from(["pull".to_string()]),
@@ -52,18 +55,18 @@ pub(crate) async fn post(
         });
     }
 
-    if !token.has_permission(&path.repository, "push") {
+    if !token.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     if let (Some(mount), Some(from)) = (mount, &from) {
         if from == &repository {
             return Err(RegistryError::UploadInvalid {});
         }
 
-        //if !token.has_permission(from, "pull") {
-        //    return Err(RegistryError::UploadInvalid {});
-        //}
+        if !token.has_permission(from, "pull") {
+            return Err(RegistryError::UploadInvalid {});
+        }
 
         if let Some(blob) = registry.get_blob(&mount).await? {
             if blob.repositories.contains(from) {

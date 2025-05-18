@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 use tracing::debug;
 
-use crate::{digest::Digest, error::RegistryError, state::RegistryState};
+use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
 
 /*
 200 OK
@@ -41,16 +41,17 @@ pub struct ManifestGetRequest {
 pub(crate) async fn get(
     Path(ManifestGetRequest { repository, tag }): Path<ManifestGetRequest>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_pull_challenge(&path.repository),
+            challenge: token.get_pull_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "pull") {
+    if !token.has_permission(&repository, "pull") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     let manifest = match Digest::try_from(tag.clone()) {
         Ok(digest) => registry.get_manifest(&repository, &digest).await?,

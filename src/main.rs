@@ -19,6 +19,7 @@ mod mirror;
 mod notify;
 mod registry;
 mod state;
+mod token;
 mod webhook;
 
 #[cfg(test)]

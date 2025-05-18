@@ -13,6 +13,7 @@ use crate::{
     error::RegistryError,
     registry::utils::{upload_part, validate_hash},
     state::RegistryState,
+    token::Token,
 };
 
 #[derive(Debug, Deserialize)]
@@ -33,17 +34,18 @@ pub(crate) async fn put(
     }): Path<BlobUploadRequest>,
     Query(BlobUploadPutQuery { digest }): Query<BlobUploadPutQuery>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&path.repository),
+            challenge: token.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "push") {
+    if !token.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     /*if query.digest.algo != "sha256" {
         return Err(RegistryError::UploadInvalid {});

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{error::RegistryError, state::RegistryState};
+use crate::{error::RegistryError, state::RegistryState, token::Token};
 use axum::{
     body::Body,
     extract::{Path, State},
@@ -21,16 +21,17 @@ pub(crate) async fn get(
         upload_id,
     }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&path.repository),
+            challenge: token.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "pull") {
+    if !token.has_permission(&repository, "pull") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     let filename = registry.upload_path(&upload_id);
 

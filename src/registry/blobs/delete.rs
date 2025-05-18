@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{digest::Digest, error::RegistryError, state::RegistryState};
+use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
@@ -19,16 +19,17 @@ pub struct BlobRequest {
 pub(crate) async fn delete(
     Path(BlobRequest { repository, digest }): Path<BlobRequest>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&path.repository),
+            challenge: token.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "push") {
+    if !token.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     if let Some(blob) = registry.get_blob(&digest).await? {
         if !blob.repositories.contains(&repository) {

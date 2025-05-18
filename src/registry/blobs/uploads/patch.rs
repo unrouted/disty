@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::error::RegistryError;
 use crate::registry::utils::upload_part;
 use crate::state::RegistryState;
+use crate::token::Token;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -24,18 +25,19 @@ pub(crate) async fn patch(
         upload_id,
     }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
     content_range: Option<TypedHeader<ContentRange>>,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&path.repository),
+            challenge: token.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "push") {
+    if !token.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }*/
+    }
 
     let filename = registry.upload_path(&upload_id);
 

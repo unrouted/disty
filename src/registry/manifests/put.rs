@@ -5,6 +5,7 @@ use crate::{
     extractor::Report,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
+    token::Token,
 };
 use anyhow::Context;
 use axum::{
@@ -28,21 +29,20 @@ pub(crate) async fn put(
     Path(ManifestPutRequest { repository, tag }): Path<ManifestPutRequest>,
     content_type: TypedHeader<ContentType>,
     State(registry): State<Arc<RegistryState>>,
+    token: Token,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
     let extractor = &registry.extractor;
 
-    /*if !token.validated_token {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&path.repository),
+            challenge: token.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&path.repository, "push") {
+    if !token.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
-    }*/
-
-    error!("Floob");
+    }
 
     let upload_path = registry.get_temp_path();
 
