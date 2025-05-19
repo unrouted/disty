@@ -100,6 +100,7 @@ impl<'de> Deserialize<'de> for PublicKey {
             let config_dir = app_dirs.config_dir;
             p = config_dir.join(p);
         }
+        println!("{:?}", p);
         let pem = std::fs::read_to_string(&p).unwrap();
 
         let public_key = match ES256PublicKey::from_pem(&pem) {
@@ -179,7 +180,7 @@ impl Configuration {
             },
         };
 
-        fig.merge(Env::prefixed("DISTRIBD_"))
+        fig.merge(Env::prefixed("DISTY_"))
             .extract()
             .context("Failed to load configuration")
     }

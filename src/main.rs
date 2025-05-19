@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use extractor::Extractor;
-use hiqlite::{Error, NodeConfig};
+use hiqlite::cache_idx::CacheIndex;
 use hiqlite_macros::embed::*;
 use prometheus_client::registry::Registry;
 use registry::router;
@@ -38,6 +38,18 @@ struct Entity {
     pub description: Option<String>,
 }
 
+#[derive(Debug, strum::EnumIter)]
+enum Cache {
+    Dummy,
+}
+
+impl CacheIndex for Cache {
+    fn to_usize(self) -> usize {
+        self as usize
+    }
+}
+
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -51,7 +63,7 @@ async fn main() -> Result<()> {
     let config = crate::config::Configuration::config(None)?;
 
     let node_id = config.id()?;
-    let client = hiqlite::start_node(config.clone().into()).await?;
+    let client = hiqlite::start_node_with_cache::<Cache>(config.clone().into()).await?;
 
     info!("Apply our database migrations");
     client.migrate::<Migrations>().await?;

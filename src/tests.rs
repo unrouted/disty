@@ -9,7 +9,7 @@ use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
 
-use crate::{Migrations, webhook::WebhookService};
+use crate::{Migrations, webhook::WebhookService, Cache};
 
 use super::*;
 
@@ -58,7 +58,7 @@ impl StateFixture {
 
             let mut registry = Registry::with_prefix("disty");
 
-            let client = hiqlite::start_node(NodeConfig {
+            let client = hiqlite::start_node_with_cache::<Cache>(NodeConfig {
                 node_id: node.id,
                 data_dir: Cow::Owned(data_dir.to_string_lossy().into_owned()),
                 ..config.clone()
