@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use extractor::Extractor;
 use hiqlite::cache_idx::CacheIndex;
 use hiqlite_macros::embed::*;
@@ -49,7 +49,6 @@ impl CacheIndex for Cache {
     }
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -97,6 +96,12 @@ async fn main() -> Result<()> {
     tasks.shutdown().await;
 
     state.shutdown().await?;
+
+    if let Some(result) = res {
+        result
+            .context("Error while waiting for service to complete")?
+            .context("Error running service")?;
+    }
 
     Ok(())
 }

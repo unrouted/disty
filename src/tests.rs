@@ -9,7 +9,7 @@ use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
 
-use crate::{Migrations, webhook::WebhookService, Cache};
+use crate::{Cache, Migrations, webhook::WebhookService};
 
 use super::*;
 
