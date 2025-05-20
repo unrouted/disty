@@ -233,7 +233,12 @@ impl Default for Configuration {
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
             sentry: None,
-            nodes: vec![],
+            nodes: vec![DistyNode {
+                id: 1,
+                addr_raft: "127.0.0.1:8080".into(),
+                addr_api: "127.0.0.1:8081".into(),
+                addr_registry: "127.0.0.1:8082".into(),
+            }],
         }
     }
 }

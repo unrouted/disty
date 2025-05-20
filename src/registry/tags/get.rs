@@ -12,11 +12,6 @@ use serde_json::json;
 use crate::{error::RegistryError, state::RegistryState, token::Token};
 
 #[derive(Debug, Deserialize)]
-pub struct TagRequest {
-    repository: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct TagList {
     repository: String,
 }

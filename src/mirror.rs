@@ -26,7 +26,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
         let url = &node.addr_registry;
 
-        let repo = match blob.repositories.iter().next().clone() {
+        let repo = match blob.repositories.iter().next() {
             Some(repo) => repo,
             None => continue,
         };

@@ -442,7 +442,7 @@ mod tests {
                 &digest,
                 55,
                 "application/octet-stream",
-                &vec![blob],
+                &[blob],
             )
             .await?;
 

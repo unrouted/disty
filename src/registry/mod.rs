@@ -15,7 +15,7 @@ mod utils;
 
 pub fn router(state: Arc<RegistryState>) -> Router {
     Router::new()
-        .route("/v2/", get(root::get))
+        .route("/v2/", get(root::get).head(root::get))
         .route(
             "/v2/{repository}/blobs/uploads/{upload_id}",
             delete(blobs::uploads::delete::delete)

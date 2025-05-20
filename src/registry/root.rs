@@ -1,25 +1,28 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use axum::{
     body::Body,
     extract::State,
     http::{Response, StatusCode},
 };
 
-use crate::state::RegistryState;
+use crate::{error::RegistryError, state::RegistryState, token::Token};
 
-pub async fn get(State(_registry): State<Arc<RegistryState>>) -> Response<Body> {
-    /*if !token.validated_token {
+pub async fn get(
+    State(_registry): State<Arc<RegistryState>>,
+    token: Token,
+) -> Result<Response<Body>, RegistryError> {
+    if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_general_challenge(),
         });
-    }*/
+    }
 
-    Response::builder()
+    Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Docker-Distribution-Api-Version", "registry/2.0")
-        .body(Body::empty())
-        .unwrap()
+        .body(Body::empty())?)
 }
 
 #[cfg(test)]
