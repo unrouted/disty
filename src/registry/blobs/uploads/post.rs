@@ -126,7 +126,12 @@ pub(crate) async fn post(
             }
 
             registry
-                .insert_blob(digest, stat.len() as u32, "application/octet-stream")
+                .insert_blob(
+                    digest,
+                    stat.len() as u32,
+                    "application/octet-stream",
+                    &token.sub,
+                )
                 .await?;
 
             registry.mount_blob(digest, &repository).await?;

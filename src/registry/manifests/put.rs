@@ -111,6 +111,7 @@ pub(crate) async fn put(
             size,
             &content_type.to_string(),
             &collected_dependencies,
+            &token.sub,
         )
         .await?;
 

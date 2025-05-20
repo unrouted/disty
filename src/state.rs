@@ -134,12 +134,18 @@ impl RegistryState {
         })
     }
 
-    pub async fn insert_blob(&self, digest: &Digest, size: u32, media_type: &str) -> Result<()> {
+    pub async fn insert_blob(
+        &self,
+        digest: &Digest,
+        size: u32,
+        media_type: &str,
+        created_by: &str,
+    ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         self.client
             .execute(
-                "INSERT INTO blobs (digest, size, media_type, location) VALUES ($1, $2, $3, $4);",
-                params!(digest.to_string(), size, media_type, location),
+                "INSERT INTO blobs (digest, size, media_type, location, created_by) VALUES ($1, $2, $3, $4, $5);",
+                params!(digest.to_string(), size, media_type, location, created_by),
             )
             .await?;
 
@@ -235,6 +241,7 @@ impl RegistryState {
         size: u64,
         media_type: &str,
         dependencies: &[Digest],
+        created_by: &str,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         let mut sql = vec![
@@ -243,13 +250,14 @@ impl RegistryState {
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, repository_id) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5)) RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5), $6) RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     size as u32,
                     media_type,
                     location,
-                    repository
+                    repository,
+                    created_by
                 ),
             ),
             (
@@ -405,7 +413,7 @@ mod tests {
         assert_eq!(None, registry.get_blob(&digest).await?);
 
         registry
-            .insert_blob(&digest, 55, "application/octet-stream")
+            .insert_blob(&digest, 55, "application/octet-stream", "bob")
             .await?;
 
         let blob = registry.get_blob(&digest).await?.unwrap();
@@ -426,7 +434,7 @@ mod tests {
             .unwrap();
 
         registry
-            .insert_blob(&blob, 1, "application/octet-stream")
+            .insert_blob(&blob, 1, "application/octet-stream", "bob")
             .await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
@@ -443,6 +451,7 @@ mod tests {
                 55,
                 "application/octet-stream",
                 &[blob],
+                "bob",
             )
             .await?;
 
@@ -467,7 +476,7 @@ mod tests {
             .unwrap();
 
         registry
-            .insert_blob(&digest, 55, "application/octet-stream")
+            .insert_blob(&digest, 55, "application/octet-stream", "blob")
             .await?;
 
         let blob = registry.get_blob(&digest).await?.unwrap();

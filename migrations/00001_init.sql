@@ -11,6 +11,7 @@ CREATE TABLE blobs (
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this blob
+    created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME  -- Null if not deleted (used for garbage collection)
@@ -33,6 +34,7 @@ CREATE TABLE manifests (
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this manifest
+    created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at DATETIME,  -- Null if not deleted
