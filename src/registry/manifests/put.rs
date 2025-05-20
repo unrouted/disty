@@ -17,7 +17,6 @@ use axum::{
 use axum_extra::TypedHeader;
 use headers::ContentType;
 use serde::Deserialize;
-use tracing::error;
 
 #[derive(Debug, Deserialize)]
 pub struct ManifestPutRequest {
