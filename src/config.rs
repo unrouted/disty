@@ -26,36 +26,16 @@ pub struct TlsConfig {
     pub chain: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct RaftConfig {
-    pub address: String,
-    pub port: u16,
+    pub secret: Option<String>,
     pub tls: Option<TlsConfig>,
 }
 
-impl Default for RaftConfig {
-    fn default() -> Self {
-        Self {
-            address: "0.0.0.0".to_string(),
-            port: 8080,
-            tls: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RegistryConfig {
-    pub address: String,
-    pub port: u16,
-}
-
-impl Default for RegistryConfig {
-    fn default() -> Self {
-        Self {
-            address: "0.0.0.0".to_string(),
-            port: 8000,
-        }
-    }
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct ApiConfig {
+    pub secret: Option<String>,
+    pub tls: Option<TlsConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -155,7 +135,7 @@ pub struct Configuration {
     pub node_id: u64,
     pub nodes: Vec<DistyNode>,
     pub raft: RaftConfig,
-    pub registry: RegistryConfig,
+    pub api: ApiConfig,
     pub prometheus: PrometheusConfig,
     pub token_server: Option<TokenConfig>,
     pub storage: String,
@@ -213,9 +193,11 @@ impl Configuration {
     }
 }
 
-impl From<Configuration> for NodeConfig {
-    fn from(item: Configuration) -> Self {
-        let nodes = item
+impl TryFrom<Configuration> for NodeConfig {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Configuration) -> std::result::Result<Self, Self::Error> {
+        let nodes = value
             .nodes
             .iter()
             .map(|n| Node {
@@ -225,11 +207,16 @@ impl From<Configuration> for NodeConfig {
             })
             .collect();
 
-        Self {
-            node_id: item.node_id,
+        Ok(Self {
+            node_id: value.node_id,
             nodes,
+            secret_raft: value
+                .raft
+                .secret
+                .context("You must provide a raft secret")?,
+            secret_api: value.api.secret.context("You must provide an API secret")?,
             ..Default::default()
-        }
+        })
     }
 }
 
@@ -238,7 +225,7 @@ impl Default for Configuration {
         Self {
             node_id: 0,
             raft: RaftConfig::default(),
-            registry: RegistryConfig::default(),
+            api: ApiConfig::default(),
             prometheus: PrometheusConfig::default(),
             token_server: None,
             storage: "var".to_string(),
@@ -283,7 +270,7 @@ mod test {
     #[test]
     fn defaults() {
         let defaults = Configuration::default();
-        assert_eq!(defaults.raft.address, "0.0.0.0");
+        assert_eq!(defaults.raft.secret, None);
     }
 
     #[test]

@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
     ))?;
 
     let node_id = config.node_id;
-    let client = hiqlite::start_node_with_cache::<Cache>(config.clone().into()).await?;
+    let client = hiqlite::start_node_with_cache::<Cache>(config.clone().try_into()?).await?;
 
     info!("Apply our database migrations");
     client.migrate::<Migrations>().await?;
