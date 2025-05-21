@@ -1,6 +1,6 @@
 # distry
 
-**distry** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://github.com/datafuselabs/openraft), and [Hiqlite](https://github.com/hiqlite/hiqlite), distry aims to be a self-contained solution for Kubernetes-native environments where traditional cloud or centralized registries aren't a viable option.
+**distry** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://databendlabs.github.io/openraft/), and [Hiqlite](https://github.com/sebadob/hiqlite), distry aims to be a self-contained solution for Kubernetes-native environments where traditional cloud or centralized registries aren't a viable option.
 
 ---
 
