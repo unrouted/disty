@@ -2,7 +2,6 @@ use std::{borrow::Cow, ops::Deref};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
-use figment::{Figment, providers::Serialized};
 use hiqlite::{Node, NodeConfig};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
