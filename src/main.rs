@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
         node.addr_registry
             .split_once(":")
             .context("Registry address doesn't have a port")?
-            .0
+            .1
     );
     let listener = tokio::net::TcpListener::bind(listen_addr).await.unwrap();
     tasks.spawn(async move {
