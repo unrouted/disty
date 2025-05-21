@@ -1,4 +1,4 @@
-FROM rust:1-bookworm as build
+FROM rust:1-bookworm AS build
 
 WORKDIR /usr/src/disty
 
