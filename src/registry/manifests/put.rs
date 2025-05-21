@@ -45,6 +45,11 @@ pub(crate) async fn put(
 
     let upload_path = registry.get_temp_path();
 
+    let parent = upload_path
+        .parent()
+        .context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
+
     upload_part(&upload_path, body.into_body().into_data_stream()).await?;
 
     let size = match tokio::fs::metadata(&upload_path).await {

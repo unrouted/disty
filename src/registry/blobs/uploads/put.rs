@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use axum::{
     body::Body,
     extract::{Path, Query, Request, State},
@@ -53,6 +54,11 @@ pub(crate) async fn put(
 
     let filename = registry.upload_path(&upload_id);
 
+    let parent = filename
+        .parent()
+        .context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
+
     if !tokio::fs::try_exists(&filename).await? {
         return Err(RegistryError::UploadInvalid {});
     }
@@ -65,6 +71,9 @@ pub(crate) async fn put(
     }
 
     let dest = registry.get_blob_path(&digest);
+
+    let parent = dest.parent().context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
 
     let stat = match tokio::fs::metadata(&filename).await {
         Ok(result) => result,

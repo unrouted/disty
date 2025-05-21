@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use axum::body::Body;
 use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
@@ -40,6 +41,11 @@ pub(crate) async fn patch(
     }
 
     let filename = registry.upload_path(&upload_id);
+
+    let parent = filename
+        .parent()
+        .context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
 
     if !tokio::fs::try_exists(&filename).await? {
         return Err(RegistryError::UploadInvalid {});

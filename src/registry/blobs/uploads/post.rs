@@ -95,6 +95,11 @@ pub(crate) async fn post(
         Some(digest) => {
             let filename = registry.upload_path(&upload_id);
 
+            let parent = filename
+                .parent()
+                .context("Couldn't find parent directory")?;
+            tokio::fs::create_dir_all(parent).await?;
+
             upload_part(&filename, body.into_body().into_data_stream())
                 .await
                 .context("Unable to upload part")?;
@@ -154,6 +159,11 @@ pub(crate) async fn post(
         _ => {
             // Nothing was uploaded, but a session was started...
             let filename = registry.upload_path(&upload_id);
+
+            let parent = filename
+                .parent()
+                .context("Couldn't find parent directory")?;
+            tokio::fs::create_dir_all(parent).await?;
 
             match tokio::fs::OpenOptions::new()
                 .create(true)

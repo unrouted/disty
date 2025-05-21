@@ -1,8 +1,7 @@
-use std::{borrow::Cow, ops::Deref};
+use std::{ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
-use hiqlite::{Node, NodeConfig};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
@@ -11,7 +10,7 @@ use tower::ServiceExt;
 
 use crate::{
     Cache, Migrations,
-    config::{Configuration, DistyNode},
+    config::{ApiConfig, Configuration, DistyNode, RaftConfig},
     webhook::WebhookService,
 };
 
@@ -38,45 +37,40 @@ impl StateFixture {
             );
         }
 
-        let config = NodeConfig {
-            secret_api: "aaaaaaaaaaaaaaaa".into(),
-            secret_raft: "bbbbbbbbbbbbbbbb".into(),
-            log_statements: true,
-            nodes: vec![Node {
-                id: 1,
-                addr_raft: "127.0.0.1:9999".to_string(),
-                addr_api: "127.0.0.1:9998".to_string(),
-            }],
-            ..Default::default()
-        };
+        let nodes = vec![DistyNode {
+            id: 1,
+            addr_api: "127.0.0.1:9999".into(),
+            addr_raft: "127.0.0.1:9998".into(),
+            addr_registry: "127.0.0.1:9997".into(),
+        }];
 
         let mut tasks = JoinSet::new();
         let mut registries = vec![];
         let mut dirs = vec![];
 
-        for node in config.nodes.iter() {
+        for node in nodes.iter() {
             let dir = tempdir()?;
             let data_dir = dir.path();
 
             let configuration = Configuration {
-                node_id: 1,
-                nodes: vec![DistyNode {
-                    id: 1,
-                    addr_api: "127.0.0.1:9999".into(),
-                    addr_raft: "127.0.0.1:9998".into(),
-                    addr_registry: "127.0.0.1:9997".into(),
-                }],
+                node_id: node.id,
+                storage: PathBuf::from(data_dir),
+                raft: RaftConfig {
+                    secret: Some("aaaaaaaaaaaaaaaa".into()),
+                    ..Default::default()
+                },
+                api: ApiConfig {
+                    secret: Some("bbbbbbbbbbbbbbbb".into()),
+                    ..Default::default()
+                },
+                nodes: nodes.clone(),
                 ..Default::default()
             };
 
             let mut registry = Registry::with_prefix("disty");
 
-            let client = hiqlite::start_node_with_cache::<Cache>(NodeConfig {
-                node_id: node.id,
-                data_dir: Cow::Owned(data_dir.to_string_lossy().into_owned()),
-                ..config.clone()
-            })
-            .await?;
+            let client =
+                hiqlite::start_node_with_cache::<Cache>(configuration.clone().try_into()?).await?;
 
             dirs.push(dir);
             registries.push(Arc::new(RegistryState {
