@@ -1119,6 +1119,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-extra",
+ "clap",
  "data-encoding",
  "figment",
  "futures",

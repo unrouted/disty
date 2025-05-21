@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use extractor::Extractor;
 use hiqlite::cache_idx::CacheIndex;
 use hiqlite_macros::embed::*;
@@ -49,6 +50,13 @@ impl CacheIndex for Cache {
     }
 }
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+pub struct Opt {
+    #[clap(short, long, value_parser)]
+    pub config: Option<std::path::PathBuf>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -57,9 +65,13 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from("info"))
         .init();
 
+    let options = Opt::parse();
+
     let mut registry = Registry::with_prefix("disty");
 
-    let config = crate::config::Configuration::config(crate::config::Configuration::figment(None))?;
+    let config = crate::config::Configuration::config(crate::config::Configuration::figment(
+        options.config,
+    ))?;
 
     let node_id = config.node_id;
     let client = hiqlite::start_node_with_cache::<Cache>(config.clone().into()).await?;
