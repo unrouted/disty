@@ -204,6 +204,8 @@ impl Configuration {
             config.node_id = node_id + 1;
         }
 
+        println!("{:?}", config);
+
         if config.node_id < 1 {
             bail!("node_id must be at least 1");
         }
