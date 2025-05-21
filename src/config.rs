@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Yaml},
@@ -152,7 +152,7 @@ pub struct SentryConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
-    pub identifier: String,
+    pub node_id: u64,
     pub nodes: Vec<DistyNode>,
     pub raft: RaftConfig,
     pub registry: RegistryConfig,
@@ -165,39 +165,51 @@ pub struct Configuration {
 }
 
 impl Configuration {
-    pub fn config(config: Option<PathBuf>) -> Result<Configuration> {
+    pub fn figment(config: Option<PathBuf>) -> Figment {
         let app_dirs = AppDirs::new(Some("disty"), true).unwrap();
         let config_dir = app_dirs.config_dir;
         let config_path = config_dir.join("config.yaml");
 
-        let mut fig = Figment::from(Serialized::defaults(Configuration::default()));
+        let fig = Figment::from(Serialized::defaults(Configuration::default()));
 
-        fig = match config {
+        match config {
             Some(config_path) => fig.merge(Yaml::file(config_path)),
             None => match config_path.exists() {
                 true => fig.merge(Yaml::file(config_path)),
                 false => fig,
             },
-        };
-
-        fig.merge(Env::prefixed("DISTY_"))
-            .extract()
-            .context("Failed to load configuration")
+        }
+        .merge(Env::prefixed("DISTY_"))
     }
 
-    pub fn id(&self) -> Result<u64> {
-        let (_, node_id) = self
-            .identifier
-            .rsplit_once('-')
-            .context("Invalid identifier name")?;
+    pub fn config(figment: Figment) -> Result<Configuration> {
+        let mut config: Configuration =
+            figment.extract().context("Failed to load configuration")?;
 
-        let mut node_id = node_id
-            .parse()
-            .context("Identifier must end with a number")?;
+        if config.node_id == 0 {
+            let binding = hostname::get().expect("Cannot read hostname");
+            let hostname = binding.to_str().expect("Invalid hostname format");
 
-        node_id += 1;
+            let (_, node_id) = hostname
+                .rsplit_once('-')
+                .context("Hostname does not does not contain a dash")?;
 
-        Ok(node_id)
+            let node_id: u64 = node_id
+                .parse()
+                .context("Hostname does not end with a number")?;
+
+            config.node_id = node_id + 1;
+        }
+
+        if config.node_id < 1 {
+            bail!("node_id must be at least 1");
+        }
+
+        if config.node_id > (config.nodes.len() as u64) {
+            bail!("node_id greater than number of configured nodes");
+        }
+
+        Ok(config)
     }
 }
 
@@ -214,7 +226,7 @@ impl From<Configuration> for NodeConfig {
             .collect();
 
         Self {
-            node_id: item.id().unwrap(),
+            node_id: item.node_id,
             nodes,
             ..Default::default()
         }
@@ -224,7 +236,7 @@ impl From<Configuration> for NodeConfig {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
-            identifier: "localhost-0".to_string(),
+            node_id: 0,
             raft: RaftConfig::default(),
             registry: RegistryConfig::default(),
             prometheus: PrometheusConfig::default(),
@@ -233,12 +245,7 @@ impl Default for Configuration {
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),
             sentry: None,
-            nodes: vec![DistyNode {
-                id: 1,
-                addr_raft: "127.0.0.1:8080".into(),
-                addr_api: "127.0.0.1:8081".into(),
-                addr_registry: "127.0.0.1:8082".into(),
-            }],
+            nodes: vec![],
         }
     }
 }
@@ -259,8 +266,18 @@ mod test {
             );
         }
 
-        let config = Configuration::config(None).unwrap();
-        assert_eq!(config.identifier, "localhost-0".to_string());
+        let config =
+            Configuration::config(Configuration::figment(None).join(("node_id", 1)).join((
+                "nodes",
+                vec![DistyNode {
+                    id: 1,
+                    addr_raft: "127.0.0.1:9999".into(),
+                    addr_api: "127.0.0.1:9998".into(),
+                    addr_registry: "127.0.0.1:9997".into(),
+                }],
+            )))
+            .unwrap();
+        assert_eq!(config.node_id, 1);
     }
 
     #[test]

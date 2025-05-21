@@ -1126,6 +1126,7 @@ dependencies = [
  "headers",
  "hiqlite",
  "hiqlite-macros",
+ "hostname",
  "http-body-util",
  "json",
  "jsonschema",

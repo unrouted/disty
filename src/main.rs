@@ -59,9 +59,9 @@ async fn main() -> Result<()> {
 
     let mut registry = Registry::with_prefix("disty");
 
-    let config = crate::config::Configuration::config(None)?;
+    let config = crate::config::Configuration::config(crate::config::Configuration::figment(None))?;
 
-    let node_id = config.id()?;
+    let node_id = config.node_id;
     let client = hiqlite::start_node_with_cache::<Cache>(config.clone().into()).await?;
 
     info!("Apply our database migrations");
@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(RegistryState {
         node_id,
-        config,
+        config: config.clone(),
         client,
         extractor,
         webhooks,
@@ -85,7 +85,18 @@ async fn main() -> Result<()> {
 
     let app = router(state.clone());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let node = config
+        .nodes
+        .get(node_id as usize - 1)
+        .expect("NodeConfig.node_id not found in NodeConfig.nodes");
+    let listen_addr = format!(
+        "0.0.0.0:{}",
+        node.addr_registry
+            .split_once(":")
+            .context("Registry address doesn't have a port")?
+            .0
+    );
+    let listener = tokio::net::TcpListener::bind(listen_addr).await.unwrap();
     tasks.spawn(async move {
         axum::serve(listener, app).await?;
         Ok(())

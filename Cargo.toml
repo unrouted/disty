@@ -14,6 +14,7 @@ futures-util = "0.3.31"
 headers = "0.4.0"
 hiqlite = { version = "0.6.0", features = ["listen_notify_local"] }
 hiqlite-macros = "0.6.0"
+hostname = "0.4.1"
 json = "0.12.4"
 jsonschema = "0.30.0"
 jwt-simple = "0.12.12"

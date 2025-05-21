@@ -2,6 +2,7 @@ use std::{borrow::Cow, ops::Deref};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
+use figment::{Figment, providers::Serialized};
 use hiqlite::{Node, NodeConfig};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
@@ -9,7 +10,11 @@ use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
 
-use crate::{Cache, Migrations, webhook::WebhookService};
+use crate::{
+    Cache, Migrations,
+    config::{Configuration, DistyNode},
+    webhook::WebhookService,
+};
 
 use super::*;
 
@@ -54,7 +59,16 @@ impl StateFixture {
             let dir = tempdir()?;
             let data_dir = dir.path();
 
-            let configuration = config::Configuration::config(None)?;
+            let configuration = Configuration {
+                node_id: 1,
+                nodes: vec![DistyNode {
+                    id: 1,
+                    addr_api: "127.0.0.1:9999".into(),
+                    addr_raft: "127.0.0.1:9998".into(),
+                    addr_registry: "127.0.0.1:9997".into(),
+                }],
+                ..Default::default()
+            };
 
             let mut registry = Registry::with_prefix("disty");
 
