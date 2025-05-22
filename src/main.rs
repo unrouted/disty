@@ -16,6 +16,7 @@ mod config;
 mod digest;
 mod error;
 mod extractor;
+mod issuer;
 mod mirror;
 mod notify;
 mod registry;

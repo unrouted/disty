@@ -10,14 +10,21 @@ use tracing::{debug, error, info};
 
 use crate::{
     digest::Digest,
+    issuer::issue_token,
     notify::Notification,
     state::{Blob, RegistryState},
+    token::Access,
 };
 
 async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> Result<()> {
     let mut urls = vec![];
 
     let digest = blob.digest.to_string();
+
+    let repo = match blob.repositories.iter().next() {
+        Some(repo) => repo,
+        None => bail!("Blob not available via any repository"),
+    };
 
     for node in state.config.nodes.iter() {
         // FIXME: Add extra check that we can never ever download from ourself.
@@ -28,11 +35,6 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
         let url = &node.addr_registry;
 
-        let repo = match blob.repositories.iter().next() {
-            Some(repo) => repo,
-            None => continue,
-        };
-
         urls.push(format!("http://{url}/v2/{repo}/blobs/{digest}"));
     }
 
@@ -40,7 +42,23 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
         .choose(&mut rand::rng())
         .context("Unable to select url for blob")?;
 
-    let mut resp = client.get(url).send().await?.error_for_status()?;
+    let req = client.get(url);
+
+    let req = match &state.config.token_server {
+        Some(token_server) => {
+            let token = issue_token(
+                &token_server,
+                vec![Access {
+                    repository: repo.to_string(),
+                    permissions: ["pull".to_string()].into_iter().collect(),
+                }],
+            )?;
+            req.header("Authorization", format!("Bearer {token}"))
+        }
+        None => req,
+    };
+
+    let mut resp = req.send().await?.error_for_status()?;
 
     let file_name = state.get_temp_path();
 

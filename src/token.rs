@@ -39,8 +39,8 @@ pub(crate) struct Access {
 }
 
 #[derive(Serialize, Deserialize)]
-struct AdditionalClaims {
-    access: Vec<Access>,
+pub(crate) struct AdditionalClaims {
+    pub access: Vec<Access>,
 }
 
 pub(crate) struct Token {
@@ -182,7 +182,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
             ..Default::default()
         };
 
-        let claims = match config
+        let claims: JWTClaims<AdditionalClaims> = match config
             .public_key
             .public_key
             .verify_token::<AdditionalClaims>(token_bytes, Some(options))
