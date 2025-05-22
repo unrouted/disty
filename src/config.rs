@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use figment::{
@@ -6,7 +6,7 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
 };
 use hiqlite::{Node, NodeConfig};
-use jwt_simple::prelude::ES256PublicKey;
+use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
 use platform_dirs::AppDirs;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -104,12 +104,67 @@ impl<'de> Deserialize<'de> for PublicKey {
     }
 }
 
+#[derive(Clone)]
+pub struct KeyPair {
+    pub path: String,
+    pub key_pair: Arc<ES256KeyPair>,
+}
+
+impl std::fmt::Debug for KeyPair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyPair").field("path", &self.path).finish()
+    }
+}
+
+impl Serialize for KeyPair {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.path)
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyPair {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let mut p = PathBuf::from(s.clone());
+        if p.is_relative() {
+            let app_dirs = AppDirs::new(Some("disty"), true).unwrap();
+            let config_dir = app_dirs.config_dir;
+            p = config_dir.join(p);
+        }
+        println!("{:?}", p);
+        let pem = std::fs::read_to_string(&p).unwrap();
+
+        let key_pair = Arc::new(match ES256KeyPair::from_pem(&pem) {
+            Ok(key_pair) => key_pair,
+            Err(_) => {
+                let pem = Pem::iter_from_buffer(pem.as_bytes())
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let x509 = pem.parse_x509().expect("X.509: decoding DER failed");
+                let raw = &x509.public_key().subject_public_key.data;
+
+                ES256KeyPair::from_bytes(raw).unwrap()
+            }
+        });
+
+        Ok(KeyPair { path: s, key_pair })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TokenConfig {
     pub issuer: String,
     pub service: String,
     pub realm: String,
     pub public_key: PublicKey,
+    pub key_pair: KeyPair,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
