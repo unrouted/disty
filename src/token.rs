@@ -122,9 +122,7 @@ impl Token {
         for access in self.access.iter() {
             debug!("Checking {access:?}");
 
-            if &access.repository == repository
-                && access.permissions.contains(&permission.to_string())
-            {
+            if access.repository == repository && access.permissions.contains(permission) {
                 return true;
             }
         }
