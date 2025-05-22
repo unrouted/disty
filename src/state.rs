@@ -372,11 +372,13 @@ impl RegistryState {
     }
 
     pub async fn get_missing_blobs(&self) -> Result<Vec<Blob>> {
+        let location = 1 << (self.node_id - 1);
+
         let blobs: Vec<BlobRow> = self
             .client
             .query_as(
                 "SELECT * FROM blobs WHERE (location & $1) = 0;",
-                params!(self.node_id as u32),
+                params!(location),
             )
             .await?;
         let mut res = vec![];
