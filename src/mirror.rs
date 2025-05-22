@@ -86,7 +86,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
     let storage_path = state.get_blob_path(&blob.digest);
     tokio::fs::rename(file_name, storage_path).await?;
 
-    // FIXME: Update database
+    state.blob_downloaded(&blob.digest).await?;
 
     Ok(())
 }

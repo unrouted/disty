@@ -167,7 +167,7 @@ impl RegistryState {
 
         self.client
             .notify(&Notification::BlobAdded {
-                node: self.config.node_id,
+                node: self.node_id,
                 digest: digest.clone(),
                 repository: repository.to_string(),
             })
@@ -183,6 +183,19 @@ impl RegistryState {
             .execute(
                 "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, $2);",
                 params!(digest.to_string(), repository_id),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn blob_downloaded(&self, digest: &Digest) -> Result<()> {
+        let location = 1 << (self.node_id - 1);
+        // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
+        self.client
+            .execute(
+                "UPDATE blobs SET location = location | (1 << $2) WHERE digest = $1;",
+                params!(digest.to_string(), location),
             )
             .await?;
 
@@ -301,7 +314,7 @@ impl RegistryState {
 
         self.client
             .notify(&Notification::ManifestAdded {
-                node: self.config.node_id,
+                node: self.node_id,
                 digest: digest.clone(),
                 repository: repository.to_string(),
             })
