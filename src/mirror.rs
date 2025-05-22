@@ -94,7 +94,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 async fn ensure_mirrored(state: &RegistryState, client: &Client) -> Result<()> {
     for blob in state.get_missing_blobs().await? {
         if let Err(e) = download_blob(&blob, &state, &client).await {
-            error!("Failed to mirror blob {}", blob.digest);
+            error!("Failed to mirror blob {}: {e:?}", blob.digest);
         };
     }
 
