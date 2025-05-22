@@ -1,10 +1,12 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, bail};
+use futures::StreamExt;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
-use tokio::{io::AsyncWriteExt, task::JoinSet};
-use tracing::{debug, error};
+use tokio::{io::AsyncWriteExt, task::JoinSet, time::interval};
+use tokio_stream::wrappers::IntervalStream;
+use tracing::{debug, error, info};
 
 use crate::{
     digest::Digest,
@@ -89,6 +91,29 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
     Ok(())
 }
 
+async fn ensure_mirrored(state: &RegistryState, client: &Client) -> Result<()> {
+    for blob in state.get_missing_blobs().await? {
+        if let Err(e) = download_blob(&blob, &state, &client).await {
+            error!("Failed to mirror blob {}", blob.digest);
+        };
+    }
+
+    Ok(())
+}
+
+fn notifications(state: Arc<RegistryState>) -> impl tokio_stream::Stream<Item = Notification> {
+    futures::stream::unfold(state, |state| async {
+        match state.client.listen().await {
+            Ok(n) => Some((n, state)),
+            Err(e) => {
+                eprintln!("Listen error: {}", e);
+                // Decide whether to continue or stop stream
+                Some((Notification::Tick, state))
+            }
+        }
+    })
+}
+
 pub(crate) fn start_mirror(
     tasks: &mut JoinSet<Result<()>>,
     state: Arc<RegistryState>,
@@ -98,18 +123,27 @@ pub(crate) fn start_mirror(
         return Ok(());
     }
 
+    let startup_stream = futures::stream::once(async { Notification::Tick }).boxed();
+
+    let periodic_stream = IntervalStream::new(interval(Duration::from_secs(30)))
+        .map(|_| Notification::Tick)
+        .boxed();
+
+    let notification_stream = notifications(state.clone()).boxed();
+
+    let mut event_stream =
+        futures::stream::select_all(vec![startup_stream, periodic_stream, notification_stream]);
+
+    let client = reqwest::ClientBuilder::new().build()?;
+
     tasks.spawn(async move {
-        let client = reqwest::ClientBuilder::new().build()?;
+        while let Some(trigger) = event_stream.next().await {
+            info!("Mirroring: Reconciliation trigger: {:?}", trigger);
 
-        loop {
-            let _: Notification = state.client.listen_after_start().await?;
-
-            for blob in state.get_missing_blobs().await? {
-                if let Err(e) = download_blob(&blob, &state, &client).await {
-                    error!("Failed to mirror blob {}", blob.digest);
-                };
-            }
+            ensure_mirrored(&state, &client).await?;
         }
+
+        Ok(())
     });
 
     Ok(())

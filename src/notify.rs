@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::digest::Digest;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum Notification {
+    Tick,
     ManifestAdded {
         node: u64,
         digest: Digest,

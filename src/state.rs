@@ -6,7 +6,10 @@ use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{config::Configuration, digest::Digest, extractor::Extractor, webhook::WebhookService};
+use crate::{
+    config::Configuration, digest::Digest, extractor::Extractor, notify::Notification,
+    webhook::WebhookService,
+};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
@@ -137,17 +140,37 @@ impl RegistryState {
 
     pub async fn insert_blob(
         &self,
+        repository: &str,
         digest: &Digest,
         size: u32,
         media_type: &str,
         created_by: &str,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
+
         self.client
-            .execute(
-                "INSERT INTO blobs (digest, size, media_type, location, created_by) VALUES ($1, $2, $3, $4, $5);",
-                params!(digest.to_string(), size, media_type, location, created_by),
-            )
+            .txn(vec![
+                (
+                    "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
+                    params!(repository),
+                ),
+                (
+                    "INSERT INTO blobs (digest, size, media_type, location, created_by) VALUES ($1, $2, $3, $4, $5);",
+                    params!(digest.to_string(), size, media_type, location, created_by),
+                ),
+                (
+                    "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, (SELECT id FROM repositories WHERE name=$2));",
+                    params!(digest.to_string(), repository),
+                )
+            ])
+            .await?;
+
+        self.client
+            .notify(&Notification::BlobAdded {
+                node: self.config.node_id,
+                digest: digest.clone(),
+                repository: repository.to_string(),
+            })
             .await?;
 
         Ok(())
@@ -275,6 +298,14 @@ impl RegistryState {
         }));
 
         self.client.txn(sql).await?;
+
+        self.client
+            .notify(&Notification::ManifestAdded {
+                node: self.config.node_id,
+                digest: digest.clone(),
+                repository: repository.to_string(),
+            })
+            .await?;
 
         self.webhooks
             .send(repository, digest, tag, media_type)
@@ -414,7 +445,13 @@ mod tests {
         assert_eq!(None, registry.get_blob(&digest).await?);
 
         registry
-            .insert_blob(&digest, 55, "application/octet-stream", "bob")
+            .insert_blob(
+                "library/nginx",
+                &digest,
+                55,
+                "application/octet-stream",
+                "bob",
+            )
             .await?;
 
         let blob = registry.get_blob(&digest).await?.unwrap();
@@ -435,7 +472,7 @@ mod tests {
             .unwrap();
 
         registry
-            .insert_blob(&blob, 1, "application/octet-stream", "bob")
+            .insert_blob("library/nginx", &blob, 1, "application/octet-stream", "bob")
             .await?;
 
         let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
@@ -477,22 +514,36 @@ mod tests {
             .unwrap();
 
         registry
-            .insert_blob(&digest, 55, "application/octet-stream", "blob")
+            .insert_blob(
+                "library/nginx",
+                &digest,
+                55,
+                "application/octet-stream",
+                "blob",
+            )
             .await?;
 
         let blob = registry.get_blob(&digest).await?.unwrap();
-        assert_eq!(blob.repositories, HashSet::new());
+        assert_eq!(
+            blob.repositories,
+            ["library/nginx".to_string()].into_iter().collect()
+        );
 
         registry.mount_blob(&digest, "ubuntu/trusty").await?;
         let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(
             blob.repositories,
-            ["ubuntu/trusty".to_string()].into_iter().collect()
+            ["ubuntu/trusty".to_string(), "library/nginx".to_string()]
+                .into_iter()
+                .collect()
         );
 
         registry.unmount_blob(&digest, "ubuntu/trusty").await?;
         let blob = registry.get_blob(&digest).await?.unwrap();
-        assert_eq!(blob.repositories, HashSet::new());
+        assert_eq!(
+            blob.repositories,
+            ["library/nginx".to_string()].into_iter().collect()
+        );
 
         registry.teardown().await?;
 

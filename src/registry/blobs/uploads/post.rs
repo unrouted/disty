@@ -132,14 +132,13 @@ pub(crate) async fn post(
 
             registry
                 .insert_blob(
+                    &repository,
                     digest,
                     stat.len() as u32,
                     "application/octet-stream",
                     &token.sub,
                 )
                 .await?;
-
-            registry.mount_blob(digest, &repository).await?;
 
             /*
             201 Created
