@@ -367,7 +367,8 @@ mod test {
             "issuer": "Test Issuer",
             "realm": "testrealm",
             "service": "myservice",
-            "public_key": "token.pub"
+            "public_key": "token.pub",
+            "key_pair": "token.key"
         }"#;
 
         let t: TokenConfig = serde_json::from_str(data).unwrap();
@@ -399,7 +400,8 @@ mod test {
             "issuer": "Test Issuer",
             "realm": "testrealm",
             "service": "myservice",
-            "public_key": "token.crt"
+            "public_key": "token.crt",
+            "key_pair": "token.key"
         }"#;
 
         let t: TokenConfig = serde_json::from_str(data).unwrap();
