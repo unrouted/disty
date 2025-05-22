@@ -7,8 +7,11 @@ use figment::{
 };
 use hiqlite::{Node, NodeConfig};
 use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
+use p256::ecdsa::SigningKey;
+use p256::pkcs8::EncodePrivateKey;
 use platform_dirs::AppDirs;
 use regex::Regex;
+use sec1::DecodeEcPrivateKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use x509_parser::prelude::Pem;
 
@@ -125,6 +128,12 @@ impl Serialize for KeyPair {
     }
 }
 
+fn load_keypair(pem: &str) -> Result<ES256KeyPair> {
+    let signing_key = SigningKey::from_sec1_pem(pem)?;
+    let der = signing_key.to_pkcs8_der()?;
+    ES256KeyPair::from_der(der.as_bytes())
+}
+
 impl<'de> Deserialize<'de> for KeyPair {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -137,22 +146,9 @@ impl<'de> Deserialize<'de> for KeyPair {
             let config_dir = app_dirs.config_dir;
             p = config_dir.join(p);
         }
-        println!("{:?}", p);
         let pem = std::fs::read_to_string(&p).unwrap();
 
-        let key_pair = Arc::new(match ES256KeyPair::from_pem(&pem) {
-            Ok(key_pair) => key_pair,
-            Err(_) => {
-                let pem = Pem::iter_from_buffer(pem.as_bytes())
-                    .next()
-                    .unwrap()
-                    .unwrap();
-                let x509 = pem.parse_x509().expect("X.509: decoding DER failed");
-                let raw = &x509.public_key().subject_public_key.data;
-
-                ES256KeyPair::from_bytes(raw).unwrap()
-            }
-        });
+        let key_pair = Arc::new(load_keypair(&pem).unwrap());
 
         Ok(KeyPair { path: s, key_pair })
     }
