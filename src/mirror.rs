@@ -33,7 +33,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
             None => continue,
         };
 
-        urls.push(format!("http://{url}/{repo}/blobs/{digest}"));
+        urls.push(format!("http://{url}/v2/{repo}/blobs/{digest}"));
     }
 
     let url = urls
