@@ -22,12 +22,16 @@ pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 pub(crate) struct StateFixture {
     _guard: Box<dyn std::any::Any + Send>,
     dirs: Vec<TempDir>,
-    registries: Vec<Arc<RegistryState>>,
+    pub registries: Vec<Arc<RegistryState>>,
     tasks: JoinSet<Result<()>>,
 }
 
 impl StateFixture {
     pub(crate) async fn new() -> Result<Self> {
+        Self::with_size(1).await
+    }
+
+    pub(crate) async fn with_size(cluster_size: usize) -> Result<Self> {
         let lock = EXCLUSIVE_TEST_LOCK.lock().await;
         unsafe {
             std::env::set_var("ENC_KEY_ACTIVE", "828W10qknpOT");
@@ -37,12 +41,15 @@ impl StateFixture {
             );
         }
 
-        let nodes = vec![DistyNode {
-            id: 1,
-            addr_api: "127.0.0.1:9999".into(),
-            addr_raft: "127.0.0.1:9998".into(),
-            addr_registry: "127.0.0.1:9997".into(),
-        }];
+        let nodes = (0..cluster_size)
+            .into_iter()
+            .map(|idx| DistyNode {
+                id: (idx + 1) as u64,
+                addr_api: format!("127.0.0.1:{}", 9999 - 3 * idx),
+                addr_raft: format!("127.0.0.1:{}", 9999 - 3 * idx - 1),
+                addr_registry: format!("127.0.0.1:{}", 9999 - 3 * idx - 2),
+            })
+            .collect::<Vec<DistyNode>>();
 
         let mut tasks = JoinSet::new();
         let mut registries = vec![];

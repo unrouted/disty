@@ -192,14 +192,15 @@ impl RegistryState {
     pub async fn blob_downloaded(&self, digest: &Digest) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
-        let rows_affected = self.client
+        let rows_affected = self
+            .client
             .execute(
-                "UPDATE blobs SET location = (location | $2) WHERE digest = $1;",
-                params!(digest.to_string(), location),
+                "UPDATE blobs SET location = (location | $1) WHERE digest = $2;",
+                params!(location, digest.to_string()),
             )
             .await?;
 
-        println!("{rows_affected} rows affected");
+        assert_eq!(rows_affected, 1);
 
         Ok(())
     }
@@ -479,6 +480,42 @@ mod tests {
 
         Ok(())
     }
+
+    /*    #[test(tokio::test)]
+    async fn test_blob_mirror() -> Result<()> {
+        let registry = StateFixture::with_size(3).await?;
+
+        let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        assert_eq!(None, registry.get_blob(&digest).await?);
+
+        registry
+            .insert_blob(
+                "library/nginx",
+                &digest,
+                55,
+                "application/octet-stream",
+                "bob",
+            )
+            .await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
+        assert_eq!(blob.digest, digest);
+
+        let blobs = registry.registries[1].get_missing_blobs().await?;
+        assert_eq!(blob, blobs[0]);
+
+        registry.registries[1].blob_downloaded(&digest).await?;
+
+        let blobs = registry.registries[1].get_missing_blobs().await?;
+        assert_eq!(blobs.is_empty(), true);
+
+        registry.teardown().await?;
+
+        Ok(())
+    }*/
 
     #[test(tokio::test)]
     async fn test_manifest() -> Result<()> {

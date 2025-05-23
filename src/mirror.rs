@@ -103,7 +103,9 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
     let storage_path = state.get_blob_path(&blob.digest);
 
-    let parent = storage_path.parent().context("Couldn't find parent directory")?;
+    let parent = storage_path
+        .parent()
+        .context("Couldn't find parent directory")?;
     tokio::fs::create_dir_all(parent).await?;
 
     tokio::fs::rename(file_name, storage_path).await?;
