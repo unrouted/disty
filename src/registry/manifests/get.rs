@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
 
@@ -53,10 +53,14 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
+    error!("GOT DIGEST: {:?}", Digest::try_from(tag.clone()));
+
     let manifest = match Digest::try_from(tag.clone()) {
         Ok(digest) => registry.get_manifest(&repository, &digest).await?,
         Err(_) => registry.get_tag(&repository, &tag).await?,
     };
+
+    error!("GOT MANUIFEST: {:?}", manifest);
 
     let manifest = match manifest {
         Some(manifest) => manifest,
@@ -69,7 +73,7 @@ pub(crate) async fn get(
 
     let manifest_path = registry.get_manifest_path(&manifest.digest);
     if !manifest_path.is_file() {
-        debug!("Expected manifest file does not exist");
+        error!("Expected manifest file does not exist: {}", manifest_path);
         return Err(RegistryError::ManifestNotFound {});
     }
 
