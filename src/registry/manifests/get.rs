@@ -73,7 +73,7 @@ pub(crate) async fn get(
 
     let manifest_path = registry.get_manifest_path(&manifest.digest);
     if !manifest_path.is_file() {
-        error!("Expected manifest file does not exist: {}", manifest_path);
+        error!("Expected manifest file does not exist: {:?}", manifest_path);
         return Err(RegistryError::ManifestNotFound {});
     }
 
