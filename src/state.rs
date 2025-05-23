@@ -250,7 +250,7 @@ impl RegistryState {
         let res: Option<ManifestRow> = self
             .client
             .query_as_optional(
-                "SELECT m.*
+                "SELECT m.*, r.name
                         FROM manifests m
                         JOIN repositories r ON m.repository_id = r.id
                         WHERE m.digest = $1
@@ -266,7 +266,7 @@ impl RegistryState {
                 size: row.size,
                 media_type: row.media_type,
                 location: row.location,
-                repository: repository.to_string(),
+                repository: row.repository,
             }),
             None => None,
         })
