@@ -292,6 +292,7 @@ impl TryFrom<Configuration> for NodeConfig {
                 .secret
                 .context("You must provide a raft secret")?,
             secret_api: value.api.secret.context("You must provide an API secret")?,
+            log_statements: true,
             ..Default::default()
         })
     }
