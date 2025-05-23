@@ -25,6 +25,7 @@ struct ManifestRow {
     size: u32,
     media_type: String,
     location: u32,
+    repository: String,
 }
 
 #[derive(Deserialize)]
@@ -200,8 +201,6 @@ impl RegistryState {
             )
             .await?;
 
-        assert_eq!(rows_affected, 1);
-
         Ok(())
     }
 
@@ -222,7 +221,7 @@ impl RegistryState {
         let res: Option<ManifestRow> = self
             .client
             .query_as_optional(
-                "SELECT m.*
+                "SELECT m.*, r.name AS repository
                     FROM repositories r
                     JOIN tags t ON t.repository_id = r.id
                     JOIN manifests m ON t.manifest_id = m.id
@@ -330,6 +329,19 @@ impl RegistryState {
         Ok(())
     }
 
+    pub async fn manifest_downloaded(&self, digest: &Digest) -> Result<()> {
+        let location = 1 << (self.node_id - 1);
+        // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
+        self.client
+            .execute(
+                "UPDATE manifests SET location = (location | $1) WHERE digest = $2;",
+                params!(location, digest.to_string()),
+            )
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
         self.client
             .execute(
@@ -404,6 +416,31 @@ impl RegistryState {
                     .await?
                     .into_iter()
                     .collect(),
+            });
+        }
+
+        Ok(res)
+    }
+
+    pub async fn get_missing_manifests(&self) -> Result<Vec<Manifest>> {
+        let location = 1 << (self.node_id - 1);
+
+        let blobs: Vec<ManifestRow> = self
+            .client
+            .query_as(
+                "SELECT m.*, r.name AS repository FROM manifests m JOIN repositories r ON m.repository_id = r.id WHERE (location & $1) = 0;",
+                params!(location),
+            )
+            .await?;
+        let mut res = vec![];
+
+        for manifest in blobs.into_iter() {
+            res.push(Manifest {
+                digest: manifest.digest.clone(),
+                size: manifest.size,
+                media_type: manifest.media_type,
+                location: manifest.location,
+                repository: manifest.repository,
             });
         }
 
