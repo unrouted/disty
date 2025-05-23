@@ -194,7 +194,7 @@ impl RegistryState {
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
         self.client
             .execute(
-                "UPDATE blobs SET location = location | (1 << $2) WHERE digest = $1;",
+                "UPDATE blobs SET location = location | $2 WHERE digest = $1;",
                 params!(digest.to_string(), location),
             )
             .await?;
