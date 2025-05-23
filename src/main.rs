@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use axum::{ServiceExt, extract::Request};
 use clap::Parser;
 use extractor::Extractor;
 use hiqlite::cache_idx::CacheIndex;
@@ -9,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use state::RegistryState;
 use std::{fmt::Debug, sync::Arc};
 use tokio::task::JoinSet;
+use tower::Layer;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -97,6 +99,8 @@ async fn main() -> Result<()> {
     crate::mirror::start_mirror(&mut tasks, state.clone())?;
 
     let app = router(state.clone());
+    let app = registry::RewriteUriLayer {}.layer(app);
+    let app = ServiceExt::<Request>::into_make_service(app);
 
     let node = config
         .nodes

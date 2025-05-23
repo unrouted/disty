@@ -7,8 +7,11 @@ use axum::{
 
 use crate::state::RegistryState;
 
+pub(crate) use middleware::RewriteUriLayer;
+
 mod blobs;
 mod manifests;
+mod middleware;
 mod root;
 mod tags;
 mod utils;

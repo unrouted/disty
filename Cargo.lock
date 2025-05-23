@@ -1134,6 +1134,7 @@ dependencies = [
  "jwt-simple",
  "once_cell",
  "p256",
+ "percent-encoding",
  "platform-dirs",
  "prometheus-client",
  "rand 0.9.1",
