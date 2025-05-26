@@ -8,7 +8,7 @@ use prometheus_client::registry::Registry;
 use registry::router;
 use serde::{Deserialize, Serialize};
 use state::RegistryState;
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, sync::Arc};
 use tokio::task::JoinSet;
 use tower::Layer;
 use tracing::info;
@@ -19,6 +19,7 @@ mod digest;
 mod error;
 mod extractor;
 mod issuer;
+mod jwt;
 mod mirror;
 mod notify;
 mod registry;
@@ -100,7 +101,7 @@ async fn main() -> Result<()> {
 
     let app = router(state.clone());
     let app = registry::RewriteUriLayer {}.layer(app);
-    let app = ServiceExt::<Request>::into_make_service(app);
+    let app = ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(app);
 
     let node = config
         .nodes

@@ -49,10 +49,12 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
             let token = issue_token(
                 &token_server,
                 vec![Access {
-                    repository: repo.to_string(),
-                    permissions: ["pull".to_string()].into_iter().collect(),
+                    type_: "repository".to_string(),
+                    name: repo.to_string(),
+                    actions: ["pull".to_string()].into_iter().collect(),
                 }],
-            )?;
+            )?
+            .token;
             req.header("Authorization", format!("Bearer {token}"))
         }
         None => req,
@@ -149,10 +151,12 @@ async fn download_manifest(
             let token = issue_token(
                 &token_server,
                 vec![Access {
-                    repository: repo.to_string(),
-                    permissions: ["pull".to_string()].into_iter().collect(),
+                    type_: "repository".to_string(),
+                    name: repo.to_string(),
+                    actions: ["pull".to_string()].into_iter().collect(),
                 }],
-            )?;
+            )?
+            .token;
             req.header("Authorization", format!("Bearer {token}"))
         }
         None => req,

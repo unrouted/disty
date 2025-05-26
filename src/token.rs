@@ -32,10 +32,10 @@ impl IntoResponse for TokenError {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Access {
-    #[serde(rename = "name")]
-    pub repository: String,
-    #[serde(rename = "actions")]
-    pub permissions: HashSet<String>,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub name: String,
+    pub actions: HashSet<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -65,13 +65,8 @@ impl Token {
 
         let mut scopes = vec![];
         for req in access.iter() {
-            let repository = &req.repository;
-            let actions = req
-                .permissions
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(",");
+            let repository = &req.name;
+            let actions = req.actions.iter().cloned().collect::<Vec<_>>().join(",");
             scopes.push(format!("repository:{repository}:{actions}"));
         }
         let scope = scopes.join(" ");
@@ -81,15 +76,17 @@ impl Token {
 
     pub fn get_pull_challenge(&self, repository: &str) -> String {
         self.get_challenge(vec![Access {
-            repository: repository.to_string(),
-            permissions: HashSet::from(["pull".to_string()]),
+            type_: "repository".to_string(),
+            name: repository.to_string(),
+            actions: HashSet::from(["pull".to_string()]),
         }])
     }
 
     pub fn get_push_challenge(&self, repository: &str) -> String {
         self.get_challenge(vec![Access {
-            repository: repository.to_string(),
-            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
+            type_: "repository".to_string(),
+            name: repository.to_string(),
+            actions: HashSet::from(["pull".to_string(), "push".to_string()]),
         }])
     }
 
@@ -122,7 +119,7 @@ impl Token {
         for access in self.access.iter() {
             debug!("Checking {access:?}");
 
-            if access.repository == repository && access.permissions.contains(permission) {
+            if access.name == repository && access.actions.contains(permission) {
                 return true;
             }
         }

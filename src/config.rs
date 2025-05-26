@@ -1,4 +1,10 @@
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use anyhow::{Context, Result, bail};
 use figment::{
@@ -6,6 +12,7 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
 };
 use hiqlite::{Node, NodeConfig};
+use ip_network::IpNetwork;
 use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -14,6 +21,8 @@ use regex::Regex;
 use sec1::DecodeEcPrivateKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use x509_parser::prelude::Pem;
+
+use crate::jwt::JWKSPublicKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistyNode {
@@ -164,6 +173,58 @@ pub struct TokenConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct JwtRule {
+    pub issuer: Option<String>,
+    pub claims: Option<HashMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MatchRule {
+    /// Name of the registry
+    pub repository: Option<String>,
+
+    /// IP address that token can be requested from
+    pub network: Option<IpNetwork>,
+
+    /// Username or token subject
+    pub username: Option<String>,
+
+    /// JWT specific matching rules
+    pub jwt: Option<JwtRule>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AccessRule {
+    pub check: MatchRule,
+    pub actions: HashSet<String>,
+    pub comment: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Issuer {
+    pub issuer: String,
+    pub service: String,
+    pub realm: String,
+    pub key_pair: KeyPair,
+    pub users: Vec<User>,
+    pub acls: Vec<AccessRule>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum User {
+    Password {
+        username: String,
+        password: String,
+    },
+    Token {
+        username: String,
+        issuer: JWKSPublicKey
+    }
+}
+
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     pub url: String,
 
@@ -211,6 +272,7 @@ pub struct Configuration {
     pub api: ApiConfig,
     pub prometheus: PrometheusConfig,
     pub token_server: Option<TokenConfig>,
+    pub issuer: Option<Issuer>,
     #[serde(deserialize_with = "deserialize_absolute")]
     pub storage: PathBuf,
     pub webhooks: Vec<WebhookConfig>,
@@ -306,6 +368,7 @@ impl Default for Configuration {
             api: ApiConfig::default(),
             prometheus: PrometheusConfig::default(),
             token_server: None,
+            issuer: None,
             storage: "var".to_string().into(),
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),

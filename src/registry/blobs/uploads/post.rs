@@ -39,14 +39,16 @@ pub(crate) async fn post(
 ) -> Result<Response, RegistryError> {
     if !token.validated_token {
         let mut access = vec![Access {
-            repository: repository.clone(),
-            permissions: HashSet::from(["pull".to_string(), "push".to_string()]),
+            type_: "repository".to_string(),
+            name: repository.clone(),
+            actions: HashSet::from(["pull".to_string(), "push".to_string()]),
         }];
 
         if let Some(from) = &from {
             access.push(Access {
-                repository: from.clone(),
-                permissions: HashSet::from(["pull".to_string()]),
+                type_: "repository".to_string(),
+                name: from.clone(),
+                actions: HashSet::from(["pull".to_string()]),
             });
         }
 

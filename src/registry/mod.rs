@@ -14,10 +14,12 @@ mod manifests;
 mod middleware;
 mod root;
 mod tags;
+mod token;
 mod utils;
 
 pub fn router(state: Arc<RegistryState>) -> Router {
     Router::new()
+        .route("/token", get(token::token))
         .route("/v2/", get(root::get).head(root::get))
         .route(
             "/v2/{repository}/blobs/uploads/{upload_id}",
