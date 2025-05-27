@@ -13,7 +13,7 @@ use std::{collections::HashSet, sync::Arc};
 use thiserror::Error;
 use tracing::{debug, info};
 
-use crate::state::RegistryState;
+use crate::{config::acl::Action, state::RegistryState};
 
 #[derive(Debug, Error)]
 pub enum TokenError {
@@ -35,7 +35,7 @@ pub(crate) struct Access {
     #[serde(rename = "type")]
     pub type_: String,
     pub name: String,
-    pub actions: HashSet<String>,
+    pub actions: HashSet<Action>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,7 +66,12 @@ impl Token {
         let mut scopes = vec![];
         for req in access.iter() {
             let repository = &req.name;
-            let actions = req.actions.iter().cloned().collect::<Vec<_>>().join(",");
+            let actions = req
+                .actions
+                .iter()
+                .map(|action| action.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
             scopes.push(format!("repository:{repository}:{actions}"));
         }
         let scope = scopes.join(" ");
@@ -78,7 +83,7 @@ impl Token {
         self.get_challenge(vec![Access {
             type_: "repository".to_string(),
             name: repository.to_string(),
-            actions: HashSet::from(["pull".to_string()]),
+            actions: HashSet::from([Action::Pull]),
         }])
     }
 
@@ -86,7 +91,7 @@ impl Token {
         self.get_challenge(vec![Access {
             type_: "repository".to_string(),
             name: repository.to_string(),
-            actions: HashSet::from(["pull".to_string(), "push".to_string()]),
+            actions: HashSet::from([Action::Pull, Action::Push]),
         }])
     }
 
@@ -119,7 +124,11 @@ impl Token {
         for access in self.access.iter() {
             debug!("Checking {access:?}");
 
-            if access.name == repository && access.actions.contains(permission) {
+            if access.name == repository
+                && access
+                    .actions
+                    .contains(&Action::try_from(permission.to_string()).unwrap())
+            {
                 return true;
             }
         }

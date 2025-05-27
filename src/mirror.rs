@@ -9,6 +9,7 @@ use tokio_stream::wrappers::IntervalStream;
 use tracing::{debug, error, info};
 
 use crate::{
+    config::acl::Action,
     digest::Digest,
     issuer::issue_token,
     notify::Notification,
@@ -51,7 +52,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
-                    actions: ["pull".to_string()].into_iter().collect(),
+                    actions: [Action::Pull].into_iter().collect(),
                 }],
             )?
             .token;
@@ -153,7 +154,7 @@ async fn download_manifest(
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
-                    actions: ["pull".to_string()].into_iter().collect(),
+                    actions: [Action::Pull].into_iter().collect(),
                 }],
             )?
             .token;

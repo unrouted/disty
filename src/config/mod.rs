@@ -1,10 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{borrow::Cow, path::PathBuf, sync::Arc};
 
 use acl::AccessRule;
 use anyhow::{Context, Result, bail};
@@ -13,7 +7,6 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
 };
 use hiqlite::{Node, NodeConfig};
-use ip_network::IpNetwork;
 use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -25,7 +18,7 @@ use x509_parser::prelude::Pem;
 
 use crate::jwt::JWKSPublicKey;
 
-mod acl;
+pub(crate) mod acl;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistyNode {
@@ -194,10 +187,9 @@ pub enum User {
     },
     Token {
         username: String,
-        issuer: JWKSPublicKey
-    }
+        issuer: JWKSPublicKey,
+    },
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {

@@ -10,6 +10,7 @@ use serde::Deserialize;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::config::acl::Action;
 use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::registry::utils::{upload_part, validate_hash};
@@ -41,14 +42,14 @@ pub(crate) async fn post(
         let mut access = vec![Access {
             type_: "repository".to_string(),
             name: repository.clone(),
-            actions: HashSet::from(["pull".to_string(), "push".to_string()]),
+            actions: HashSet::from([Action::Pull, Action::Push]),
         }];
 
         if let Some(from) = &from {
             access.push(Access {
                 type_: "repository".to_string(),
                 name: from.clone(),
-                actions: HashSet::from(["pull".to_string()]),
+                actions: HashSet::from([Action::Pull]),
             });
         }
 
