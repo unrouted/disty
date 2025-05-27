@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use acl::AccessRule;
 use anyhow::{Context, Result, bail};
 use figment::{
     Figment,
@@ -23,6 +24,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use x509_parser::prelude::Pem;
 
 use crate::jwt::JWKSPublicKey;
+
+mod acl;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistyNode {
@@ -170,34 +173,6 @@ pub struct TokenConfig {
     pub realm: String,
     pub public_key: PublicKey,
     pub key_pair: KeyPair,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct JwtRule {
-    pub issuer: Option<String>,
-    pub claims: Option<HashMap<String, String>>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MatchRule {
-    /// Name of the registry
-    pub repository: Option<String>,
-
-    /// IP address that token can be requested from
-    pub network: Option<IpNetwork>,
-
-    /// Username or token subject
-    pub username: Option<String>,
-
-    /// JWT specific matching rules
-    pub jwt: Option<JwtRule>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AccessRule {
-    pub check: MatchRule,
-    pub actions: HashSet<String>,
-    pub comment: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
