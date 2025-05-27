@@ -2,6 +2,7 @@ use std::{ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
+use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
@@ -10,13 +11,41 @@ use tower::ServiceExt;
 
 use crate::{
     Cache, Migrations,
-    config::{ApiConfig, Configuration, DistyNode, RaftConfig},
+    config::{ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig},
     webhook::WebhookService,
 };
 
 use super::*;
 
 pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+struct FixtureBuilder {
+    pub cluster_size: u64,
+    pub issuer: bool,
+}
+
+impl FixtureBuilder {
+    pub fn new() -> Self {
+        FixtureBuilder {
+            cluster_size: 1,
+            issuer: false,
+        }
+    }
+
+    pub fn cluster_size(mut self, size: u64) -> Self {
+        self.cluster_size = size;
+        self
+    }
+
+    pub fn issuer(mut self, issuer: bool) -> Self {
+        self.issuer = issuer;
+        self
+    }
+
+    pub async fn build(self) -> Result<StateFixture> {
+        StateFixture::with_builder(self).await
+    }
+}
 
 #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
 pub(crate) struct StateFixture {
@@ -28,10 +57,25 @@ pub(crate) struct StateFixture {
 
 impl StateFixture {
     pub(crate) async fn new() -> Result<Self> {
-        Self::with_size(1).await
+        FixtureBuilder::new().build().await
     }
 
-    pub(crate) async fn with_size(cluster_size: usize) -> Result<Self> {
+    async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
+        let issuer = match builder.issuer {
+            true => Some(Issuer {
+                issuer: "some-issuer".into(),
+                audience: "some-audience".into(),
+                realm: "fixme".into(),
+                key_pair: KeyPair {
+                    path: "/tmp".into(),
+                    key_pair: Arc::new(ES256KeyPair::generate()),
+                },
+                users: vec![],
+                acls: vec![],
+            }),
+            false => None,
+        };
+
         let lock = EXCLUSIVE_TEST_LOCK.lock().await;
         unsafe {
             std::env::set_var("ENC_KEY_ACTIVE", "828W10qknpOT");
@@ -41,7 +85,7 @@ impl StateFixture {
             );
         }
 
-        let nodes = (0..cluster_size)
+        let nodes = (0..builder.cluster_size)
             .into_iter()
             .map(|idx| DistyNode {
                 id: (idx + 1) as u64,
@@ -71,6 +115,7 @@ impl StateFixture {
                     ..Default::default()
                 },
                 nodes: nodes.clone(),
+                issuer: issuer.clone(),
                 ..Default::default()
             };
 
@@ -125,9 +170,11 @@ pub(crate) struct RegistryFixture {
 impl RegistryFixture {
     pub async fn new() -> Result<RegistryFixture> {
         let state = StateFixture::new().await?;
+        Self::with_state(state)
+    }
 
+    pub fn with_state(state: StateFixture) -> Result<RegistryFixture> {
         let router = crate::router(state.registries[0].clone());
-
         Ok(RegistryFixture { state, router })
     }
 

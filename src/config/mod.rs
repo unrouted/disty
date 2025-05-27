@@ -171,7 +171,7 @@ pub struct TokenConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Issuer {
     pub issuer: String,
-    pub service: String,
+    pub audience: String,
     pub realm: String,
     pub key_pair: KeyPair,
     pub users: Vec<User>,

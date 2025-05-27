@@ -139,3 +139,43 @@ pub(crate) async fn token(
     })
     .into_response())
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use axum::{body::Body, http::Request};
+    use base64::engine::{Engine, general_purpose::STANDARD};
+    use http_body_util::BodyExt;
+    use serde_json::Value;
+    use test_log::test;
+
+    use crate::tests::RegistryFixture;
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn user_authentication_and_authorization() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let credentials = format!("{}:{}", "username", "password");
+        let encoded = STANDARD.encode(credentials);
+        let value = format!("Basic {}", encoded);
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/token")
+                    .header("Authorization", value)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let value: Value = serde_json::from_slice(&body)?;
+
+        fixture.teardown().await
+    }
+}
