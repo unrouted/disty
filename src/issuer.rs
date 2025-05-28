@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use jwt_simple::prelude::*;
 
-use crate::config::TokenConfig;
+use crate::config::Issuer;
 use crate::token::{Access, AdditionalClaims};
 
 pub(crate) struct Token {
@@ -24,11 +24,11 @@ fn duration_until(unix_timestamp: UnixTimeStamp) -> Result<std::time::Duration> 
         .context("Time is in the past")
 }
 
-pub(crate) fn issue_token(config: &TokenConfig, access: Vec<Access>) -> Result<Token> {
+pub(crate) fn issue_token(config: &Issuer, access: Vec<Access>) -> Result<Token> {
     let custom_claims = AdditionalClaims { access };
     let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
         .with_issuer(&config.issuer)
-        .with_audience(&config.service)
+        .with_audience(&config.audience)
         .with_subject("$mirror");
 
     let expires_in = duration_until(claims.expires_at.context("Failed to set expiry")?)?;

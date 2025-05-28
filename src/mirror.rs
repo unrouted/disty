@@ -45,10 +45,10 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
     let req = client.get(url);
 
-    let req = match &state.config.token_server {
-        Some(token_server) => {
+    let req = match &state.config.issuer {
+        Some(issuer) => {
             let token = issue_token(
-                &token_server,
+                &issuer,
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
@@ -147,10 +147,10 @@ async fn download_manifest(
 
     let req = client.get(url);
 
-    let req = match &state.config.token_server {
-        Some(token_server) => {
+    let req = match &state.config.issuer {
+        Some(issuer) => {
             let token = issue_token(
-                &token_server,
+                &issuer,
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),

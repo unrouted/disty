@@ -72,7 +72,7 @@ impl StateFixture {
                 },
                 users: vec![User::Password {
                     username: "username".into(),
-                    password: "$6FMi11BJFsAc".into(),
+                    password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
                 }],
                 acls: vec![],
             }),

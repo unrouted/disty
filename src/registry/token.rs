@@ -99,7 +99,10 @@ pub(crate) async fn token(
         let parts: Vec<&str> = scope.split(':').collect();
         if parts.len() == 3 && parts[0] == "repository" {
             let repo = parts[1];
-            let action = Action::try_from(parts[2].to_string()).unwrap();
+            let actions: Vec<_> = parts[2]
+                .split(",")
+                .map(|split| Action::try_from(split.to_string()).unwrap())
+                .collect();
 
             let allowed_actions = issuer.acls.check_access(&RequestContext {
                 username: authorization.username().to_string(),
@@ -107,11 +110,13 @@ pub(crate) async fn token(
                 ip: addr.ip(),
                 repository: repo.to_string(),
             });
-            if allowed_actions.contains(&action) {
-                access_map
-                    .entry(repo.to_string())
-                    .or_insert_with(HashSet::new)
-                    .insert(action);
+            for action in actions {
+                if allowed_actions.contains(&action) {
+                    access_map
+                        .entry(repo.to_string())
+                        .or_insert_with(HashSet::new)
+                        .insert(action);
+                }
             }
         }
     }
@@ -125,10 +130,7 @@ pub(crate) async fn token(
         })
         .collect();
 
-    let token = issue_token(
-        registry.config.token_server.as_ref().unwrap(),
-        access_entries,
-    )?;
+    let token = issue_token(issuer, access_entries)?;
 
     Ok(Json(TokenResponse {
         token: token.token,
