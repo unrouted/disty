@@ -146,7 +146,15 @@ impl IntoResponse for RegistryError {
                     .body(Body::empty())
             }
         }
-        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response())
+        .unwrap_or_else(|err| {
+            let err = err.into();
+            error!(
+                error = %format_error(&err),
+                backtrace = ?err.backtrace(),
+                "Registry error"
+            );
+            (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response()
+        })
     }
 }
 
@@ -155,6 +163,13 @@ where
     E: Into<anyhow::Error>,
 {
     fn from(err: E) -> Self {
-        Self::Unhandled(err.into())
+        let err = err.into();
+        println!("{}", format_error(&err));
+        error!(
+            error = %format_error(&err),
+            backtrace = ?err.backtrace(),
+            "Registry error"
+        );
+        Self::Unhandled(err)
     }
 }

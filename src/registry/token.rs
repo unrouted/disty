@@ -8,10 +8,10 @@ use std::{
 use anyhow::Result;
 use axum::{
     Json,
-    extract::{ConnectInfo, Query, State},
+    extract::{ConnectInfo, State},
     response::{IntoResponse, Response},
 };
-use axum_extra::TypedHeader;
+use axum_extra::{TypedHeader, extract::Query};
 use headers::{
     Authorization,
     authorization::{self, Basic},
@@ -81,7 +81,7 @@ pub async fn authenticate(
 
 pub(crate) async fn token(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Query(params): Query<TokenRequest>,
+    Query(TokenRequest { service, scope }): Query<TokenRequest>,
     authorization: TypedHeader<Authorization<Basic>>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
@@ -95,7 +95,7 @@ pub(crate) async fn token(
 
     let mut access_map: HashMap<String, HashSet<Action>> = HashMap::new();
 
-    for scope in &params.scope {
+    for scope in &scope {
         let parts: Vec<&str> = scope.split(':').collect();
         if parts.len() == 3 && parts[0] == "repository" {
             let repo = parts[1];
@@ -147,15 +147,17 @@ mod test {
     use base64::engine::{Engine, general_purpose::STANDARD};
     use http_body_util::BodyExt;
     use serde_json::Value;
+    use std::net::SocketAddr;
     use test_log::test;
 
-    use crate::tests::RegistryFixture;
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
 
     #[test(tokio::test)]
     pub async fn user_authentication_and_authorization() -> Result<()> {
-        let fixture = RegistryFixture::new().await?;
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().issuer(true).build().await?)?;
 
         let credentials = format!("{}:{}", "username", "password");
         let encoded = STANDARD.encode(credentials);
@@ -164,8 +166,9 @@ mod test {
         let res = fixture
             .request(
                 Request::builder()
+                    .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token")
+                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -175,6 +178,8 @@ mod test {
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: Value = serde_json::from_slice(&body)?;
+
+        println!("{:?}", value);
 
         fixture.teardown().await
     }

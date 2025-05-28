@@ -11,7 +11,7 @@ use tower::ServiceExt;
 
 use crate::{
     Cache, Migrations,
-    config::{ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig},
+    config::{ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig, User},
     webhook::WebhookService,
 };
 
@@ -19,7 +19,7 @@ use super::*;
 
 pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
-struct FixtureBuilder {
+pub struct FixtureBuilder {
     pub cluster_size: u64,
     pub issuer: bool,
 }
@@ -70,7 +70,10 @@ impl StateFixture {
                     path: "/tmp".into(),
                     key_pair: Arc::new(ES256KeyPair::generate()),
                 },
-                users: vec![],
+                users: vec![User::Password {
+                    username: "username".into(),
+                    password: "$6FMi11BJFsAc".into(),
+                }],
                 acls: vec![],
             }),
             false => None,
