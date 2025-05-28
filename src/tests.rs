@@ -89,9 +89,8 @@ impl StateFixture {
         }
 
         let nodes = (0..builder.cluster_size)
-            .into_iter()
             .map(|idx| DistyNode {
-                id: (idx + 1) as u64,
+                id: (idx + 1),
                 addr_api: format!("127.0.0.1:{}", 9999 - 3 * idx),
                 addr_raft: format!("127.0.0.1:{}", 9999 - 3 * idx - 1),
                 addr_registry: format!("127.0.0.1:{}", 9999 - 3 * idx - 2),

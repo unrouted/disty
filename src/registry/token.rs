@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     sync::Arc,
 };
 
@@ -12,10 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::{TypedHeader, extract::Query};
-use headers::{
-    Authorization,
-    authorization::{self, Basic},
-};
+use headers::{Authorization, authorization::Basic};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
@@ -114,7 +110,7 @@ pub(crate) async fn token(
                 if allowed_actions.contains(&action) {
                     access_map
                         .entry(repo.to_string())
-                        .or_insert_with(HashSet::new)
+                        .or_default()
                         .insert(action);
                 }
             }

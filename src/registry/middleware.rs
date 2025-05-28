@@ -1,9 +1,6 @@
 use std::task::{Context, Poll};
 
-use axum::{
-    body::Body,
-    http::{Request, Response, Uri},
-};
+use axum::http::{Request, Response, Uri};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use regex::{Captures, Regex};
 use tower::Service;

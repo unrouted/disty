@@ -137,11 +137,7 @@ impl JWKSPublicKey {
         let key_obj = inner
             .keys
             .iter()
-            .find(|k| {
-                k.get("kid")
-                    .and_then(Value::as_str)
-                    .map_or(false, |kval| kval == kid)
-            })
+            .find(|k| k.get("kid").and_then(Value::as_str) == Some(kid))
             .ok_or_else(|| JwksCacheError::KeyNotFound(kid.to_string()))?;
 
         let n_b64 = key_obj

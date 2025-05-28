@@ -48,7 +48,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
     let req = match &state.config.issuer {
         Some(issuer) => {
             let token = issue_token(
-                &issuer,
+                issuer,
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
@@ -150,7 +150,7 @@ async fn download_manifest(
     let req = match &state.config.issuer {
         Some(issuer) => {
             let token = issue_token(
-                &issuer,
+                issuer,
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
@@ -222,13 +222,13 @@ async fn download_manifest(
 
 async fn ensure_mirrored(state: &RegistryState, client: &Client) -> Result<()> {
     for blob in state.get_missing_blobs().await? {
-        if let Err(e) = download_blob(&blob, &state, &client).await {
+        if let Err(e) = download_blob(&blob, state, client).await {
             error!("Failed to mirror blob {}: {e:?}", blob.digest);
         };
     }
 
     for manifest in state.get_missing_manifests().await? {
-        if let Err(e) = download_manifest(&manifest, &state, &client).await {
+        if let Err(e) = download_manifest(&manifest, state, client).await {
             error!("Failed to mirror blob {}: {e:?}", manifest.digest);
         };
     }

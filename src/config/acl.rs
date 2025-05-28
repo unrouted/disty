@@ -81,16 +81,16 @@ impl MatchRule {
     fn matches(&self, ctx: &RequestContext) -> bool {
         self.username
             .as_ref()
-            .map_or(true, |m| m.matches(&ctx.username))
-            && self.network.map_or(true, |net| net.contains(ctx.ip))
+            .is_none_or(|m| m.matches(&ctx.username))
+            && self.network.is_none_or(|net| net.contains(ctx.ip))
             && self
                 .repository
                 .as_ref()
-                .map_or(true, |m| m.matches(&ctx.repository))
-            && self.claims.as_ref().map_or(true, |required| {
+                .is_none_or(|m| m.matches(&ctx.repository))
+            && self.claims.as_ref().is_none_or(|required| {
                 required
                     .iter()
-                    .all(|(k, matcher)| ctx.claims.get(k).map_or(false, |v| matcher.matches(v)))
+                    .all(|(k, matcher)| ctx.claims.get(k).is_some_and(|v| matcher.matches(v)))
             })
     }
 }

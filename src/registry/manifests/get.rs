@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
-use tracing::{debug, error};
+use tracing::error;
 
 use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
 
