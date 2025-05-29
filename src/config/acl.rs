@@ -37,7 +37,7 @@ impl Action {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum StringMatch {
+pub enum StringMatch {
     Exact(String),
     Regex {
         #[serde(with = "serde_regex")]
@@ -62,7 +62,7 @@ pub struct RequestContext {
     pub repository: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct MatchRule {
     /// Name of the registry
     pub repository: Option<StringMatch>,

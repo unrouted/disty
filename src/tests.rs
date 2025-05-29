@@ -1,11 +1,8 @@
-use std::{collections::HashMap, ops::Deref, path::PathBuf};
+use std::{ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
-use jwt_simple::{
-    claims::Claims,
-    prelude::{Duration, ES256KeyPair},
-};
+use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
@@ -14,8 +11,9 @@ use tower::ServiceExt;
 
 use crate::{
     Cache, Migrations,
-    config::{ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig, User},
-    issuer::issue_token,
+    config::{
+        ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig, User, acl::AccessRule,
+    },
     webhook::WebhookService,
 };
 
@@ -26,6 +24,8 @@ pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 pub struct FixtureBuilder {
     pub cluster_size: u64,
     pub issuer: bool,
+    pub users: Vec<User>,
+    pub acls: Vec<AccessRule>,
 }
 
 impl FixtureBuilder {
@@ -33,6 +33,8 @@ impl FixtureBuilder {
         FixtureBuilder {
             cluster_size: 1,
             issuer: false,
+            users: vec![],
+            acls: vec![],
         }
     }
 
@@ -43,6 +45,16 @@ impl FixtureBuilder {
 
     pub fn issuer(mut self, issuer: bool) -> Self {
         self.issuer = issuer;
+        self
+    }
+
+    pub fn user(mut self, user: User) -> Self {
+        self.users.push(user);
+        self
+    }
+
+    pub fn acl(mut self, acl: AccessRule) -> Self {
+        self.acls.push(acl);
         self
     }
 
@@ -66,17 +78,7 @@ impl StateFixture {
 
     async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
         let issuer = match builder.issuer {
-            true => {
-                let gitlab_key = ES256KeyPair::generate();
-                let custom_claims = [("foo".to_string(), "bar".to_string())]
-                    .iter()
-                    .collect::<HashMap<String, String>>();
-                let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
-                    .with_issuer("gitlab")
-                    .with_audience("some-audience")
-                    .with_subject("$mirror");
-
-                Some(Issuer {
+            true => Some(Issuer {
                 issuer: "some-issuer".into(),
                 audience: "some-audience".into(),
                 realm: "fixme".into(),
@@ -84,13 +86,9 @@ impl StateFixture {
                     path: "/tmp".into(),
                     key_pair: Arc::new(ES256KeyPair::generate()),
                 },
-                users: vec![User::Password {
-                    username: "username".into(),
-                    password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
-                }],
-                acls: vec![],
-            })
-            }
+                users: builder.users.clone(),
+                acls: builder.acls.clone(),
+            }),
             false => None,
         };
 
@@ -180,7 +178,7 @@ impl Deref for StateFixture {
 }
 
 pub(crate) struct RegistryFixture {
-    state: StateFixture,
+    pub state: StateFixture,
     pub router: Router<()>,
 }
 

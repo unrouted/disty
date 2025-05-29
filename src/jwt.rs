@@ -16,6 +16,67 @@ use tokio_retry::Retry;
 use tokio_retry::strategy::{ExponentialBackoff, jitter};
 use tracing::{error, info, trace};
 
+mod base64url {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let encoded = URL_SAFE_NO_PAD.encode(bytes);
+        serializer.serialize_str(&encoded)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        URL_SAFE_NO_PAD
+            .decode(s.as_bytes())
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct JwkDocument {
+    keys: Vec<Jwk>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Jwk {
+    kty: String,
+    use_: String,
+    kid: String,
+    alg: String,
+    #[serde(with = "base64url")]
+    n: Vec<u8>,
+    #[serde(with = "base64url")]
+    e: Vec<u8>,
+}
+
+impl From<RS256PublicKey> for Jwk {
+    fn from(value: RS256PublicKey) -> Self {
+        Jwk {
+            kty: "RSA".into(),
+            use_: "sig".into(),
+            kid: "bob".into(),
+            alg: "RS256".into(),
+            n: value.to_components().n,
+            e: value.to_components().e,
+        }
+    }
+}
+
+impl TryInto<RS256PublicKey> for &Jwk {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> std::result::Result<RS256PublicKey, Self::Error> {
+        Ok(RS256PublicKey::from_components(&self.n, &self.e)?.with_key_id(&self.kid))
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum JwksCacheError {
     #[error("No key found for kid: {0}")]
@@ -27,7 +88,7 @@ pub enum JwksCacheError {
 
 #[derive(Debug)]
 struct JWKSCache {
-    keys: Vec<Value>,
+    keys: JwkDocument,
     expires_at: Instant,
 }
 
@@ -42,7 +103,7 @@ pub struct JWKSPublicKey {
 
 fn default_inner() -> Arc<RwLock<JWKSCache>> {
     Arc::new(RwLock::new(JWKSCache {
-        keys: Vec::new(),
+        keys: JwkDocument { keys: vec![] },
         expires_at: Instant::now(),
     }))
 }
@@ -51,7 +112,7 @@ impl JWKSPublicKey {
     pub fn new(jwks_url: &str, issuer: &str, audience: &str) -> Self {
         Self {
             inner: Arc::new(RwLock::new(JWKSCache {
-                keys: Vec::new(),
+                keys: JwkDocument { keys: vec![] },
                 expires_at: Instant::now(),
             })),
             jwks_url: jwks_url.to_string(),
@@ -60,7 +121,19 @@ impl JWKSPublicKey {
         }
     }
 
-    async fn fetch_jwks(&self) -> Result<(Vec<Value>, Instant)> {
+    #[cfg(test)]
+    pub async fn with_cache(self, public_key: RS256PublicKey) -> Self {
+        let mut guard = self.inner.write().await;
+        guard.keys = JwkDocument {
+            keys: vec![public_key.into()],
+        };
+        guard.expires_at = Instant::now() + Duration::from_secs(60 * 60);
+        drop(guard);
+
+        self
+    }
+
+    async fn fetch_jwks(&self) -> Result<(JwkDocument, Instant)> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5))
@@ -84,30 +157,25 @@ impl JWKSPublicKey {
         })
         .await?;
 
-        let jwks: Value = serde_json::from_str(&body).context("Failed to parse JWKS JSON")?;
-        let keys = jwks["keys"]
-            .as_array()
-            .context("Invalid JWKS: 'keys' is not an array")?
-            .clone();
+        let jwks: JwkDocument = serde_json::from_str(&body).context("Failed to parse JWKS JSON")?;
 
         let expires_at = parse_cache_headers(&headers)
             .unwrap_or_else(|| Instant::now() + Duration::from_secs(600));
 
-        Ok((keys, expires_at))
+        Ok((jwks, expires_at))
     }
 
     async fn refresh_if_needed(&self) -> Result<()> {
         {
             let inner = self.inner.read().await;
-            if inner.expires_at > Instant::now() && !inner.keys.is_empty() {
+            if inner.expires_at > Instant::now() && !inner.keys.keys.is_empty() {
                 trace!("JWKS cache still fresh");
                 return Ok(());
             }
         }
 
         let mut inner = self.inner.write().await;
-
-        if inner.expires_at > Instant::now() && !inner.keys.is_empty() {
+        if inner.expires_at > Instant::now() && !inner.keys.keys.is_empty() {
             trace!("JWKS cache was refreshed concurrently");
             return Ok(());
         }
@@ -136,32 +204,12 @@ impl JWKSPublicKey {
         let inner = self.inner.read().await;
         let key_obj = inner
             .keys
+            .keys
             .iter()
-            .find(|k| k.get("kid").and_then(Value::as_str) == Some(kid))
+            .find(|k| k.kid == kid)
             .ok_or_else(|| JwksCacheError::KeyNotFound(kid.to_string()))?;
 
-        let n_b64 = key_obj
-            .get("n")
-            .and_then(Value::as_str)
-            .context("Missing modulus 'n'")?;
-
-        let e_b64 = key_obj
-            .get("e")
-            .and_then(Value::as_str)
-            .context("Missing exponent 'e'")?;
-
-        let n_bytes = STANDARD
-            .decode(n_b64)
-            .context("Failed to decode base64url modulus")?;
-
-        let e_bytes = STANDARD
-            .decode(e_b64)
-            .context("Failed to decode base64url exponent")?;
-
-        let key = RS256PublicKey::from_components(&n_bytes, &e_bytes)
-            .context("Failed to build RS256PublicKey")?;
-
-        Ok(key)
+        key_obj.try_into()
     }
 
     fn extract_kid_from_token(token: &str) -> Result<String> {
