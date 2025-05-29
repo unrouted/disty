@@ -1,8 +1,11 @@
-use std::{ops::Deref, path::PathBuf};
+use std::{collections::HashMap, ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
-use jwt_simple::prelude::ES256KeyPair;
+use jwt_simple::{
+    claims::Claims,
+    prelude::{Duration, ES256KeyPair},
+};
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
 use tempfile::{TempDir, tempdir};
@@ -12,6 +15,7 @@ use tower::ServiceExt;
 use crate::{
     Cache, Migrations,
     config::{ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig, User},
+    issuer::issue_token,
     webhook::WebhookService,
 };
 
@@ -62,7 +66,17 @@ impl StateFixture {
 
     async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
         let issuer = match builder.issuer {
-            true => Some(Issuer {
+            true => {
+                let gitlab_key = ES256KeyPair::generate();
+                let custom_claims = [("foo".to_string(), "bar".to_string())]
+                    .iter()
+                    .collect::<HashMap<String, String>>();
+                let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
+                    .with_issuer("gitlab")
+                    .with_audience("some-audience")
+                    .with_subject("$mirror");
+
+                Some(Issuer {
                 issuer: "some-issuer".into(),
                 audience: "some-audience".into(),
                 realm: "fixme".into(),
@@ -75,7 +89,8 @@ impl StateFixture {
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
                 }],
                 acls: vec![],
-            }),
+            })
+            }
             false => None,
         };
 
