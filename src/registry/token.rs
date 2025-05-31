@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::{
         Issuer,
-        acl::{AclCheck, Action, RequestContext},
+        acl::{AclCheck, Action, RepositoryContext, SubjectContext},
     },
     error::RegistryError,
     issuer::issue_token,
@@ -92,6 +92,12 @@ pub(crate) async fn token(
         return Ok((StatusCode::UNAUTHORIZED, "Invalid credentials").into_response());
     };
 
+    let subject = SubjectContext {
+        username: authorization.username().to_string(),
+        claims: claims.clone(),
+        ip: addr.ip(),
+    };
+
     let mut access_map: HashMap<String, HashSet<Action>> = HashMap::new();
 
     for scope in &scope {
@@ -103,12 +109,12 @@ pub(crate) async fn token(
                 .map(|split| Action::try_from(split.to_string()).unwrap())
                 .collect();
 
-            let allowed_actions = issuer.acls.check_access(&RequestContext {
-                username: authorization.username().to_string(),
-                claims: claims.clone(),
-                ip: addr.ip(),
-                repository: repo.to_string(),
-            });
+            let allowed_actions = issuer.acls.check_access(
+                &subject,
+                &RepositoryContext {
+                    repository: repo.to_string(),
+                },
+            );
             for action in actions {
                 if allowed_actions.contains(&action) {
                     access_map
@@ -146,7 +152,7 @@ mod test {
     use crate::{
         config::{
             User,
-            acl::{AccessRule, MatchRule, StringMatch},
+            acl::{AccessRule, StringMatch, SubjectMatch},
         },
         jwt::JWKSPublicKey,
         tests::{FixtureBuilder, RegistryFixture},
@@ -232,12 +238,12 @@ mod test {
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
                 })
                 .acl(AccessRule {
-                    check: MatchRule {
+                    subject: Some(SubjectMatch {
                         username: Some(StringMatch::Exact("username".into())),
                         ..Default::default()
-                    },
+                    }),
                     actions: [Action::Pull].into_iter().collect(),
-                    comment: "username can pull this image".into(),
+                    ..Default::default()
                 })
                 .build()
                 .await?,
@@ -304,12 +310,12 @@ mod test {
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
                 })
                 .acl(AccessRule {
-                    check: MatchRule {
+                    subject: Some(SubjectMatch {
                         username: Some(StringMatch::Exact("bob".into())),
                         ..Default::default()
-                    },
+                    }),
                     actions: [Action::Pull].into_iter().collect(),
-                    comment: "username can pull this image".into(),
+                    ..Default::default()
                 })
                 .build()
                 .await?,
@@ -472,7 +478,7 @@ mod test {
                     issuer,
                 })
                 .acl(AccessRule {
-                    check: MatchRule {
+                    subject: Some(SubjectMatch {
                         claims: Some(
                             [(
                                 "project_path".to_string(),
@@ -482,9 +488,9 @@ mod test {
                             .collect(),
                         ),
                         ..Default::default()
-                    },
+                    }),
                     actions: [Action::Pull].into_iter().collect(),
-                    comment: "Gitlab can pull this image".into(),
+                    ..Default::default()
                 })
                 .build()
                 .await?,
@@ -575,7 +581,7 @@ mod test {
                     issuer,
                 })
                 .acl(AccessRule {
-                    check: MatchRule {
+                    subject: Some(SubjectMatch {
                         claims: Some(
                             [(
                                 "project_path".to_string(),
@@ -585,9 +591,9 @@ mod test {
                             .collect(),
                         ),
                         ..Default::default()
-                    },
+                    }),
                     actions: [Action::Pull].into_iter().collect(),
-                    comment: "Gitlab can pull this image".into(),
+                    ..Default::default()
                 })
                 .build()
                 .await?,

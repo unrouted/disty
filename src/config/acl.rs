@@ -55,18 +55,18 @@ impl StringMatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RequestContext {
+pub struct SubjectContext {
     pub username: String,
     pub claims: HashMap<String, String>,
     pub ip: IpAddr,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RepositoryContext {
     pub repository: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
-pub struct MatchRule {
-    /// Name of the registry
-    pub repository: Option<StringMatch>,
-
+pub struct SubjectMatch {
     /// IP address that token can be requested from
     pub network: Option<IpNetwork>,
 
@@ -77,16 +77,12 @@ pub struct MatchRule {
     pub claims: Option<HashMap<String, StringMatch>>,
 }
 
-impl MatchRule {
-    fn matches(&self, ctx: &RequestContext) -> bool {
+impl SubjectMatch {
+    fn matches(&self, ctx: &SubjectContext) -> bool {
         self.username
             .as_ref()
             .is_none_or(|m| m.matches(&ctx.username))
             && self.network.is_none_or(|net| net.contains(ctx.ip))
-            && self
-                .repository
-                .as_ref()
-                .is_none_or(|m| m.matches(&ctx.repository))
             && self.claims.as_ref().is_none_or(|required| {
                 required
                     .iter()
@@ -96,22 +92,50 @@ impl MatchRule {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RepositoryMatch {
+    /// Name of the registry
+    pub repository: Option<StringMatch>,
+}
+
+impl RepositoryMatch {
+    fn matches(&self, ctx: &RepositoryContext) -> bool {
+        self.repository
+            .as_ref()
+            .is_none_or(|m| m.matches(&ctx.repository))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct AccessRule {
-    pub check: MatchRule,
+    pub subject: Option<SubjectMatch>,
+    pub repository: Option<RepositoryMatch>,
     pub actions: HashSet<Action>,
-    pub comment: String,
+    pub comment: Option<String>,
 }
 
 pub(crate) trait AclCheck {
-    fn check_access(&self, ctx: &RequestContext) -> HashSet<Action>;
+    fn check_access(
+        &self,
+        subject: &SubjectContext,
+        repository: &RepositoryContext,
+    ) -> HashSet<Action>;
 }
 
 impl AclCheck for [AccessRule] {
-    fn check_access(&self, ctx: &RequestContext) -> HashSet<Action> {
+    fn check_access(
+        &self,
+        subject: &SubjectContext,
+        repository: &RepositoryContext,
+    ) -> HashSet<Action> {
         let mut result = HashSet::new();
 
         for acl in self {
-            if acl.check.matches(ctx) {
+            if acl.subject.as_ref().is_none_or(|sub| sub.matches(subject))
+                && acl
+                    .repository
+                    .as_ref()
+                    .is_none_or(|repo| repo.matches(repository))
+            {
                 result.extend(acl.actions.iter().cloned());
             }
         }
