@@ -7,6 +7,7 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
     value::magic::RelativePathBuf,
 };
+use figment_file_provider_adapter::FileAdapter;
 use hiqlite::{Node, NodeConfig};
 use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
 use p256::ecdsa::SigningKey;
@@ -64,7 +65,7 @@ impl Default for PrometheusConfig {
 
 #[derive(Clone, Debug)]
 pub struct PublicKey {
-    pub path: String,
+    pub original: String,
     pub public_key: ES256PublicKey,
 }
 
@@ -73,7 +74,7 @@ impl Serialize for PublicKey {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.path)
+        serializer.serialize_str(&self.original)
     }
 }
 
@@ -82,15 +83,7 @@ impl<'de> Deserialize<'de> for PublicKey {
     where
         D: Deserializer<'de>,
     {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        let mut p = PathBuf::from(s.clone());
-        if p.is_relative() {
-            let app_dirs = AppDirs::new(Some("disty"), true).unwrap();
-            let config_dir = app_dirs.config_dir;
-            p = config_dir.join(p);
-        }
-        println!("{:?}", p);
-        let pem = std::fs::read_to_string(&p).unwrap();
+        let pem: String = Deserialize::deserialize(deserializer)?;
 
         let public_key = match ES256PublicKey::from_pem(&pem) {
             Ok(public_key) => public_key,
@@ -107,7 +100,7 @@ impl<'de> Deserialize<'de> for PublicKey {
         };
 
         Ok(PublicKey {
-            path: s,
+            original: pem,
             public_key,
         })
     }
@@ -115,13 +108,15 @@ impl<'de> Deserialize<'de> for PublicKey {
 
 #[derive(Clone)]
 pub struct KeyPair {
-    pub path: String,
+    pub original: String,
     pub key_pair: Arc<ES256KeyPair>,
 }
 
 impl std::fmt::Debug for KeyPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KeyPair").field("path", &self.path).finish()
+        f.debug_struct("KeyPair")
+            .field("original", &self.original)
+            .finish()
     }
 }
 
@@ -130,7 +125,7 @@ impl Serialize for KeyPair {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.path)
+        serializer.serialize_str(&self.original)
     }
 }
 
@@ -145,18 +140,13 @@ impl<'de> Deserialize<'de> for KeyPair {
     where
         D: Deserializer<'de>,
     {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        let mut p = PathBuf::from(s.clone());
-        if p.is_relative() {
-            let app_dirs = AppDirs::new(Some("disty"), true).unwrap();
-            let config_dir = app_dirs.config_dir;
-            p = config_dir.join(p);
-        }
-        let pem = std::fs::read_to_string(&p).unwrap();
-
+        let pem: String = Deserialize::deserialize(deserializer)?;
         let key_pair = Arc::new(load_keypair(&pem).unwrap());
 
-        Ok(KeyPair { path: s, key_pair })
+        Ok(KeyPair {
+            original: pem,
+            key_pair,
+        })
     }
 }
 
@@ -225,13 +215,13 @@ impl Configuration {
         let fig = Figment::from(Serialized::defaults(Configuration::default()));
 
         match config {
-            Some(config_path) => fig.merge(Yaml::file(config_path)),
+            Some(config_path) => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
             None => match config_path.exists() {
-                true => fig.merge(Yaml::file(config_path)),
+                true => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
                 false => fig,
             },
         }
-        .merge(Env::prefixed("DISTY_"))
+        .merge(FileAdapter::wrap(Env::prefixed("DISTY_")))
     }
 
     pub fn config(figment: Figment) -> Result<Configuration> {
@@ -383,7 +373,6 @@ mod test {
         assert_eq!(t.issuer, "Test Issuer");
         assert_eq!(t.realm, "testrealm");
         assert_eq!(t.audience, "myservice");
-        assert_eq!(t.key_pair.path, "token.key");
         assert_eq!(
             t.key_pair.key_pair.public_key().to_pem().unwrap(),
             "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
@@ -402,26 +391,32 @@ mod test {
             );
         }
 
-        let data = r#"
-        {
-            "issuer": "Test Issuer",
-            "realm": "testrealm",
-            "audience": "myservice",
-            "key_pair": "token.key",
-            "users": [],
-            "acls": []
-        }"#;
+        figment::Jail::expect_with(|jail| {
+            jail.create_file("config.yaml", r#"
+                {
+                    "issuer": "Test Issuer",
+                    "realm": "testrealm",
+                    "audience": "myservice",
+                    "key_pair_file": "fixtures/etc/disty/token.key",
+                    "users": [],
+                    "acls": []
+                }
+                "#)?;
 
-        let t: AuthenticationConfig = serde_json::from_str(data).unwrap();
+                let t: AuthenticationConfig = Figment::new()
+                    .merge(FileAdapter::wrap(Yaml::file("Cargo.toml")))
+                    .extract()?;
 
-        assert_eq!(t.issuer, "Test Issuer");
-        assert_eq!(t.realm, "testrealm");
-        assert_eq!(t.audience, "myservice");
-        assert_eq!(t.key_pair.path, "token.key");
-        assert_eq!(
-            t.key_pair.key_pair.public_key().to_pem().unwrap(),
-            "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
-        );
+                assert_eq!(t.issuer, "Test Issuer");
+                assert_eq!(t.realm, "testrealm");
+                assert_eq!(t.audience, "myservice");
+                assert_eq!(
+                    t.key_pair.key_pair.public_key().to_pem().unwrap(),
+                    "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
+                );
+
+                Ok(())
+            });
     }
 
     #[test]

@@ -85,7 +85,7 @@ impl StateFixture {
                 audience: "some-audience".into(),
                 realm: "fixme".into(),
                 key_pair: KeyPair {
-                    path: "/tmp".into(),
+                    original: "".into(),
                     key_pair: Arc::new(ES256KeyPair::generate()),
                 },
                 users: builder.users.clone(),

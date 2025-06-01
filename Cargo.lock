@@ -1186,6 +1186,7 @@ dependencies = [
  "clap",
  "data-encoding",
  "figment",
+ "figment_file_provider_adapter",
  "futures",
  "futures-util",
  "headers",
@@ -1412,11 +1413,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cb01cd46b0cf372153850f4c6c272d9cbea2da513e07538405148f95bd789f3"
 dependencies = [
  "atomic",
+ "parking_lot",
  "pear",
  "serde",
  "serde_yaml",
+ "tempfile",
  "uncased",
  "version_check",
+]
+
+[[package]]
+name = "figment_file_provider_adapter"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353e1e0896797efa3728309408a50d307284d5af4c733fa1859edae2bc80a314"
+dependencies = [
+ "figment",
 ]
 
 [[package]]
