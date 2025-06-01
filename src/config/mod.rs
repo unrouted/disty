@@ -160,15 +160,6 @@ impl<'de> Deserialize<'de> for KeyPair {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TokenConfig {
-    pub issuer: String,
-    pub service: String,
-    pub realm: String,
-    pub public_key: PublicKey,
-    pub key_pair: KeyPair,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AuthenticationConfig {
     pub issuer: String,
     pub audience: String,
@@ -238,7 +229,6 @@ pub struct Configuration {
     pub raft: RaftConfig,
     pub api: ApiConfig,
     pub prometheus: PrometheusConfig,
-    pub token_server: Option<TokenConfig>,
     pub authentication: Option<AuthenticationConfig>,
     #[serde(deserialize_with = "deserialize_absolute")]
     pub storage: PathBuf,
@@ -334,7 +324,6 @@ impl Default for Configuration {
             raft: RaftConfig::default(),
             api: ApiConfig::default(),
             prometheus: PrometheusConfig::default(),
-            token_server: None,
             authentication: None,
             storage: "var".to_string().into(),
             webhooks: vec![],
@@ -397,19 +386,20 @@ mod test {
         {
             "issuer": "Test Issuer",
             "realm": "testrealm",
-            "service": "myservice",
-            "public_key": "token.pub",
-            "key_pair": "token.key"
+            "audience": "myservice",
+            "key_pair": "token.key",
+            "users": [],
+            "acls": []
         }"#;
 
-        let t: TokenConfig = serde_json::from_str(data).unwrap();
+        let t: AuthenticationConfig = serde_json::from_str(data).unwrap();
 
         assert_eq!(t.issuer, "Test Issuer");
         assert_eq!(t.realm, "testrealm");
-        assert_eq!(t.service, "myservice");
-        assert_eq!(t.public_key.path, "token.pub");
+        assert_eq!(t.audience, "myservice");
+        assert_eq!(t.key_pair.path, "token.key");
         assert_eq!(
-            t.public_key.public_key.to_pem().unwrap(),
+            t.key_pair.key_pair.public_key().to_pem().unwrap(),
             "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
         );
     }
@@ -430,19 +420,20 @@ mod test {
         {
             "issuer": "Test Issuer",
             "realm": "testrealm",
-            "service": "myservice",
-            "public_key": "token.crt",
-            "key_pair": "token.key"
+            "audience": "myservice",
+            "key_pair": "token.key",
+            "users": [],
+            "acls": []
         }"#;
 
-        let t: TokenConfig = serde_json::from_str(data).unwrap();
+        let t: AuthenticationConfig = serde_json::from_str(data).unwrap();
 
         assert_eq!(t.issuer, "Test Issuer");
         assert_eq!(t.realm, "testrealm");
-        assert_eq!(t.service, "myservice");
-        assert_eq!(t.public_key.path, "token.crt");
+        assert_eq!(t.audience, "myservice");
+        assert_eq!(t.key_pair.path, "token.key");
         assert_eq!(
-            t.public_key.public_key.to_pem().unwrap(),
+            t.key_pair.key_pair.public_key().to_pem().unwrap(),
             "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
         );
     }
