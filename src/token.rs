@@ -146,7 +146,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
         parts: &mut Parts,
         state: &Arc<RegistryState>,
     ) -> Result<Self, Self::Rejection> {
-        let config = match &state.config.token_server {
+        let config = match &state.config.issuer {
             None => {
                 return Ok(Token {
                     access: vec![],
@@ -168,7 +168,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
                     sub: "anonymous".to_string(),
                     admin: false,
                     validated_token: false,
-                    service: Some(config.service.clone()),
+                    service: Some(config.audience.clone()),
                     realm: Some(config.realm.clone()),
                 });
             }
@@ -184,21 +184,23 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
             // reject tokens if they don't include an issuer from that list
             allowed_issuers: Some(HashSet::from_strings(&[config.issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[config.service.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[config.audience.clone()])),
             ..Default::default()
         };
 
-        let claims: JWTClaims<AdditionalClaims> = match config
-            .public_key
-            .public_key
-            .verify_token::<AdditionalClaims>(token_bytes, Some(options))
-        {
-            Ok(claims) => claims,
-            Err(error) => {
-                info!("Could not verify token: {error}");
-                return Err(TokenError::Invalid);
-            }
-        };
+        let claims: JWTClaims<AdditionalClaims> =
+            match config
+                .key_pair
+                .key_pair
+                .public_key()
+                .verify_token::<AdditionalClaims>(token_bytes, Some(options))
+            {
+                Ok(claims) => claims,
+                Err(error) => {
+                    info!("Could not verify token: {error}");
+                    return Err(TokenError::Invalid);
+                }
+            };
 
         let subject = match claims.subject {
             Some(subject) => subject,
@@ -215,7 +217,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
             sub: subject,
             admin: false,
             validated_token: true,
-            service: Some(config.service.clone()),
+            service: Some(config.audience.clone()),
             realm: Some(config.realm.clone()),
         })
     }

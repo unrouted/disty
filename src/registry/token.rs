@@ -192,7 +192,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -258,7 +258,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -330,7 +330,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -410,7 +410,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -505,7 +505,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -608,7 +608,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=foo&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
