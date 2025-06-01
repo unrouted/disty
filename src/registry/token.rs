@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::{
-        Issuer,
+        AuthenticationConfig,
         acl::{AclCheck, Action, RepositoryContext, SubjectContext},
     },
     error::RegistryError,
@@ -40,7 +40,7 @@ pub(crate) struct TokenResponse {
 }
 
 pub async fn authenticate(
-    issuer: &Issuer,
+    issuer: &AuthenticationConfig,
     req_username: &str,
     req_password: &str,
 ) -> Result<Option<HashMap<String, String>>> {
@@ -83,7 +83,7 @@ pub(crate) async fn token(
     authorization: TypedHeader<Authorization<Basic>>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
-    let issuer = registry.config.issuer.as_ref().unwrap();
+    let issuer = registry.config.authentication.as_ref().unwrap();
 
     let Some(claims) =
         authenticate(issuer, authorization.username(), authorization.password()).await?
@@ -174,7 +174,7 @@ mod test {
     pub async fn user_authentication_and_authorization() -> Result<()> {
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Password {
                     username: "username".into(),
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
@@ -203,7 +203,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -232,7 +232,7 @@ mod test {
     pub async fn user_authentication_and_authorization_with_matching_acl() -> Result<()> {
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Password {
                     username: "username".into(),
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
@@ -269,7 +269,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -304,7 +304,7 @@ mod test {
     pub async fn user_authentication_and_authorization_with_non_matching_acl() -> Result<()> {
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Password {
                     username: "username".into(),
                     password: "$6$TVFDl34in89H8PM.$vJ2jhuC0Ijgr9c5.uijvYp31g0K4x2jl6FDpdfw40CVdFjzyO7pJpGLkVIAGtwsbbS1RcWgJ0VNSR83Uf.T..1".into(),
@@ -341,7 +341,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -392,7 +392,7 @@ mod test {
 
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Token {
                     username: "gitlab".into(),
                     issuer,
@@ -421,7 +421,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -472,7 +472,7 @@ mod test {
 
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Token {
                     username: "gitlab".into(),
                     issuer,
@@ -516,7 +516,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -575,7 +575,7 @@ mod test {
 
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
-                .issuer(true)
+                .authenticated(true)
                 .user(User::Token {
                     username: "gitlab".into(),
                     issuer,
@@ -619,7 +619,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.issuer.as_ref().unwrap();
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline

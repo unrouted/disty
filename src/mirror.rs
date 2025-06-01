@@ -45,7 +45,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
     let req = client.get(url);
 
-    let req = match &state.config.issuer {
+    let req = match &state.config.authentication {
         Some(issuer) => {
             let token = issue_token(
                 issuer,
@@ -147,7 +147,7 @@ async fn download_manifest(
 
     let req = client.get(url);
 
-    let req = match &state.config.issuer {
+    let req = match &state.config.authentication {
         Some(issuer) => {
             let token = issue_token(
                 issuer,

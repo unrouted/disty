@@ -169,7 +169,7 @@ pub struct TokenConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Issuer {
+pub struct AuthenticationConfig {
     pub issuer: String,
     pub audience: String,
     pub realm: String,
@@ -239,7 +239,7 @@ pub struct Configuration {
     pub api: ApiConfig,
     pub prometheus: PrometheusConfig,
     pub token_server: Option<TokenConfig>,
-    pub issuer: Option<Issuer>,
+    pub authentication: Option<AuthenticationConfig>,
     #[serde(deserialize_with = "deserialize_absolute")]
     pub storage: PathBuf,
     pub webhooks: Vec<WebhookConfig>,
@@ -335,7 +335,7 @@ impl Default for Configuration {
             api: ApiConfig::default(),
             prometheus: PrometheusConfig::default(),
             token_server: None,
-            issuer: None,
+            authentication: None,
             storage: "var".to_string().into(),
             webhooks: vec![],
             scrubber: ScrubberConfig::default(),

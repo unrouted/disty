@@ -12,7 +12,8 @@ use tower::ServiceExt;
 use crate::{
     Cache, Migrations,
     config::{
-        ApiConfig, Configuration, DistyNode, Issuer, KeyPair, RaftConfig, User, acl::AccessRule,
+        ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
+        acl::AccessRule,
     },
     webhook::WebhookService,
 };
@@ -23,7 +24,7 @@ pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct FixtureBuilder {
     pub cluster_size: u64,
-    pub issuer: bool,
+    pub authentication: bool,
     pub users: Vec<User>,
     pub acls: Vec<AccessRule>,
 }
@@ -32,7 +33,7 @@ impl FixtureBuilder {
     pub fn new() -> Self {
         FixtureBuilder {
             cluster_size: 1,
-            issuer: false,
+            authentication: false,
             users: vec![],
             acls: vec![],
         }
@@ -43,8 +44,8 @@ impl FixtureBuilder {
         self
     }
 
-    pub fn issuer(mut self, issuer: bool) -> Self {
-        self.issuer = issuer;
+    pub fn authenticated(mut self, authenticated: bool) -> Self {
+        self.authentication = authenticated;
         self
     }
 
@@ -77,8 +78,8 @@ impl StateFixture {
     }
 
     async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
-        let issuer = match builder.issuer {
-            true => Some(Issuer {
+        let authentication = match builder.authentication {
+            true => Some(AuthenticationConfig {
                 issuer: "some-issuer".into(),
                 audience: "some-audience".into(),
                 realm: "fixme".into(),
@@ -130,7 +131,7 @@ impl StateFixture {
                     ..Default::default()
                 },
                 nodes: nodes.clone(),
-                issuer: issuer.clone(),
+                authentication: authentication.clone(),
                 ..Default::default()
             };
 

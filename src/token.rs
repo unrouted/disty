@@ -146,7 +146,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
         parts: &mut Parts,
         state: &Arc<RegistryState>,
     ) -> Result<Self, Self::Rejection> {
-        let config = match &state.config.issuer {
+        let config = match &state.config.authentication {
             None => {
                 return Ok(Token {
                     access: vec![],
