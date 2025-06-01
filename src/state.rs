@@ -62,7 +62,11 @@ pub struct RegistryState {
 
 impl RegistryState {
     pub fn upload_path(&self, upload_id: &str) -> PathBuf {
-        self.config.storage.join("uploads").join(upload_id)
+        self.config
+            .storage
+            .relative()
+            .join("uploads")
+            .join(upload_id)
     }
 
     pub fn get_temp_path(&self) -> PathBuf {
@@ -70,11 +74,19 @@ impl RegistryState {
     }
 
     pub fn get_blob_path(&self, digest: &Digest) -> PathBuf {
-        self.config.storage.join("blobs").join(digest.to_path())
+        self.config
+            .storage
+            .relative()
+            .join("blobs")
+            .join(digest.to_path())
     }
 
     pub fn get_manifest_path(&self, digest: &Digest) -> PathBuf {
-        self.config.storage.join("manifests").join(digest.to_path())
+        self.config
+            .storage
+            .relative()
+            .join("manifests")
+            .join(digest.to_path())
     }
 
     async fn get_repository(&self, repository: &str) -> Result<Option<u32>> {

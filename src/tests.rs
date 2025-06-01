@@ -2,6 +2,7 @@ use std::{ops::Deref, path::PathBuf};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
+use figment::value::magic::RelativePathBuf;
 use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
@@ -121,7 +122,7 @@ impl StateFixture {
 
             let configuration = Configuration {
                 node_id: node.id,
-                storage: PathBuf::from(data_dir),
+                storage: RelativePathBuf::from(data_dir),
                 raft: RaftConfig {
                     secret: Some("aaaaaaaaaaaaaaaa".into()),
                     ..Default::default()

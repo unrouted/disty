@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail};
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Yaml},
+    value::magic::RelativePathBuf,
 };
 use hiqlite::{Node, NodeConfig};
 use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
@@ -200,28 +201,6 @@ pub struct SentryConfig {
     pub endpoint: String,
 }
 
-pub fn deserialize_absolute<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let raw_path: String = Deserialize::deserialize(deserializer)?;
-    let path = PathBuf::from(raw_path);
-
-    let abs_path = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()
-            .map_err(serde::de::Error::custom)?
-            .join(path)
-    };
-
-    // Try to canonicalize, but fall back if it fails (e.g. file doesn't exist yet)
-    match std::fs::canonicalize(&abs_path) {
-        Ok(p) => Ok(p),
-        Err(_) => Ok(abs_path),
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Configuration {
     pub node_id: u64,
@@ -230,8 +209,8 @@ pub struct Configuration {
     pub api: ApiConfig,
     pub prometheus: PrometheusConfig,
     pub authentication: Option<AuthenticationConfig>,
-    #[serde(deserialize_with = "deserialize_absolute")]
-    pub storage: PathBuf,
+    #[serde(serialize_with = "RelativePathBuf::serialize_original")]
+    pub storage: RelativePathBuf,
     pub webhooks: Vec<WebhookConfig>,
     pub scrubber: ScrubberConfig,
     pub sentry: Option<SentryConfig>,
@@ -305,7 +284,14 @@ impl TryFrom<Configuration> for NodeConfig {
         Ok(Self {
             node_id: value.node_id,
             nodes,
-            data_dir: Cow::Owned(value.storage.join("hiqlite").to_string_lossy().into_owned()),
+            data_dir: Cow::Owned(
+                value
+                    .storage
+                    .relative()
+                    .join("hiqlite")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             secret_raft: value
                 .raft
                 .secret
