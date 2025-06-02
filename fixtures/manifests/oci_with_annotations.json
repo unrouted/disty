@@ -1,0 +1,50 @@
+{
+    "schemaVersion": 2,
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "config": {
+        "mediaType": "application/vnd.oci.image.config.v1+json",
+        "size": 1557,
+        "digest": "sha256:8358fc89fc38b28462feedaa060ca21f0fd595d1bf076035ef204101539207d0"
+    },
+    "layers": [
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 3626897,
+            "digest": "sha256:0a9a5dfd008f05ebc27e4790db0709a29e527690c21bcbcd01481eaeb6bb49dc"
+        },
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 24011297,
+            "digest": "sha256:45c75fb5f4de58c77c36e6f102cf4d8f6a9baef3f1f31888e92f1b84c012b538"
+        },
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 18445146,
+            "digest": "sha256:32585141131f45dcfa7378454c9499e4bd6bead0c089fd11087fc1bc23a75470"
+        },
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 7534435,
+            "digest": "sha256:2aa0ff2b1beb879cb20733a13dbb4b92b34ae2a3fb1b49f859f278d3741b6e68"
+        },
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 11378430,
+            "digest": "sha256:21c84577bfd114261416f5e8d221259b2b961cbaa6af837763cb75376b24861d"
+        },
+        {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "size": 19333214,
+            "digest": "sha256:25b012b74f58b40c69e46e2be3f08a1321db0a76907baff136d653fb8f3a615b"
+        }
+    ],
+    "annotations": {
+        "com.docker.official-images.bashbrew.arch": "amd64",
+        "org.opencontainers.image.base.name": "scratch",
+        "org.opencontainers.image.created": "2025-02-14T03:00:07Z",
+        "org.opencontainers.image.revision": "a0db1d60e576114995a27356e6dda8145293d6f8",
+        "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#a0db1d60e576114995a27356e6dda8145293d6f8:x86_64",
+        "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+        "org.opencontainers.image.version": "3.20.6"
+    }
+}

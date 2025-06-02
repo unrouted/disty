@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{digest::Digest, state::RegistryState};
 
@@ -147,20 +147,11 @@ impl Extractor {
                 let compiled = jsonschema::draft7::new(schema).unwrap();
 
                 match serde_json::from_str(data) {
-                    Ok(value) => {
-                        error!("{content_type}: {data}");
-                        compiled.is_valid(&value)
-                    }
-                    _ => {
-                        error!("Data is maliformed so cannot be validated as {content_type}");
-                        false
-                    }
+                    Ok(value) => compiled.is_valid(&value),
+                    _ => false,
                 }
             }
-            _ => {
-                error!("Could not find a schema validator for {content_type}");
-                false
-            }
+            _ => false,
         }
     }
 
@@ -553,6 +544,16 @@ mod tests {
                 ]
             }
         "#.to_string();
+
+        assert!(extractor.validate(&content_type, &data));
+    }
+
+    #[test]
+    fn oci_manifest_with_annotations() {
+        let extractor = Extractor::new();
+
+        let content_type = "application/vnd.oci.image.manifest.v1+json".to_string();
+        let data = include_str!("../fixtures/manifests/oci_with_annotations.json");
 
         assert!(extractor.validate(&content_type, &data));
     }

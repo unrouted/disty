@@ -11,7 +11,8 @@
             "type": "string",
             "description": "The media type of the schema.",
             "enum": [
-                "application/vnd.oci.image.config.v1+json"
+                "application/vnd.oci.image.config.v1+json",
+                "application/vnd.oci.image.manifest.v1+json"
             ]
         },
         "config": {
@@ -95,6 +96,12 @@
                     "size",
                     "digest"
                 ]
+            }
+        },
+        "annotations": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "string"
             }
         }
     },
