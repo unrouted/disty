@@ -230,6 +230,8 @@ impl JWKSPublicKey {
     where
         C: DeserializeOwned + Serialize,
     {
+        error!("TOKEN: {token}");
+
         let kid = Self::extract_kid_from_token(token)
             .context("Failed to extract 'kid' from JWT header")?;
 
