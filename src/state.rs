@@ -312,7 +312,7 @@ impl RegistryState {
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5), $6) RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5), $6) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     size as u32,
@@ -323,7 +323,7 @@ impl RegistryState {
                 ),
             ),
             (
-                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id));",
+                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id)) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_id = excluded.manifest_id;;",
                 params!(tag, repository, digest.to_string()),
             ),
         ];
