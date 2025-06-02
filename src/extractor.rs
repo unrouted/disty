@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::{digest::Digest, state::RegistryState};
 
@@ -148,10 +148,16 @@ impl Extractor {
 
                 match serde_json::from_str(data) {
                     Ok(value) => compiled.is_valid(&value),
-                    _ => false,
+                    _ => {
+                        error!("Data is maliformed so cannot be validated as {content_type}");
+                        false
+                    },
                 }
             }
-            _ => false,
+            _ => {
+                error!("Could not find a schema validator for {content_type}");
+                false
+            },
         }
     }
 
