@@ -147,17 +147,20 @@ impl Extractor {
                 let compiled = jsonschema::draft7::new(schema).unwrap();
 
                 match serde_json::from_str(data) {
-                    Ok(value) => compiled.is_valid(&value),
+                    Ok(value) => {
+                        error!("{content_type}: {data}");
+                        compiled.is_valid(&value)
+                    }
                     _ => {
                         error!("Data is maliformed so cannot be validated as {content_type}");
                         false
-                    },
+                    }
                 }
             }
             _ => {
                 error!("Could not find a schema validator for {content_type}");
                 false
-            },
+            }
         }
     }
 
