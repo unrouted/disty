@@ -6,6 +6,8 @@ use std::{
 use ip_network::IpNetwork;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::warn;
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -57,7 +59,7 @@ impl StringMatch {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SubjectContext {
     pub username: String,
-    pub claims: HashMap<String, String>,
+    pub claims: HashMap<String, Value>,
     pub ip: IpAddr,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -84,9 +86,15 @@ impl SubjectMatch {
             .is_none_or(|m| m.matches(&ctx.username))
             && self.network.is_none_or(|net| net.contains(ctx.ip))
             && self.claims.as_ref().is_none_or(|required| {
-                required
-                    .iter()
-                    .all(|(k, matcher)| ctx.claims.get(k).is_some_and(|v| matcher.matches(v)))
+                required.iter().all(|(k, matcher)| {
+                    ctx.claims.get(k).is_some_and(|v| {
+                        if let Value::String(v) = v {
+                            return matcher.matches(v);
+                        }
+                        warn!("claim '{}' not a string so can't be validated yet", k);
+                        false
+                    })
+                })
             })
     }
 }

@@ -14,6 +14,7 @@ use axum_extra::{TypedHeader, extract::Query};
 use headers::{Authorization, authorization::Basic};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     config::{
@@ -43,7 +44,7 @@ pub async fn authenticate(
     issuer: &AuthenticationConfig,
     req_username: &str,
     req_password: &str,
-) -> Result<Option<HashMap<String, String>>> {
+) -> Result<Option<HashMap<String, Value>>> {
     for user in &issuer.users {
         match user {
             crate::config::User::Password { username, password } => {
@@ -64,7 +65,7 @@ pub async fn authenticate(
                 println!("b");
                 return Ok(
                     match issuer
-                        .verify::<HashMap<String, String>>(req_password)
+                        .verify::<HashMap<String, Value>>(req_password)
                         .await?
                     {
                         Some(claims) => Some(claims.custom),
