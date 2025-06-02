@@ -347,76 +347,41 @@ mod test {
     }
 
     #[test]
-    fn token_config() {
-        unsafe {
-            std::env::set_var(
-                "XDG_CONFIG_HOME",
-                std::env::current_dir()
-                    .unwrap()
-                    .join("fixtures/etc")
-                    .as_os_str(),
-            );
-        }
-
-        let data = r#"
-        {
-            "issuer": "Test Issuer",
-            "realm": "testrealm",
-            "audience": "myservice",
-            "key_pair": "token.key",
-            "users": [],
-            "acls": []
-        }"#;
-
-        let t: AuthenticationConfig = serde_json::from_str(data).unwrap();
-
-        assert_eq!(t.issuer, "Test Issuer");
-        assert_eq!(t.realm, "testrealm");
-        assert_eq!(t.audience, "myservice");
-        assert_eq!(
-            t.key_pair.key_pair.public_key().to_pem().unwrap(),
-            "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
-        );
-    }
-
-    #[test]
-    fn token_confi_cert() {
-        unsafe {
-            std::env::set_var(
-                "XDG_CONFIG_HOME",
-                std::env::current_dir()
-                    .unwrap()
-                    .join("fixtures/etc")
-                    .as_os_str(),
-            );
-        }
-
+    fn config_issuer() {
         figment::Jail::expect_with(|jail| {
+            jail.create_file("token.key", include_str!("../../fixtures/etc/disty/token.key"))?;
+
             jail.create_file("config.yaml", r#"
                 {
+                  "authentication": {
                     "issuer": "Test Issuer",
                     "realm": "testrealm",
                     "audience": "myservice",
-                    "key_pair_file": "fixtures/etc/disty/token.key",
+                    "key_pair_file": "token.key",
                     "users": [],
                     "acls": []
+                  }
                 }
                 "#)?;
 
-                let t: AuthenticationConfig = Figment::new()
-                    .merge(FileAdapter::wrap(Yaml::file("Cargo.toml")))
-                    .extract()?;
+            let path = jail.directory().join("config.yaml");
 
-                assert_eq!(t.issuer, "Test Issuer");
-                assert_eq!(t.realm, "testrealm");
-                assert_eq!(t.audience, "myservice");
-                assert_eq!(
-                    t.key_pair.key_pair.public_key().to_pem().unwrap(),
-                    "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
-                );
+            let config: Configuration = Configuration::figment(Some(path))
+                .extract()
+                .expect("Configuration should be parseable");
 
-                Ok(())
-            });
+            let t = config.authentication.as_ref().expect("Authentication shouldn't be empty");
+
+            assert_eq!(t.issuer, "Test Issuer");
+            assert_eq!(t.realm, "testrealm");
+            assert_eq!(t.audience, "myservice");
+            assert_eq!(
+                t.key_pair.key_pair.public_key().to_pem().unwrap(),
+                "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"
+            );
+
+            Ok(())
+        });
     }
 
     #[test]
