@@ -555,6 +555,6 @@ mod tests {
         let content_type = "application/vnd.oci.image.manifest.v1+json".to_string();
         let data = include_str!("../fixtures/manifests/oci_with_annotations.json");
 
-        assert!(extractor.validate(&content_type, &data));
+        assert!(extractor.validate(&content_type, data));
     }
 }
