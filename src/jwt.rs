@@ -214,6 +214,8 @@ impl JWKSPublicKey {
             .find(|k| k.kid == kid)
             .ok_or_else(|| JwksCacheError::KeyNotFound(kid.to_string()))?;
 
+        error!("Key found: {:?}", key_obj);
+
         key_obj.try_into()
     }
 
