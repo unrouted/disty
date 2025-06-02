@@ -31,6 +31,10 @@ pub(crate) async fn delete(
         return Err(RegistryError::AccessDenied {});
     }
 
+    if !registry.repository_exists(&repository).await? {
+        return Err(RegistryError::RepositoryNotFound {});
+    }
+
     if let Some(blob) = registry.get_blob(&digest).await? {
         if !blob.repositories.contains(&repository) {
             return Err(RegistryError::BlobNotFound {});

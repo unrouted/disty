@@ -9,14 +9,13 @@ use figment::{
 };
 use figment_file_provider_adapter::FileAdapter;
 use hiqlite::{Node, NodeConfig};
-use jwt_simple::prelude::{ES256KeyPair, ES256PublicKey};
+use jwt_simple::prelude::ES256KeyPair;
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
 use platform_dirs::AppDirs;
 use regex::Regex;
 use sec1::DecodeEcPrivateKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use x509_parser::prelude::Pem;
 
 use crate::jwt::JWKSPublicKey;
 
@@ -60,49 +59,6 @@ impl Default for PrometheusConfig {
             address: "0.0.0.0".to_string(),
             port: 7080,
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PublicKey {
-    pub original: String,
-    pub public_key: ES256PublicKey,
-}
-
-impl Serialize for PublicKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.original)
-    }
-}
-
-impl<'de> Deserialize<'de> for PublicKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let pem: String = Deserialize::deserialize(deserializer)?;
-
-        let public_key = match ES256PublicKey::from_pem(&pem) {
-            Ok(public_key) => public_key,
-            Err(_) => {
-                let pem = Pem::iter_from_buffer(pem.as_bytes())
-                    .next()
-                    .unwrap()
-                    .unwrap();
-                let x509 = pem.parse_x509().expect("X.509: decoding DER failed");
-                let raw = &x509.public_key().subject_public_key.data;
-
-                ES256PublicKey::from_bytes(raw).unwrap()
-            }
-        };
-
-        Ok(PublicKey {
-            original: pem,
-            public_key,
-        })
     }
 }
 
@@ -151,7 +107,7 @@ impl<'de> Deserialize<'de> for KeyPair {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AuthenticationConfig {
+pub(crate) struct AuthenticationConfig {
     pub issuer: String,
     pub audience: String,
     pub realm: String,
@@ -192,7 +148,7 @@ pub struct SentryConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Configuration {
+pub(crate) struct Configuration {
     pub node_id: u64,
     pub nodes: Vec<DistyNode>,
     pub raft: RaftConfig,

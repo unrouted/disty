@@ -38,6 +38,10 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
+    if !registry.repository_exists(&repository).await? {
+        return Err(RegistryError::RepositoryNotFound {});
+    }
+
     let mut tags = registry.get_tags(&repository).await?;
 
     if let Some(last) = &last {

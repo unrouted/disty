@@ -106,7 +106,7 @@ impl RepositoryMatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
-pub struct AccessRule {
+pub(crate) struct AccessRule {
     pub subject: Option<SubjectMatch>,
     pub repository: Option<RepositoryMatch>,
     pub actions: HashSet<Action>,

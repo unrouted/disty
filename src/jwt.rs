@@ -81,9 +81,6 @@ impl TryInto<RS256PublicKey> for &Jwk {
 pub enum JwksCacheError {
     #[error("No key found for kid: {0}")]
     KeyNotFound(String),
-
-    #[error("Failed to decode base64url for modulus or exponent")]
-    Base64DecodeError,
 }
 
 #[derive(Debug)]
@@ -109,6 +106,7 @@ fn default_inner() -> Arc<RwLock<JWKSCache>> {
 }
 
 impl JWKSPublicKey {
+    #[cfg(test)]
     pub fn new(jwks_url: &str, issuer: &str, audience: &str) -> Self {
         Self {
             inner: Arc::new(RwLock::new(JWKSCache {

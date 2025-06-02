@@ -105,6 +105,18 @@ impl RegistryState {
         Ok(None)
     }
 
+    pub async fn repository_exists(&self, repository: &str) -> Result<bool> {
+        let res: Option<RepositoryRow> = self
+            .client
+            .query_as_optional(
+                "SELECT * FROM repositories WHERE name = $1",
+                params!(repository),
+            )
+            .await?;
+
+        Ok(res.is_some())
+    }
+
     pub async fn get_or_create_repository(&self, repository: &str) -> Result<u32> {
         self.client
             .execute(
@@ -205,8 +217,7 @@ impl RegistryState {
     pub async fn blob_downloaded(&self, digest: &Digest) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
-        let rows_affected = self
-            .client
+        self.client
             .execute(
                 "UPDATE blobs SET location = (location | $1) WHERE digest = $2;",
                 params!(location, digest.to_string()),

@@ -33,6 +33,10 @@ pub(crate) async fn head(
         return Err(RegistryError::AccessDenied {});
     }
 
+    if !registry.repository_exists(&repository).await? {
+        return Err(RegistryError::RepositoryNotFound {});
+    }
+
     let blob = match registry.get_blob(&digest).await? {
         Some(blob) => blob,
         None => return Err(RegistryError::BlobNotFound {}),

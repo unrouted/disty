@@ -75,7 +75,7 @@ pub(crate) struct StateFixture {
 
 impl StateFixture {
     pub(crate) async fn new() -> Result<Self> {
-        FixtureBuilder::new().build().await
+        FixtureBuilder::new().cluster_size(1).build().await
     }
 
     async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
