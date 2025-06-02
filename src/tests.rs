@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::PathBuf};
+use std::ops::Deref;
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
