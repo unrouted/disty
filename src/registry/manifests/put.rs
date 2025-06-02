@@ -185,4 +185,45 @@ mod test {
 
         fixture.teardown().await
     }
+
+    #[test(tokio::test)]
+    pub async fn upload_manifest_twice() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let payload = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": []
+        });
+
+        for i in 0..2 {
+            let res = fixture
+                .request(
+                    Request::builder()
+                        .method("PUT")
+                        .header(
+                            CONTENT_TYPE,
+                            "application/vnd.docker.distribution.manifest.list.v2+json",
+                        )
+                        .uri("/v2/foo/manifests/latest")
+                        .body(Body::from(payload.to_string()))?,
+                )
+                .await?;
+
+            assert_eq!(res.status(), StatusCode::CREATED);
+
+            let res = fixture
+                .request(
+                    Request::builder()
+                        .method("GET")
+                        .uri("/v2/foo/manifests/latest")
+                        .body(Body::empty())?,
+                )
+                .await?;
+
+            assert_eq!(res.status(), StatusCode::OK);
+        }
+
+        fixture.teardown().await
+    }
 }
