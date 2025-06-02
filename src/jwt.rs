@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use base64::engine::Engine;
-use base64::engine::general_purpose::STANDARD;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
 use serde::de::DeserializeOwned;
@@ -212,7 +212,7 @@ impl JWKSPublicKey {
 
     fn extract_kid_from_token(token: &str) -> Result<String> {
         let header_part = token.split('.').next().context("Missing JWT header")?;
-        let decoded = STANDARD
+        let decoded = STANDARD_NO_PAD
             .decode(header_part)
             .context("Base64 decode failed")?;
         let header: Value =
