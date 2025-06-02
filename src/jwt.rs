@@ -46,12 +46,19 @@ struct JwkDocument {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Jwk {
-    kty: String,
-    use_: String,
-    kid: String,
+    /// The specific cryptographic algorithm used with the key, e.g. RS256
     alg: String,
+    /// The family of cryptographic algorithms used with the key, e.g. RSA
+    kty: String,
+    /// How the key was meant to be used; sig represents the signature.
+    #[serde(rename = "use")]
+    use_: String,
+    /// The unique identifier for the key.
+    kid: String,
+    /// The modulus for the RSA key
     #[serde(with = "base64url")]
     n: Vec<u8>,
+    /// The exponent for the RSA key
     #[serde(with = "base64url")]
     e: Vec<u8>,
 }
