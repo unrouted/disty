@@ -180,7 +180,7 @@ impl RegistryState {
                     params!(repository),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, media_type, location, created_by) VALUES ($1, $2, $3, $4, $5);",
+                    "INSERT INTO blobs (digest, size, media_type, location, created_by) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location;",
                     params!(digest.to_string(), size, media_type, location, created_by),
                 ),
                 (

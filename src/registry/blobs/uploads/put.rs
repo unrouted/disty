@@ -304,6 +304,53 @@ mod test {
     }
 
     #[test(tokio::test)]
+    pub async fn same_blob_different_repo() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        for repo in ["foo", "bar"] {
+            let res = fixture
+                .request(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/v2/{repo}/blobs/uploads/"))
+                        .body(Body::empty())?,
+                )
+                .await?;
+
+            assert_eq!(res.status(), StatusCode::ACCEPTED);
+
+            let upload_id = res
+                .headers()
+                .get("Docker-Upload-UUID")
+                .context("No Docker-Upload-UUID header")?
+                .to_str()?;
+
+            let res = fixture.request(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/v2/{repo}/blobs/uploads/{upload_id}?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"))
+                    .body(Body::from("FOOBAR"))?
+                ).await?;
+
+            assert_eq!(res.status(), StatusCode::CREATED);
+
+            let res = fixture.request(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v2/{repo}/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"))
+                    .body(Body::empty())?
+                ).await?;
+
+            assert_eq!(res.status(), StatusCode::OK);
+
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(&body[..], b"FOOBAR");
+        }
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
     pub async fn upload_multiple_finish_with_put_bad_digest() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 
