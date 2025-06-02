@@ -349,9 +349,14 @@ mod test {
     #[test]
     fn config_issuer() {
         figment::Jail::expect_with(|jail| {
-            jail.create_file("token.key", include_str!("../../fixtures/etc/disty/token.key"))?;
+            jail.create_file(
+                "token.key",
+                include_str!("../../fixtures/etc/disty/token.key"),
+            )?;
 
-            jail.create_file("config.yaml", r#"
+            jail.create_file(
+                "config.yaml",
+                r#"
                 {
                   "authentication": {
                     "issuer": "Test Issuer",
@@ -362,7 +367,8 @@ mod test {
                     "acls": []
                   }
                 }
-                "#)?;
+                "#,
+            )?;
 
             let path = jail.directory().join("config.yaml");
 
@@ -370,7 +376,10 @@ mod test {
                 .extract()
                 .expect("Configuration should be parseable");
 
-            let t = config.authentication.as_ref().expect("Authentication shouldn't be empty");
+            let t = config
+                .authentication
+                .as_ref()
+                .expect("Authentication shouldn't be empty");
 
             assert_eq!(t.issuer, "Test Issuer");
             assert_eq!(t.realm, "testrealm");
