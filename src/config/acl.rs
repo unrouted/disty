@@ -26,11 +26,11 @@ impl TryFrom<String> for Action {
     }
 }
 
-impl Action {
-    pub(crate) fn to_string(&self) -> String {
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Push => "push".to_string(),
-            Self::Pull => "pull".to_string(),
+            Self::Push => write!(f, "push"),
+            Self::Pull => write!(f, "pull"),
         }
     }
 }
