@@ -45,6 +45,9 @@ pub enum StringMatch {
         #[serde(with = "serde_regex")]
         regex: Regex,
     },
+    OneOf {
+        one_of: HashSet<String>,
+    },
 }
 
 impl StringMatch {
@@ -52,6 +55,7 @@ impl StringMatch {
         match self {
             StringMatch::Exact(s) => s == input,
             StringMatch::Regex { regex } => regex.is_match(input),
+            StringMatch::OneOf { one_of } => one_of.contains(input),
         }
     }
 }
