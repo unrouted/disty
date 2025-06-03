@@ -53,14 +53,10 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    error!("GOT DIGEST: {:?}", Digest::try_from(tag.clone()));
-
     let manifest = match Digest::try_from(tag.clone()) {
         Ok(digest) => registry.get_manifest(&repository, &digest).await?,
         Err(_) => registry.get_tag(&repository, &tag).await?,
     };
-
-    error!("GOT MANUIFEST: {:?}", manifest);
 
     let manifest = match manifest {
         Some(manifest) => manifest,
