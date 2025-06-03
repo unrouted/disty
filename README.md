@@ -1,6 +1,6 @@
-# distry
+# disty
 
-**distry** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://databendlabs.github.io/openraft/), and [Hiqlite](https://github.com/sebadob/hiqlite), distry aims to be a self-contained solution for Kubernetes-native environments where traditional cloud or centralized registries aren't a viable option.
+**disty** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://databendlabs.github.io/openraft/), and [Hiqlite](https://github.com/sebadob/hiqlite), disty aims to be a self-contained solution for Kubernetes-native environments where traditional cloud or centralized registries aren't a viable option.
 
 ---
 
@@ -15,9 +15,9 @@
 
 ---
 
-## 🔧 Why distry?
+## 🔧 Why disty?
 
-There are a very specific set of scenarios where **distry** might be exactly what you need:
+There are a very specific set of scenarios where **disty** might be exactly what you need:
 
 - 🛠 You **must self-host** and cannot use external or cloud-based image registries  
 - 🏗 You want to **run entirely in-cluster** without dedicating extra machines to Harbor, Quay, or other solutions  
@@ -27,7 +27,7 @@ There are a very specific set of scenarios where **distry** might be exactly wha
 
 ## 🚧 Project Status
 
-> **distry is a work in progress.**  
+> **disty is a work in progress.**  
 > It was originally written in Python, then rewritten in Rust, and later migrated to use OpenRaft. It is now being redesigned with Hiqlite for embedded, distributed persistence.
 
 Currently, Raft is used for replicating image metadata (e.g., manifests, tags) across nodes. Image blobs are stored locally and are not replicated by the registry itself.
