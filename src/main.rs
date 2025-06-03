@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use axum::{ServiceExt, extract::Request};
 use clap::Parser;
-use extractor::Extractor;
 use hiqlite::cache_idx::CacheIndex;
 use hiqlite_macros::embed::*;
 use prometheus_client::registry::Registry;
@@ -83,8 +82,6 @@ async fn main() -> Result<()> {
     info!("Apply our database migrations");
     client.migrate::<Migrations>().await?;
 
-    let extractor = Extractor::new();
-
     let mut tasks = JoinSet::new();
 
     let webhooks = crate::webhook::WebhookService::start(&mut tasks, vec![], &mut registry);
@@ -93,7 +90,6 @@ async fn main() -> Result<()> {
         node_id,
         config: config.clone(),
         client,
-        extractor,
         webhooks,
     });
 

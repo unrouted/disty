@@ -1,397 +1,298 @@
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
-use tracing::debug;
+use serde::Deserialize;
 
-use crate::{digest::Digest, state::RegistryState};
+use crate::digest::Digest;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ManifestV2Config {
-    #[serde(rename = "mediaType")]
-    pub media_type: String,
-    pub size: Option<u64>,
-    pub digest: Digest,
+#[derive(Debug, Deserialize)]
+struct ManifestV1 {
+    name: String,
+    tag: String,
+    architecture: String,
+    fsLayers: Vec<FsLayer>,
+    history: Vec<History>,
+    #[serde(default)]
+    signatures: Option<Vec<serde_json::Value>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ManifestV2Layer {
-    #[serde(rename = "mediaType")]
-    media_type: String,
-    size: Option<u64>,
-    digest: Digest,
-    urls: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DistributionManifestV1Layer {
+#[derive(Debug, Deserialize)]
+struct FsLayer {
     #[serde(rename = "blobSum")]
-    digest: Digest,
+    blob_sum: Digest,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
+struct History {
+    v1Compatibility: String,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct Platform {
+    pub architecture: String,
+    pub os: String,
+    #[serde(default)]
+    pub variant: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Descriptor {
+    pub media_type: String,
+    pub digest: Digest,
+    #[serde(default)]
+    pub size: Option<u64>,
+    #[serde(default)]
+    pub platform: Option<Platform>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "mediaType")]
+#[serde(rename_all = "camelCase")]
+enum ManifestV2 {
+    #[serde(rename = "application/vnd.docker.distribution.manifest.v2+json")]
+    DockerManifestV2 {
+        config: Descriptor,
+        layers: Vec<Descriptor>,
+    },
+
+    #[serde(rename = "application/vnd.oci.image.manifest.v1+json")]
+    OciImageManifest {
+        config: Descriptor,
+        layers: Vec<Descriptor>,
+    },
+
+    #[serde(rename = "application/vnd.docker.distribution.manifest.list.v2+json")]
+    DockerManifestList { manifests: Vec<Descriptor> },
+
+    #[serde(rename = "application/vnd.oci.image.index.v1+json")]
+    OciImageIndex { manifests: Vec<Descriptor> },
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum Manifest {
-    ManifestV2 {
-        config: ManifestV2Config,
-        layers: Vec<ManifestV2Layer>,
-    },
-
-    DistributionManifestListV2 {
-        manifests: Vec<ManifestV2Layer>,
-    },
-
-    DistributionManifestV1 {
-        #[serde(rename = "fsLayers")]
-        layers: Vec<DistributionManifestV1Layer>,
-    },
-}
-
-#[derive(Clone)]
-pub struct Extractor {
-    schemas: HashMap<String, Value>,
+    V1(ManifestV1),
+    V2(ManifestV2),
 }
 
 #[derive(Debug)]
-pub enum ExtractError {
-    UnknownError,
-    SchemaValidationError,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Extraction {
-    pub digest: Digest,
+pub struct ManifestInfo {
     pub content_type: String,
-    pub size: Option<u64>,
+    pub manifests: Vec<Descriptor>,
+    pub blobs: Vec<Descriptor>,
 }
 
-impl Default for Extractor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
+    let manifest: Manifest = serde_json::from_str(input)?;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Report {
-    Manifest {
-        digest: Digest,
-        content_type: String,
-        dependencies: Vec<Digest>,
-    },
-    Blob {
-        digest: Digest,
-        content_type: String,
-        dependencies: Vec<Digest>,
-    },
-}
+    match manifest {
+        Manifest::V2(manifest) => {
+            let mut content_type = String::new();
+            let mut manifests = Vec::new();
+            let mut blobs = Vec::new();
 
-impl Extractor {
-    pub fn new() -> Self {
-        let mut schemas: HashMap<String, Value> = HashMap::new();
-
-        // Load all schemas into a hashmap
-        // Ideally we would pre-compile them for speed, but rust lifetimes are fiddly. Revisit.
-        schemas.insert(
-            "application/vnd.docker.container.image.v1+json".into(),
-            serde_json::from_str(include_str!(
-                "schemas/vnd.docker.container.image.v1+json.json"
-            ))
-            .unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.docker.distribution.manifest.v1+json".into(),
-            serde_json::from_str(include_str!(
-                "schemas/vnd.docker.distribution.manifest.v1+json.json"
-            ))
-            .unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.docker.distribution.manifest.v1+prettyjws".into(),
-            serde_json::from_str(include_str!(
-                "schemas/vnd.docker.distribution.manifest.v1+prettyjws.json"
-            ))
-            .unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.docker.distribution.manifest.v2+json".into(),
-            serde_json::from_str(include_str!(
-                "schemas/vnd.docker.distribution.manifest.v2+json.json"
-            ))
-            .unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.docker.distribution.manifest.list.v2+json".into(),
-            serde_json::from_str(include_str!(
-                "schemas/vnd.docker.distribution.manifest.list.v2+json.json"
-            ))
-            .unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.oci.image.index.v1+json".into(),
-            serde_json::from_str(include_str!("schemas/vnd.oci.image.index.v1+json.json")).unwrap(),
-        );
-        schemas.insert(
-            "application/vnd.oci.image.manifest.v1+json".into(),
-            serde_json::from_str(include_str!("schemas/vnd.oci.image.manifest.v1+json.json"))
-                .unwrap(),
-        );
-
-        Extractor { schemas }
-    }
-
-    fn validate(&self, content_type: &str, data: &str) -> bool {
-        match self.schemas.get(content_type) {
-            Some(schema) => {
-                let compiled = jsonschema::draft7::new(schema).unwrap();
-
-                match serde_json::from_str(data) {
-                    Ok(value) => compiled.is_valid(&value),
-                    _ => false,
-                }
-            }
-            _ => false,
-        }
-    }
-
-    pub async fn parse_manifest(
-        &self,
-        path: PathBuf,
-        content_type: &str,
-    ) -> Result<HashSet<Extraction>, ExtractError> {
-        let data = match tokio::fs::read_to_string(&path).await {
-            Ok(data) => data,
-            _ => return Err(ExtractError::UnknownError {}),
-        };
-
-        if !self.validate(content_type, &data) {
-            return Err(ExtractError::SchemaValidationError {});
-        }
-
-        self.extract_one(content_type, &data)
-    }
-
-    fn extract_one(
-        &self,
-        _content_type: &str,
-        data: &str,
-    ) -> Result<HashSet<Extraction>, ExtractError> {
-        let manifest = serde_json::from_str(data);
-        let mut results = HashSet::new();
-
-        if let Ok(manifest) = manifest {
             match manifest {
-                Manifest::DistributionManifestListV2 { manifests } => {
-                    for layer in manifests {
-                        results.insert(Extraction {
-                            digest: layer.digest,
-                            content_type: layer.media_type,
-                            size: layer.size,
-                        });
-                    }
+                ManifestV2::DockerManifestV2 { config, layers } => {
+                    content_type = "application/vnd.docker.distribution.manifest.v2+json".into();
+                    blobs.push(config);
+                    blobs.extend(layers);
                 }
-
-                Manifest::ManifestV2 { config, layers } => {
-                    results.insert(Extraction {
-                        digest: config.digest.clone(),
-                        content_type: config.media_type,
-                        size: config.size,
-                    });
-                    for layer in layers {
-                        results.insert(Extraction {
-                            digest: layer.digest,
-                            content_type: layer.media_type,
-                            size: layer.size,
-                        });
-                    }
+                ManifestV2::OciImageManifest { config, layers } => {
+                    content_type = "application/vnd.oci.image.manifest.v1+json".into();
+                    blobs.push(config);
+                    blobs.extend(layers);
                 }
-
-                Manifest::DistributionManifestV1 { layers } => {
-                    // all the layers are application/octet-stream
-                    for layer in layers.iter() {
-                        results.insert(Extraction {
-                            digest: layer.digest.clone(),
-                            content_type: "application/octet-string".into(),
-                            size: None,
-                        });
-                    }
+                ManifestV2::DockerManifestList { manifests: inner } => {
+                    content_type =
+                        "application/vnd.docker.distribution.manifest.list.v2+json".into();
+                    manifests.extend(inner);
+                }
+                ManifestV2::OciImageIndex { manifests: inner } => {
+                    content_type = "application/vnd.oci.image.index.v1+json".into();
+                    manifests.extend(inner);
                 }
             }
+
+            Ok(ManifestInfo {
+                content_type,
+                manifests,
+                blobs,
+            })
         }
+        Manifest::V1(manifest) => {
+            let blobs = manifest
+                .fsLayers
+                .into_iter()
+                .map(|f| Descriptor {
+                    media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
+                    digest: f.blob_sum,
+                    size: None,
+                    platform: None,
+                })
+                .collect();
 
-        Ok(results)
-    }
-
-    pub async fn extract(
-        &self,
-        app: &RegistryState,
-        repository: &str,
-        digest: &Digest,
-        content_type: &str,
-        path: &std::path::Path,
-    ) -> Result<Vec<Report>, ExtractError> {
-        let mut analysis: Vec<Report> = Vec::new();
-        let mut pending: HashSet<Extraction> = HashSet::new();
-        let mut seen: HashSet<Digest> = HashSet::new();
-
-        let data = match tokio::fs::read_to_string(&path).await {
-            Ok(data) => data,
-            _ => return Err(ExtractError::UnknownError {}),
-        };
-
-        if !self.validate(content_type, &data) {
-            return Err(ExtractError::SchemaValidationError {});
+            Ok(ManifestInfo {
+                content_type: "application/vnd.docker.distribution.manifest.v1+json".into(),
+                manifests: vec![],
+                blobs,
+            })
         }
-
-        let dependencies = self.extract_one(content_type, &data);
-        match dependencies {
-            Ok(dependencies) => {
-                analysis.push(Report::Manifest {
-                    digest: digest.clone(),
-                    content_type: content_type.to_string(),
-                    dependencies: dependencies
-                        .iter()
-                        .map(|extraction| extraction.digest.clone())
-                        .collect(),
-                });
-
-                pending.extend(dependencies);
-            }
-            _ => {
-                return Err(ExtractError::UnknownError {});
-            }
-        }
-
-        drop(data);
-
-        while !pending.is_empty() {
-            let drain: Vec<Extraction> = pending.drain().collect();
-            for extraction in drain {
-                if seen.contains(&extraction.digest) {
-                    // Don't visit a node twice
-                    continue;
-                }
-
-                match app.get_blob(&extraction.digest).await {
-                    Ok(Some(blob)) => {
-                        if !blob.repositories.contains(repository) {
-                            return Err(ExtractError::UnknownError {});
-                        }
-
-                        if let Some(size) = extraction.size {
-                            if size != blob.size {
-                                tracing::error!("Size mismatch");
-                                return Err(ExtractError::UnknownError {});
-                            }
-                        }
-                    }
-                    _ => {
-                        // Dependency not in this repository, so push not allowed
-                        return Err(ExtractError::UnknownError {});
-                    }
-                }
-
-                if !self.schemas.contains_key(&extraction.content_type) {
-                    analysis.push(Report::Blob {
-                        digest: extraction.digest.clone(),
-                        content_type: extraction.content_type.clone(),
-                        dependencies: vec![],
-                    });
-
-                    seen.insert(extraction.digest);
-
-                    continue;
-                }
-
-                // Lookup extraction.digest in blob store
-                let data = tokio::fs::read_to_string(app.get_blob_path(&extraction.digest)).await;
-
-                match data {
-                    Ok(data) => {
-                        let dependencies = self.extract_one(&extraction.content_type, &data);
-                        match dependencies {
-                            Ok(dependencies) => {
-                                analysis.push(Report::Blob {
-                                    digest: extraction.digest.clone(),
-                                    content_type: extraction.content_type.clone(),
-                                    dependencies: dependencies
-                                        .iter()
-                                        .map(|extraction| extraction.digest.clone())
-                                        .collect(),
-                                });
-
-                                pending.extend(dependencies);
-                            }
-                            _ => {
-                                return Err(ExtractError::UnknownError {});
-                            }
-                        }
-
-                        seen.insert(extraction.digest);
-                    }
-                    _ => {
-                        return Err(ExtractError::UnknownError {});
-                    }
-                }
-            }
-        }
-
-        debug!("Processed {digest} and made analysis: {analysis:?}");
-
-        Ok(analysis)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn wrong_schema() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/json".to_string();
-        let data = r#"
-          {
-            "schemaVersion": 2,
-            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
-            "manifests": [
-              {
-                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-                "size": 7143,
-                "digest": "sha256:e692418e4cbaf90ca69d05a66403747baa33ee08806650b51fab815ad7fc331f",
-                "platform": {
-                  "architecture": "ppc64le",
-                  "os": "linux"
+    fn test_docker_manifest_v2() {
+        let input = r#"
+        {
+            "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+            "config": {
+                "mediaType": "application/vnd.docker.container.image.v1+json",
+                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "size": 7023
+            },
+            "layers": [
+                {
+                    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                    "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "size": 32654
                 }
-              }
             ]
-          }
-        "#
-        .to_string();
+        }
+        "#;
 
-        assert!(!extractor.validate(&content_type, &data));
+        let info = parse_manifest(input).unwrap();
+        assert_eq!(
+            info.content_type,
+            "application/vnd.docker.distribution.manifest.v2+json"
+        );
+        assert_eq!(info.manifests.len(), 0);
+        assert_eq!(info.blobs.len(), 2);
+        assert_eq!(
+            info.blobs[0].digest,
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(
+            info.blobs[1].digest,
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .parse()
+                .unwrap()
+        );
     }
 
     #[test]
-    fn empty_string() {
-        let extractor = Extractor::new();
+    fn test_oci_image_manifest() {
+        let input = r#"
+        {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "size": 1500
+            },
+            "layers": [
+                {
+                    "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                    "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    "size": 5120
+                }
+            ]
+        }
+        "#;
 
-        let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
-        let data = r#"
-        "#
-        .to_string();
+        let info = parse_manifest(input).unwrap();
+        assert_eq!(
+            info.content_type,
+            "application/vnd.oci.image.manifest.v1+json"
+        );
+        assert_eq!(info.manifests.len(), 0);
+        assert_eq!(info.blobs.len(), 2);
+        assert_eq!(
+            info.blobs[0].digest,
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                .parse()
+                .unwrap()
+        );
+        assert_eq!(
+            info.blobs[1].digest,
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                .parse()
+                .unwrap()
+        );
+    }
 
-        assert!(!extractor.validate(&content_type, &data));
+    #[test]
+    fn test_docker_manifest_list() {
+        let input = r#"
+        {
+            "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                    "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "size": 7682,
+                    "platform": {
+                        "architecture": "amd64",
+                        "os": "linux"
+                    }
+                }
+            ]
+        }
+        "#;
+
+        let info = parse_manifest(input).unwrap();
+        assert_eq!(
+            info.content_type,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+        );
+        assert_eq!(info.blobs.len(), 0);
+        assert_eq!(info.manifests.len(), 1);
+        assert_eq!(
+            info.manifests[0].digest,
+            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                .parse()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_oci_image_index() {
+        let input = r#"
+        {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "size": 8421,
+                    "platform": {
+                        "architecture": "arm64",
+                        "os": "linux",
+                        "variant": "v8"
+                    }
+                }
+            ]
+        }
+        "#;
+
+        let info = parse_manifest(input).unwrap();
+        assert_eq!(info.content_type, "application/vnd.oci.image.index.v1+json");
+        assert_eq!(info.blobs.len(), 0);
+        assert_eq!(info.manifests.len(), 1);
+        assert_eq!(
+            info.manifests[0].digest,
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                .parse()
+                .unwrap()
+        );
     }
 
     #[test]
     fn partial() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
-        let data = r#"
+        let info = parse_manifest(
+            r#"
           {
             "schemaVersion": 2,
             "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -417,18 +318,16 @@ mod tests {
                   ]
                 }
               }
-        "#
-        .to_string();
+        "#,
+        );
 
-        assert!(!extractor.validate(&content_type, &data));
+        assert_eq!(info.is_err(), true);
     }
 
     #[test]
     fn manifest_list_v2() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/vnd.docker.distribution.manifest.list.v2+json".to_string();
-        let data = r#"
+        let info = parse_manifest(
+            r#"
           {
             "schemaVersion": 2,
             "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -456,18 +355,19 @@ mod tests {
               }
             ]
           }
-        "#
-        .to_string();
+        "#,
+        )
+        .unwrap();
 
-        assert!(extractor.validate(&content_type, &data));
+        assert_eq!(
+            info.content_type,
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+        );
     }
 
     #[test]
     fn manifestv2() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/vnd.docker.distribution.manifest.v2+json".to_string();
-        let data = r#"
+        let info = parse_manifest(r#"
             {
                 "schemaVersion": 2,
                 "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
@@ -494,17 +394,17 @@ mod tests {
                     }
                 ]
             }
-        "#.to_string();
+        "#).unwrap();
 
-        assert!(extractor.validate(&content_type, &data));
+        assert_eq!(
+            info.content_type,
+            "application/vnd.docker.distribution.manifest.v2+json"
+        );
     }
 
     #[test]
     fn signed_v2_1_manifest() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/vnd.docker.distribution.manifest.v1+prettyjws".to_string();
-        let data = r#"
+        let info = parse_manifest(r#"
             {
                 "name": "hello-world",
                 "tag": "latest",
@@ -543,18 +443,21 @@ mod tests {
                 }
                 ]
             }
-        "#.to_string();
+        "#).unwrap();
 
-        assert!(extractor.validate(&content_type, &data));
+        assert_eq!(
+            info.content_type,
+            "application/vnd.docker.distribution.manifest.v1+json"
+        );
     }
 
     #[test]
     fn oci_manifest_with_annotations() {
-        let extractor = Extractor::new();
-
-        let content_type = "application/vnd.oci.image.manifest.v1+json".to_string();
         let data = include_str!("../fixtures/manifests/oci_with_annotations.json");
-
-        assert!(extractor.validate(&content_type, data));
+        let info = parse_manifest(data).unwrap();
+        assert_eq!(
+            info.content_type,
+            "application/vnd.oci.image.manifest.v1+json"
+        );
     }
 }

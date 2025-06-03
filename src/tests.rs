@@ -146,7 +146,6 @@ impl StateFixture {
                 node_id: node.id,
                 config: configuration,
                 client,
-                extractor: Extractor::new(),
                 webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
             }));
         }

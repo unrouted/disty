@@ -6,10 +6,7 @@ use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{
-    config::Configuration, digest::Digest, extractor::Extractor, notify::Notification,
-    webhook::WebhookService,
-};
+use crate::{config::Configuration, digest::Digest, notify::Notification, webhook::WebhookService};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
@@ -56,7 +53,6 @@ pub struct RegistryState {
     pub node_id: u64,
     pub config: Configuration,
     pub client: Client,
-    pub extractor: Extractor,
     pub webhooks: WebhookService,
 }
 

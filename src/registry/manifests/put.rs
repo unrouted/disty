@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     error::RegistryError,
-    extractor::Report,
+    extractor::parse_manifest,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
     token::Token,
@@ -31,8 +31,6 @@ pub(crate) async fn put(
     token: Token,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    let extractor = &registry.extractor;
-
     if !token.validated_token {
         return Err(RegistryError::MustAuthenticate {
             challenge: token.get_push_challenge(&repository),
@@ -66,23 +64,15 @@ pub(crate) async fn put(
         }
     };
 
-    let extracted = extractor
-        .extract(
-            &registry,
-            &repository,
-            &digest,
-            &content_type.to_string(),
-            &upload_path,
-        )
-        .await;
-
-    let extracted = match extracted {
-        Ok(extracted_actions) => extracted_actions,
-        Err(e) => {
-            tracing::error!("Extraction failed: {:?}", e);
-            return Err(RegistryError::ManifestInvalid {});
-        }
+    let Ok(extracted) = parse_manifest(&tokio::fs::read_to_string(&upload_path).await?) else {
+        tracing::error!("Extraction failed");
+        return Err(RegistryError::ManifestInvalid {});
     };
+
+    if content_type.to_string() != extracted.content_type {
+        tracing::error!("Content-Type doesn't match mediaType");
+        return Err(RegistryError::ManifestInvalid {});
+    }
 
     let dest = registry.get_manifest_path(&digest);
 
@@ -96,18 +86,6 @@ pub(crate) async fn put(
         }
     }
 
-    let mut collected_dependencies = vec![];
-    for report in extracted {
-        if let Report::Manifest {
-            digest: _,
-            content_type: _,
-            dependencies,
-        } = report
-        {
-            collected_dependencies.extend(dependencies.into_iter());
-        }
-    }
-
     registry
         .insert_manifest(
             &repository,
@@ -115,7 +93,11 @@ pub(crate) async fn put(
             &digest,
             size,
             &content_type.to_string(),
-            &collected_dependencies,
+            &extracted
+                .blobs
+                .into_iter()
+                .map(|d| d.digest)
+                .collect::<Vec<_>>(),
             &token.sub,
         )
         .await?;

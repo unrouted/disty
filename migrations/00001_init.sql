@@ -51,6 +51,14 @@ CREATE TABLE manifest_layers (
     FOREIGN KEY(blob_digest) REFERENCES blobs(digest)
 );
 
+CREATE TABLE manifest_references (
+    parent_id INTEGER NOT NULL,
+    child_id INTEGER NOT NULL,
+    FOREIGN KEY(parent_id) REFERENCES manifests(id),
+    FOREIGN KEY(child_id) REFERENCES manifests(id),
+    PRIMARY KEY(parent_id, child_id)
+);
+
 -- Tags: named references to manifests, unique per repository
 CREATE TABLE tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
