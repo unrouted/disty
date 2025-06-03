@@ -19,7 +19,7 @@ use serde_json::Value;
 use crate::{
     config::{
         AuthenticationConfig,
-        acl::{AclCheck, Action, RepositoryContext, SubjectContext},
+        acl::{AclCheck, Action, ResourceContext, SubjectContext},
     },
     error::RegistryError,
     issuer::issue_token,
@@ -115,7 +115,7 @@ pub(crate) async fn token(
 
             let allowed_actions = issuer.acls.check_access(
                 &subject,
-                &RepositoryContext {
+                &ResourceContext {
                     repository: repo.to_string(),
                 },
             );

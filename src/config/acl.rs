@@ -63,7 +63,7 @@ pub struct SubjectContext {
     pub ip: IpAddr,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RepositoryContext {
+pub struct ResourceContext {
     pub repository: String,
 }
 
@@ -100,13 +100,13 @@ impl SubjectMatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RepositoryMatch {
+pub struct ResourceMatch {
     /// Name of the registry
     pub repository: Option<StringMatch>,
 }
 
-impl RepositoryMatch {
-    fn matches(&self, ctx: &RepositoryContext) -> bool {
+impl ResourceMatch {
+    fn matches(&self, ctx: &ResourceContext) -> bool {
         self.repository
             .as_ref()
             .is_none_or(|m| m.matches(&ctx.repository))
@@ -116,7 +116,7 @@ impl RepositoryMatch {
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub(crate) struct AccessRule {
     pub subject: Option<SubjectMatch>,
-    pub repository: Option<RepositoryMatch>,
+    pub resource: Option<ResourceMatch>,
     pub actions: HashSet<Action>,
     pub comment: Option<String>,
 }
@@ -125,7 +125,7 @@ pub(crate) trait AclCheck {
     fn check_access(
         &self,
         subject: &SubjectContext,
-        repository: &RepositoryContext,
+        repository: &ResourceContext,
     ) -> HashSet<Action>;
 }
 
@@ -133,16 +133,16 @@ impl AclCheck for [AccessRule] {
     fn check_access(
         &self,
         subject: &SubjectContext,
-        repository: &RepositoryContext,
+        resource: &ResourceContext,
     ) -> HashSet<Action> {
         let mut result = HashSet::new();
 
         for acl in self {
             if acl.subject.as_ref().is_none_or(|sub| sub.matches(subject))
                 && acl
-                    .repository
+                    .resource
                     .as_ref()
-                    .is_none_or(|repo| repo.matches(repository))
+                    .is_none_or(|repo| repo.matches(resource))
             {
                 result.extend(acl.actions.iter().cloned());
             }

@@ -196,7 +196,7 @@ mod test {
             "manifests": []
         });
 
-        for i in 0..2 {
+        for _i in 0..2 {
             let res = fixture
                 .request(
                     Request::builder()
