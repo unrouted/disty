@@ -233,8 +233,6 @@ impl JWKSPublicKey {
             .find(|k| k.kid == kid)
             .ok_or_else(|| JwksCacheError::KeyNotFound(kid.to_string()))?;
 
-        error!("Key found: {:?}", key_obj);
-
         key_obj.try_into()
     }
 
@@ -258,8 +256,6 @@ impl JWKSPublicKey {
     where
         C: DeserializeOwned + Serialize,
     {
-        error!("TOKEN: {token}");
-
         let kid = Self::extract_kid_from_token(token)
             .context("Failed to extract 'kid' from JWT header")?;
 

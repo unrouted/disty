@@ -164,7 +164,6 @@ where
 {
     fn from(err: E) -> Self {
         let err = err.into();
-        println!("{}", format_error(&err));
         error!(
             error = %format_error(&err),
             backtrace = ?err.backtrace(),

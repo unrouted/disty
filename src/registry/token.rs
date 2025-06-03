@@ -57,12 +57,10 @@ pub async fn authenticate(
                 }
             }
             crate::config::User::Token { username, issuer } => {
-                println!("a");
                 if username != req_username {
                     continue;
                 }
 
-                println!("b");
                 return Ok(
                     match issuer
                         .verify::<HashMap<String, Value>>(req_password)

@@ -241,7 +241,6 @@ fn notifications(state: Arc<RegistryState>) -> impl tokio_stream::Stream<Item = 
         match state.client.listen().await {
             Ok(n) => Some((n, state)),
             Err(e) => {
-                eprintln!("Listen error: {}", e);
                 // Decide whether to continue or stop stream
                 Some((Notification::Tick, state))
             }

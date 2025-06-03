@@ -147,7 +147,6 @@ mod test {
         assert_eq!(res.status(), StatusCode::OK);
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
-        println!("{:?}", body);
         let value: Value = serde_json::from_slice(&body)?;
 
         assert_eq!(value, json!({"name": "foo", "tags": ["latest"]}));

@@ -41,8 +41,6 @@ where
 
         let re = Regex::new(r"(^/v2/)(.+)(/(manifests|blobs|tags).*$)").unwrap();
 
-        println!("{}", path);
-
         let result = re.replace(&path, |caps: &Captures| {
             let prefix = &caps[1];
             let encoded = utf8_percent_encode(&caps[2], NON_ALPHANUMERIC).to_string();
@@ -51,15 +49,11 @@ where
             format!("{prefix}{encoded}{suffix}")
         });
 
-        println!("{}", result);
-
         let new_uri = format!("{}?{}", result, query)
             .parse::<Uri>()
             .expect("Failed to build URI");
 
         *req.uri_mut() = new_uri;
-
-        println!("{}", req.uri().path());
 
         self.inner.call(req)
     }
@@ -123,7 +117,6 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
-        println!("{:?}", body);
         assert_eq!(&body[..], b"some/repo:latest\nNone");
     }
 
@@ -147,7 +140,6 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
-        println!("{:?}", body);
         assert_eq!(&body[..], b"some/repo:latest\nSome(\"uncertain\")");
     }
 }
