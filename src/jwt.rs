@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
+use reqwest::Certificate;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -101,6 +102,8 @@ pub struct JWKSPublicKey {
     #[serde(skip, default = "default_inner")]
     inner: Arc<RwLock<JWKSCache>>,
     jwks_url: String,
+    bearer_token: Option<String>,
+    ca: Option<String>,
     issuer: String,
     audience: String,
 }
@@ -123,6 +126,8 @@ impl JWKSPublicKey {
             jwks_url: jwks_url.to_string(),
             issuer: issuer.to_string(),
             audience: audience.to_string(),
+            bearer_token: None,
+            ca: None,
         }
     }
 
@@ -141,15 +146,29 @@ impl JWKSPublicKey {
     async fn fetch_jwks(&self) -> Result<(JwkDocument, Instant)> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
-            .connect_timeout(Duration::from_secs(5))
-            .build()
-            .context("Failed to build HTTP client")?;
+            .connect_timeout(Duration::from_secs(5));
+
+        let client = match &self.ca {
+            None => client,
+            Some(ca) => {
+                let ca_cert = Certificate::from_pem(ca.as_bytes())?;
+                client.add_root_certificate(ca_cert)
+            }
+        };
+
+        let client = client.build().context("Failed to build HTTP client")?;
 
         let retry_strategy = ExponentialBackoff::from_millis(300).map(jitter).take(3);
 
         let (body, headers) = Retry::spawn(retry_strategy, || async {
-            let resp = client
-                .get(&self.jwks_url)
+            let req = client.get(&self.jwks_url);
+
+            let req = match &self.bearer_token {
+                None => req,
+                Some(bearer_token) => req.bearer_auth(bearer_token),
+            };
+
+            let resp = req
                 .send()
                 .await
                 .context("Request failed")?
