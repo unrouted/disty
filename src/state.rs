@@ -968,4 +968,94 @@ mod tests {
 
         Ok(())
     }
+
+    #[test(tokio::test)]
+    async fn unstore_unreferenced_manifests() -> Result<()> {
+        /*
+        Manifest isn't referenced by a tag so should be deleted
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        assert_eq!(
+            registry
+                .get_manifest(
+                    "foo",
+                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                        .parse()
+                        .unwrap()
+                )
+                .await?
+                .unwrap()
+                .location,
+            0
+        );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn unstore_unreferenced_manifests_tag_ref() -> Result<()> {
+        /*
+        Manifest is referenced by a tag so shouldn't be deleted
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        assert_eq!(
+            registry
+                .get_manifest(
+                    "foo",
+                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                        .parse()
+                        .unwrap()
+                )
+                .await?
+                .unwrap()
+                .location,
+            1
+        );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
 }
