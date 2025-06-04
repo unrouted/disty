@@ -15,7 +15,7 @@ figment = { version = "0.10.19", features = ["env", "yaml"] }
 figment_file_provider_adapter = "0.1.1"
 futures = "0.3.31"
 futures-util = "0.3.31"
-headers = "0.4.0"
+headers = "0.4.1"
 hiqlite = { version = "0.6.0", features = ["listen_notify_local"] }
 hiqlite-macros = "0.6.0"
 hostname = "0.4.1"
@@ -31,7 +31,7 @@ prometheus-client = "0.23.1"
 pwhash = "1.0.0"
 rand = "0.9.1"
 regex = "1.11.1"
-reqwest = { version = "0.12.18", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
+reqwest = { version = "0.12.19", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 ring = "0.17.14"
 schema = "0.1.0"
 sec1 = { version = "0.7.3", features = ["pem", "pkcs8"] }
