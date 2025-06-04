@@ -8,7 +8,10 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    config::Configuration, digest::Digest, extractor::ManifestInfo, notify::Notification,
+    config::{Configuration, lifecycle::DeletionRule},
+    digest::Digest,
+    extractor::ManifestInfo,
+    notify::Notification,
     webhook::WebhookService,
 };
 
@@ -450,6 +453,42 @@ impl RegistryState {
         Ok(res)
     }
 
+    pub async fn untag_old_tags(&self) -> Result<usize> {
+        let mut total_deleted = 0;
+
+        for rule in &self.config.cleanup {
+            let DeletionRule::Tag {
+                repository,
+                tag,
+                older_than,
+            } = rule;
+
+            total_deleted += self
+                .client
+                .execute(
+                    "DELETE FROM tags
+                    WHERE id IN (
+                        SELECT t.id
+                        FROM tags t
+                        JOIN repositories r ON t.repository_id = r.id
+                        WHERE t.updated_at < datetime('now', '-' || $1 || ' days')
+                        AND t.name GLOB $2
+                        AND r.name GLOB $3
+                    );",
+                    params!(
+                        *older_than,
+                        tag.clone().map_or("*".to_string(), |m| m.to_sqlite_glob()),
+                        repository
+                            .clone()
+                            .map_or("*".to_string(), |m| m.to_sqlite_glob())
+                    ),
+                )
+                .await?;
+        }
+
+        Ok(total_deleted)
+    }
+
     pub async fn unstore_unreferenced_manifests(&self) -> Result<usize> {
         let location = 1 << (self.node_id - 1);
         let mut deleted = vec![];
@@ -502,7 +541,7 @@ impl RegistryState {
                 "DELETE FROM manifests
                 WHERE
                     id NOT IN (SELECT child_id FROM manifest_references)
-                    AND id NOT IN (SELECT manifest_id FROM tags WHERE)
+                    AND id NOT IN (SELECT manifest_id FROM tags)
                     AND location = 0
                     AND created_at < datetime('now', '-1 day');",
                 vec![],
@@ -514,13 +553,20 @@ impl RegistryState {
     pub async fn delete_unreference_blob_repositories(&self) -> Result<usize> {
         self.client
             .execute(
-            "DELETE FROM blobs_repositories
-                    USING manifest_layers ml
-                    LEFT JOIN manifests m ON ml.manifest_id = m.id AND m.repository_id = blobs_repositories.repository_id
-                    WHERE blobs_repositories.digest = ml.blob_digest
-                    AND blobs_repositories.repository_id = $1
-                    AND blobs_repositories.created_at < datetime('now', '-1 day')
-                    AND m.id IS NULL;",
+                "WITH orphaned AS (
+                    SELECT br.digest, br.repository_id
+                    FROM blobs_repositories br
+                    LEFT JOIN manifest_layers ml ON br.digest = ml.blob_digest
+                    LEFT JOIN manifests m 
+                        ON ml.manifest_id = m.id AND m.repository_id = br.repository_id
+                    WHERE br.repository_id = $1
+                    AND br.created_at < datetime('now', '-1 day')
+                    AND m.id IS NULL
+                )
+                DELETE FROM blobs_repositories
+                WHERE (digest, repository_id) IN (
+                    SELECT digest, repository_id FROM orphaned
+                );",
                 vec![],
             )
             .await
@@ -586,6 +632,7 @@ impl RegistryState {
     }
 
     pub async fn garbage_collection(&self) -> Result<()> {
+        self.untag_old_tags().await?;
         self.unstore_unreferenced_manifests().await?;
         self.delete_unreferenced_manifests().await?;
         self.delete_unreference_blob_repositories().await?;
@@ -812,6 +859,17 @@ mod tests {
             blob.repositories,
             ["library/nginx".to_string()].into_iter().collect()
         );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_garbage_collect() -> Result<()> {
+        let registry = StateFixture::new().await?;
+
+        registry.garbage_collection().await?;
 
         registry.teardown().await?;
 

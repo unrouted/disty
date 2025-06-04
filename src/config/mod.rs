@@ -17,9 +17,10 @@ use regex::Regex;
 use sec1::DecodeEcPrivateKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::jwt::JWKSPublicKey;
+use crate::{config::lifecycle::DeletionRule, jwt::JWKSPublicKey};
 
 pub(crate) mod acl;
+pub(crate) mod lifecycle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistyNode {
@@ -160,6 +161,7 @@ pub(crate) struct Configuration {
     pub webhooks: Vec<WebhookConfig>,
     pub scrubber: ScrubberConfig,
     pub sentry: Option<SentryConfig>,
+    pub cleanup: Vec<DeletionRule>,
 }
 
 impl Configuration {
@@ -260,6 +262,7 @@ impl Default for Configuration {
             scrubber: ScrubberConfig::default(),
             sentry: None,
             nodes: vec![],
+            cleanup: vec![],
         }
     }
 }
