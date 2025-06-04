@@ -69,7 +69,7 @@ pub(crate) async fn put(
         return Err(RegistryError::ManifestInvalid {});
     };
 
-    if content_type.to_string() != extracted.content_type {
+    if content_type.to_string() != extracted.media_type {
         tracing::error!("Content-Type doesn't match mediaType");
         return Err(RegistryError::ManifestInvalid {});
     }
@@ -87,19 +87,7 @@ pub(crate) async fn put(
     }
 
     registry
-        .insert_manifest(
-            &repository,
-            &tag,
-            &digest,
-            size,
-            &content_type.to_string(),
-            &extracted
-                .blobs
-                .into_iter()
-                .map(|d| d.digest)
-                .collect::<Vec<_>>(),
-            &token.sub,
-        )
+        .insert_manifest(&repository, &tag, &digest, &extracted, &token.sub)
         .await?;
 
     /*

@@ -52,11 +52,11 @@ CREATE TABLE manifest_layers (
 );
 
 CREATE TABLE manifest_references (
-    parent_id INTEGER NOT NULL,
+    manifest_id INTEGER NOT NULL,
     child_id INTEGER NOT NULL,
-    FOREIGN KEY(parent_id) REFERENCES manifests(id),
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     FOREIGN KEY(child_id) REFERENCES manifests(id),
-    PRIMARY KEY(parent_id, child_id)
+    PRIMARY KEY(manifest_id, child_id)
 );
 
 -- Tags: named references to manifests, unique per repository

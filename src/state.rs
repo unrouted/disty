@@ -6,7 +6,10 @@ use hiqlite_macros::params;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{config::Configuration, digest::Digest, notify::Notification, webhook::WebhookService};
+use crate::{
+    config::Configuration, digest::Digest, extractor::ManifestInfo, notify::Notification,
+    webhook::WebhookService,
+};
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
@@ -296,38 +299,43 @@ impl RegistryState {
         repository: &str,
         tag: &str,
         digest: &Digest,
-        size: u64,
-        media_type: &str,
-        dependencies: &[Digest],
+        info: &ManifestInfo,
         created_by: &str,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         let mut sql = vec![
             (
-                "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
+                "INSERT INTO repositories(name) VALUES ($1) ON CONFLICT DO UPDATE SET id=id RETURNING id",
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, (SELECT id FROM repositories WHERE name=$5), $6) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
-                    size as u32,
-                    media_type,
+                    info.size,
+                    &info.media_type,
                     location,
-                    repository,
+                    StmtIndex(0).column("id"),
                     created_by
                 ),
             ),
             (
-                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, (SELECT id FROM repositories WHERE name=$2), (SELECT manifests.id FROM manifests, repositories WHERE manifests.digest=$3 AND repositories.name=$2 AND repositories.id=manifests.repository_id)) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_id = excluded.manifest_id;;",
-                params!(tag, repository, digest.to_string()),
+                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, $2, (SELECT manifests.id FROM manifests WHERE digest=$3 AND repository_id=$2)) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_id = excluded.manifest_id;;",
+                params!(tag, StmtIndex(0).column("id"), digest.to_string()),
             ),
         ];
 
-        sql.extend(dependencies.iter().map(|digest| {
+        sql.extend(info.blobs.iter().map(|descriptor| {
             (
                 "INSERT INTO manifest_layers(manifest_id, blob_digest) VALUES ($1, $2);",
-                params!(StmtIndex(1).column("id"), digest.to_string()),
+                params!(StmtIndex(1).column("id"), descriptor.digest.to_string()),
+            )
+        }));
+
+        sql.extend(info.manifests.iter().map(|descriptor| {
+            (
+                "INSERT INTO manifest_references(manifest_id, child_id) VALUES ($1, (SELECT manifests.id FROM manifests WHERE digest=$2 AND repository_id=$3));",
+                params!(StmtIndex(1).column("id"), descriptor.digest.to_string(), StmtIndex(1).column("id")),
             )
         }));
 
@@ -342,7 +350,7 @@ impl RegistryState {
             .await?;
 
         self.webhooks
-            .send(repository, digest, tag, media_type)
+            .send(repository, digest, tag, &info.media_type)
             .await?;
 
         Ok(())
@@ -478,7 +486,7 @@ impl RegistryState {
 mod tests {
     use test_log::test;
 
-    use crate::tests::StateFixture;
+    use crate::{extractor::Descriptor, tests::StateFixture};
 
     use super::*;
 
@@ -591,16 +599,20 @@ mod tests {
 
         assert_eq!(None, registry.get_manifest("library/nginx", &digest).await?);
 
+        let info = ManifestInfo {
+            media_type: "application/octet-stream".into(),
+            size: 55,
+            manifests: vec![],
+            blobs: vec![Descriptor {
+                digest: blob,
+                media_type: "application/octet-stream".into(),
+                size: None,
+                platform: None,
+            }],
+        };
+
         registry
-            .insert_manifest(
-                "library/nginx",
-                "latest",
-                &digest,
-                55,
-                "application/octet-stream",
-                &[blob],
-                "bob",
-            )
+            .insert_manifest("library/nginx", "latest", &digest, &info, "bob")
             .await?;
 
         let manifest = registry
