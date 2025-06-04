@@ -40,6 +40,7 @@ impl StringMatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type",  rename_all = "lowercase")]
 pub(crate) enum DeletionRule {
     Tag {
         repository: Option<StringMatch>,
