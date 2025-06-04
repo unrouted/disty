@@ -679,7 +679,10 @@ impl RegistryState {
 mod tests {
     use test_log::test;
 
-    use crate::{extractor::Descriptor, tests::StateFixture};
+    use crate::{
+        extractor::Descriptor,
+        tests::{FixtureBuilder, StateFixture},
+    };
 
     use super::*;
 
@@ -870,6 +873,96 @@ mod tests {
         let registry = StateFixture::new().await?;
 
         registry.garbage_collection().await?;
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn old_tags() -> Result<()> {
+        /*
+        Registry is configured to drop tags in the "foo" repository after 5 days.
+
+        1 tag should be dropped.
+        */
+        let registry =
+            StateFixture::with_builder(FixtureBuilder::new().cleanup(DeletionRule::Tag {
+                repository: Some(crate::config::lifecycle::StringMatch::Exact("foo".into())),
+                tag: None,
+                older_than: 5,
+            }))
+            .await?;
+
+        registry.untag_old_tags().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george') RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+            ]
+        ).await?;
+
+        assert!(registry.get_tag("foo", "latest").await?.is_some());
+
+        registry.untag_old_tags().await?;
+
+        assert!(registry.get_tag("foo", "latest").await?.is_none());
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn old_tags_pending() -> Result<()> {
+        /*
+        Registry is configured to drop tags in the "foo" repository after 500 days.
+
+        Nothing should be dropped.
+        */
+        let registry =
+            StateFixture::with_builder(FixtureBuilder::new().cleanup(DeletionRule::Tag {
+                repository: Some(crate::config::lifecycle::StringMatch::Exact("foo".into())),
+                tag: None,
+                older_than: 500,
+            }))
+            .await?;
+
+        registry.untag_old_tags().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george') RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+            ]
+        ).await?;
+
+        assert!(registry.get_tag("foo", "latest").await?.is_some());
+
+        registry.untag_old_tags().await?;
+
+        assert!(registry.get_tag("foo", "latest").await?.is_some());
 
         registry.teardown().await?;
 

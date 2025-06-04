@@ -71,10 +71,3 @@ CREATE TABLE tags (
     FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     UNIQUE(repository_id, name)
 );
-
-CREATE TRIGGER IF NOT EXISTS set_tags_updated_at
-AFTER UPDATE ON tags
-FOR EACH ROW
-BEGIN
-    UPDATE tags SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
-END;

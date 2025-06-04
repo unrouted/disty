@@ -14,7 +14,7 @@ use crate::{
     Cache, Migrations,
     config::{
         ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
-        acl::AccessRule,
+        acl::AccessRule, lifecycle::DeletionRule,
     },
     webhook::WebhookService,
 };
@@ -28,6 +28,7 @@ pub struct FixtureBuilder {
     pub authentication: bool,
     pub users: Vec<User>,
     pub acls: Vec<AccessRule>,
+    pub cleanup: Vec<DeletionRule>,
 }
 
 impl FixtureBuilder {
@@ -37,6 +38,7 @@ impl FixtureBuilder {
             authentication: false,
             users: vec![],
             acls: vec![],
+            cleanup: vec![],
         }
     }
 
@@ -60,6 +62,11 @@ impl FixtureBuilder {
         self
     }
 
+    pub fn cleanup(mut self, rule: DeletionRule) -> Self {
+        self.cleanup.push(rule);
+        self
+    }
+
     pub async fn build(self) -> Result<StateFixture> {
         StateFixture::with_builder(self).await
     }
@@ -78,7 +85,7 @@ impl StateFixture {
         FixtureBuilder::new().cluster_size(1).build().await
     }
 
-    async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
+    pub async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
         let authentication = match builder.authentication {
             true => Some(AuthenticationConfig {
                 issuer: "some-issuer".into(),
@@ -133,6 +140,7 @@ impl StateFixture {
                 },
                 nodes: nodes.clone(),
                 authentication: authentication.clone(),
+                cleanup: builder.cleanup.clone(),
                 ..Default::default()
             };
 
