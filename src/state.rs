@@ -1058,4 +1058,88 @@ mod tests {
 
         Ok(())
     }
+
+    #[test(tokio::test)]
+    async fn delete_unstored_manifests() -> Result<()> {
+        /*
+        Manifest isn't referenced by a tag etc and has no copies, drop its database entry
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.delete_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.delete_unreferenced_manifests().await?;
+
+        assert!(
+            registry
+                .get_manifest(
+                    "foo",
+                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                        .parse()
+                        .unwrap()
+                )
+                .await?
+                .is_none()
+        );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn delete_unstored_manifests_still_mounted() -> Result<()> {
+        /*
+        Manifest isn't deleted because its still present on a node
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.delete_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.delete_unreferenced_manifests().await?;
+
+        assert_eq!(
+            registry
+                .get_manifest(
+                    "foo",
+                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                        .parse()
+                        .unwrap()
+                )
+                .await?
+                .unwrap()
+                .location,
+            1
+        );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
 }
