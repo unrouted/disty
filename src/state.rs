@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use serde::Deserialize;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -21,6 +22,7 @@ struct BlobRow {
 
 #[derive(Debug, Deserialize)]
 struct ManifestRow {
+    id: u64,
     digest: Digest,
     size: u32,
     media_type: String,
@@ -247,7 +249,7 @@ impl RegistryState {
                     FROM repositories r
                     JOIN tags t ON t.repository_id = r.id
                     JOIN manifests m ON t.manifest_id = m.id
-                    WHERE r.name = $1 AND t.name = $2 AND t.deleted_at IS NULL AND m.deleted_at IS NULL;",
+                    WHERE r.name = $1 AND t.name = $2;",
                 params!(repository, tag),
             )
             .await?;
@@ -276,8 +278,7 @@ impl RegistryState {
                         FROM manifests m
                         JOIN repositories r ON m.repository_id = r.id
                         WHERE m.digest = $1
-                        AND r.name = $2
-                        AND m.deleted_at IS NULL;",
+                        AND r.name = $2;",
                 params!(digest.to_string(), repository),
             )
             .await?;
@@ -447,6 +448,151 @@ impl RegistryState {
         }
 
         Ok(res)
+    }
+
+    pub async fn unstore_unreferenced_manifests(&self) -> Result<usize> {
+        let location = 1 << (self.node_id - 1);
+        let mut deleted = vec![];
+
+        let manifests: Vec<ManifestRow> = self
+            .client
+            .query_as(
+                "SELECT m.*, r.name AS repository
+                FROM manifests m
+                JOIN repositories r ON m.repository_id = r.id
+                LEFT JOIN manifest_references mr ON m.id = mr.child_id
+                LEFT JOIN tags t ON m.id = t.manifest_id
+                WHERE
+                    mr.child_id IS NULL
+                    AND t.manifest_id IS NULL
+                    AND m.created_at < datetime('now', '-1 day')
+                    AND (m.location & $1) = $1;",
+                params!(location),
+            )
+            .await?;
+
+        for manifest in manifests {
+            let path = self.get_manifest_path(&manifest.digest);
+            if tokio::fs::try_exists(&path).await? {
+                info!("Deleting {:?}", path);
+                tokio::fs::remove_file(&path).await?;
+            }
+
+            deleted.push(manifest.id);
+        }
+
+        let statements = deleted
+            .into_iter()
+            .map(|id| {
+                (
+                    "UPDATE manifests SET location = location & ~$1 WHERE id=$2;",
+                    params!(location, id as u32),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let res = self.client.txn(statements).await?;
+
+        Ok(res.len())
+    }
+
+    pub async fn delete_unreferenced_manifests(&self) -> Result<usize> {
+        self.client
+            .execute(
+                "DELETE FROM manifests
+                WHERE
+                    id NOT IN (SELECT child_id FROM manifest_references)
+                    AND id NOT IN (SELECT manifest_id FROM tags WHERE)
+                    AND location = 0
+                    AND created_at < datetime('now', '-1 day');",
+                vec![],
+            )
+            .await
+            .context("Unable to delete unreferenced manifests")
+    }
+
+    pub async fn delete_unreference_blob_repositories(&self) -> Result<usize> {
+        self.client
+            .execute(
+            "DELETE FROM blobs_repositories
+                    USING manifest_layers ml
+                    LEFT JOIN manifests m ON ml.manifest_id = m.id AND m.repository_id = blobs_repositories.repository_id
+                    WHERE blobs_repositories.digest = ml.blob_digest
+                    AND blobs_repositories.repository_id = $1
+                    AND blobs_repositories.created_at < datetime('now', '-1 day')
+                    AND m.id IS NULL;",
+                vec![],
+            )
+            .await
+            .context("Unable to remove blobs from repositories where they are no longer referenced")
+    }
+
+    pub async fn unstore_unreachable_blobs(&self) -> Result<usize> {
+        let location = 1 << (self.node_id - 1);
+
+        let blobs: Vec<BlobRow> = self
+            .client
+            .query_as(
+                "SELECT b.*
+            FROM blobs b
+            LEFT JOIN blobs_repositories br ON b.digest = br.digest
+                WHERE (b.location & $1) != 0
+                AND br.digest IS NULL;",
+                params!(location),
+            )
+            .await?;
+
+        for blob in blobs.iter() {
+            let path = self.get_blob_path(&blob.digest);
+            if tokio::fs::try_exists(&path).await? {
+                info!("Deleting {:?}", path);
+                tokio::fs::remove_file(&path).await?;
+            }
+        }
+
+        let statements = blobs
+            .into_iter()
+            .map(|blob| {
+                (
+                    "UPDATE blobs SET location = location & (~$1) WHERE digest = $2;",
+                    params!(location, blob.digest.to_string()),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let res = self.client.txn(statements).await?;
+
+        Ok(res.len())
+    }
+
+    pub async fn delete_unstored_blobs(&self) -> Result<usize> {
+        self.client
+            .execute(
+                "
+                WITH unreferenced_blobs AS (
+                    SELECT b.digest
+                    FROM blobs b
+                    LEFT JOIN blobs_repositories br ON b.digest = br.digest
+                    WHERE b.location = 0
+                        AND br.digest IS NULL
+                    )
+                    DELETE FROM blobs
+                    WHERE digest IN (SELECT digest FROM unreferenced_blobs);
+                ",
+                vec![],
+            )
+            .await
+            .context("Unable to delete unreferenced manifests")
+    }
+
+    pub async fn garbage_collection(&self) -> Result<()> {
+        self.unstore_unreferenced_manifests().await?;
+        self.delete_unreferenced_manifests().await?;
+        self.delete_unreference_blob_repositories().await?;
+        self.unstore_unreachable_blobs().await?;
+        self.delete_unstored_blobs().await?;
+
+        Ok(())
     }
 
     pub async fn get_missing_manifests(&self) -> Result<Vec<Manifest>> {

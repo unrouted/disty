@@ -7,11 +7,13 @@ use prometheus_client::registry::Registry;
 use registry::router;
 use serde::{Deserialize, Serialize};
 use state::RegistryState;
-use std::{fmt::Debug, net::SocketAddr, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::task::JoinSet;
 use tower::Layer;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+use crate::error::format_error;
 
 mod config;
 mod digest;
@@ -115,6 +117,27 @@ async fn main() -> Result<()> {
         axum::serve(listener, app).await?;
         Ok(())
     });
+
+    {
+        let state = state.clone();
+
+        tasks.spawn(async move {
+            state.client.wait_until_healthy_db().await;
+
+            loop {
+                if let Err(err) = state.garbage_collection().await {
+                    let err = err.into();
+                    error!(
+                        error = %format_error(&err),
+                        backtrace = ?err.backtrace(),
+                        "Garbage collection error"
+                    );
+                }
+
+                tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+            }
+        });
+    }
 
     let res = tasks.join_next().await;
 

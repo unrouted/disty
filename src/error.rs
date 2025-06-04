@@ -25,7 +25,7 @@ pub(crate) enum RegistryError {
     Unhandled(anyhow::Error),
 }
 
-fn format_error(e: &anyhow::Error) -> String {
+pub(crate) fn format_error(e: &anyhow::Error) -> String {
     let mut s = String::new();
     s.push_str(&format!("{}", e));
     for cause in e.chain().skip(1) {

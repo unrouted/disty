@@ -13,14 +13,15 @@ CREATE TABLE blobs (
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this blob
     created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME  -- Null if not deleted (used for garbage collection)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Association of blobs with repositories
 CREATE TABLE blobs_repositories (
     digest TEXT NOT NULL,
     repository_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (digest, repository_id),
     FOREIGN KEY(repository_id) REFERENCES repositories(id),
     FOREIGN KEY(digest) REFERENCES blobs(digest)
@@ -37,7 +38,6 @@ CREATE TABLE manifests (
     created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME,  -- Null if not deleted
     FOREIGN KEY(repository_id) REFERENCES repositories(id),
     UNIQUE(repository_id, digest)
 );
@@ -47,15 +47,15 @@ CREATE TABLE manifest_layers (
     manifest_id INTEGER NOT NULL,
     blob_digest TEXT NOT NULL,
     PRIMARY KEY (manifest_id, blob_digest),
-    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id) ON DELETE CASCADE,
     FOREIGN KEY(blob_digest) REFERENCES blobs(digest)
 );
 
 CREATE TABLE manifest_references (
     manifest_id INTEGER NOT NULL,
     child_id INTEGER NOT NULL,
-    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
-    FOREIGN KEY(child_id) REFERENCES manifests(id),
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id) ON DELETE CASCADE,
+    FOREIGN KEY(child_id) REFERENCES manifests(id) ON DELETE CASCADE,
     PRIMARY KEY(manifest_id, child_id)
 );
 
@@ -67,7 +67,6 @@ CREATE TABLE tags (
     manifest_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at DATETIME,  -- Null if not deleted
     FOREIGN KEY(repository_id) REFERENCES repositories(id),
     FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     UNIQUE(repository_id, name)
