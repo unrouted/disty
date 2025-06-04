@@ -126,7 +126,6 @@ async fn main() -> Result<()> {
 
             loop {
                 if let Err(err) = state.garbage_collection().await {
-                    let err = err.into();
                     error!(
                         error = %format_error(&err),
                         backtrace = ?err.backtrace(),

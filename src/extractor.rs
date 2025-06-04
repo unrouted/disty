@@ -317,7 +317,7 @@ mod tests {
         "#,
         );
 
-        assert_eq!(info.is_err(), true);
+        assert!(info.is_err());
     }
 
     #[test]
