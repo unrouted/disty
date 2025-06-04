@@ -9,7 +9,6 @@ CREATE TABLE repositories (
 CREATE TABLE blobs (
     digest TEXT PRIMARY KEY,
     size INTEGER NOT NULL,
-    media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this blob
     created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

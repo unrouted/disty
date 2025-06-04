@@ -63,7 +63,7 @@ pub(crate) async fn get(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Docker-Content-Digest", digest.to_string())
-        .header(header::CONTENT_TYPE, blob.media_type)
+        .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_LENGTH, blob.size)
         .body(Body::from_stream(ReaderStream::new(blob_file)))?)
 }
