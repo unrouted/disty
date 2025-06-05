@@ -44,7 +44,7 @@ pub async fn authenticate(
     issuer: &AuthenticationConfig,
     req_username: &str,
     req_password: &str,
-) -> Result<Option<HashMap<String, Value>>> {
+) -> Result<Option<(String, HashMap<String, Value>)>> {
     for user in &issuer.users {
         match user {
             crate::config::User::Password { username, password } => {
@@ -53,7 +53,8 @@ pub async fn authenticate(
                 }
 
                 if pwhash::unix::verify(req_password, password) {
-                    return Ok(Some(HashMap::new()));
+                    let subject = format!("internal:basic:{username}");
+                    return Ok(Some((subject, HashMap::new())));
                 }
             }
             crate::config::User::Token { username, issuer } => {
@@ -66,7 +67,13 @@ pub async fn authenticate(
                         .verify::<HashMap<String, Value>>(req_password)
                         .await?
                     {
-                        Some(claims) => Some(claims.custom),
+                        Some(claims) => {
+                            let subject = format!(
+                                "internal:token:{username}:subject:{}",
+                                claims.subject.unwrap_or("".to_string())
+                            );
+                            Some((subject, claims.custom))
+                        }
                         None => None,
                     },
                 );
@@ -84,7 +91,7 @@ pub(crate) async fn token(
 ) -> Result<Response, RegistryError> {
     let issuer = registry.config.authentication.as_ref().unwrap();
 
-    let Some(claims) =
+    let Some((token_subject, claims)) =
         authenticate(issuer, authorization.username(), authorization.password()).await?
     else {
         return Ok((StatusCode::UNAUTHORIZED, "Invalid credentials").into_response());
@@ -137,7 +144,7 @@ pub(crate) async fn token(
         })
         .collect();
 
-    let token = issue_token(issuer, &subject.username, access_entries)?;
+    let token = issue_token(issuer, &token_subject, access_entries)?;
 
     Ok(Json(TokenResponse {
         token: token.token,

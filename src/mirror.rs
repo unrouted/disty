@@ -49,7 +49,7 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
         Some(issuer) => {
             let token = issue_token(
                 issuer,
-                "$mirror",
+                "system:mirror",
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
@@ -152,6 +152,7 @@ async fn download_manifest(
         Some(issuer) => {
             let token = issue_token(
                 issuer,
+                "system:mirror",
                 vec![Access {
                     type_: "repository".to_string(),
                     name: repo.to_string(),
