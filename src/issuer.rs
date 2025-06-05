@@ -24,12 +24,16 @@ fn duration_until(unix_timestamp: UnixTimeStamp) -> Result<std::time::Duration> 
         .context("Time is in the past")
 }
 
-pub(crate) fn issue_token(config: &AuthenticationConfig, access: Vec<Access>) -> Result<Token> {
+pub(crate) fn issue_token(
+    config: &AuthenticationConfig,
+    subject: &str,
+    access: Vec<Access>,
+) -> Result<Token> {
     let custom_claims = AdditionalClaims { access };
     let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
         .with_issuer(&config.issuer)
         .with_audience(&config.audience)
-        .with_subject("$mirror");
+        .with_subject(subject);
 
     let expires_in = duration_until(claims.expires_at.context("Failed to set expiry")?)?;
     let issued_at = to_system_time(

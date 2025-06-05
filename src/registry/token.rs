@@ -137,7 +137,7 @@ pub(crate) async fn token(
         })
         .collect();
 
-    let token = issue_token(issuer, access_entries)?;
+    let token = issue_token(issuer, &subject.username, access_entries)?;
 
     Ok(Json(TokenResponse {
         token: token.token,
