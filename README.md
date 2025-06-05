@@ -1,36 +1,34 @@
 # disty
 
-**disty** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://databendlabs.github.io/openraft/), and [Hiqlite](https://github.com/sebadob/hiqlite), disty aims to be a self-contained solution for Kubernetes-native environments where traditional cloud or centralized registries aren't a viable option.
+**disty** is a lightweight, distributed container image registry designed for in-cluster, fault-tolerant deployments. Built in [Rust](https://www.rust-lang.org/) using [Axum](https://docs.rs/axum/), [OpenRaft](https://databendlabs.github.io/openraft/), and [Hiqlite](https://github.com/sebadob/hiqlite), disty aims to be a self-contained registry for Kubernetes-native environments where an out-of-cluster registry just doesn't cut it.
 
 ---
 
 ## ✨ Features
 
-- 🐳 **Docker-Compatible**: Push and pull images using standard tools like `docker`, `podman`, or `skopeo`
-- 📦 **Distributed Metadata**: Uses Raft consensus to replicate container **metadata** across all nodes  
-- 💾 **Local Image Storage**: Actual image data (blobs) is stored locally on each node
-- 💡 **Minimal Dependencies**: No need for external databases or shared storage layers
-- 🧱 **Kubernetes-Ready**: Simple to deploy as a native part of your Kubernetes cluster
-- 🦀 **Rust-Powered**: Modern, efficient, and safe implementation with future-facing architecture
+- 🐳 **Standards Compatible**: Push and pull images using standard tools like `docker`, `podman`, or `skopeo`
+- 📦 **Distributed**: Uses Raft consensus to replicate container metadata across all nodes. Each node ensures it has all the objects in the metadata store locally.  
+- 💾 **No special storage**: Doesn't need an S3 compatible object store or a kubernetes native storage driver to provide redundancy or resilience.
+- 💡 **Minimal Dependencies**: No need for external databases
+- 🧱 **Kubernetes-Ready**: Simple to deploy as a native part of your Kubernetes cluster\
 
 ---
 
 ## 🔧 Why disty?
 
-There are a very specific set of scenarios where **disty** might be exactly what you need:
+An image registry is often at that heart of your architecture. The scenarios where **disty** might be exactly what you need are:
 
-- 🛠 You **must self-host** and cannot use external or cloud-based image registries  
-- 🏗 You want to **run entirely in-cluster** without dedicating extra machines to Harbor, Quay, or other solutions  
-- 🧩 You require **fault tolerance** without the complexity of maintaining separate HA storage systems  
+- 🛠 You **must self-host** and cannot use external or cloud-based image registries
+- 🏗 You want to **run entirely in-cluster** without dedicating extra physical or virtual machines to just the registry
+- 🧩 You require **fault tolerance** without the complexity of maintaining separate HA storage systems
 
 ---
 
-## 🚧 Project Status
+## 🚧 How does it work?
 
-> **disty is a work in progress.**  
-> It was originally written in Python, then rewritten in Rust, and later migrated to use OpenRaft. It is now being redesigned with Hiqlite for embedded, distributed persistence.
-
-Currently, Raft is used for replicating image metadata (e.g., manifests, tags) across nodes. Image blobs are stored locally and are not replicated by the registry itself.
+* We use local storage on the node to store manifests and blobs.
+* Raft is used to maintain a fault toleratant and distributed database of all manifests and blobs we are tracking.
+* The nodes essentially "docker pull" between themselves until all the object stores are in sync. This is orchestrated throught the raft database.
 
 ---
 
