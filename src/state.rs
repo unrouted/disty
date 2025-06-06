@@ -1044,7 +1044,7 @@ mod tests {
 
         Ok(())
     }
-    
+
     #[test(tokio::test)]
     async fn unstore_unreferenced_manifests_tag_ref() -> Result<()> {
         /*
