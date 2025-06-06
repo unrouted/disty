@@ -1003,6 +1003,49 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn unstore_unreferenced_manifests_state() -> Result<()> {
+        /*
+        Manifest isn't referenced by a tag so should be deleted
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
+                    params!(StmtIndex(0).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.unstore_unreferenced_manifests().await?;
+
+        assert_eq!(
+            registry
+                .get_manifest(
+                    "foo",
+                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                        .parse()
+                        .unwrap()
+                )
+                .await?
+                .unwrap()
+                .location,
+            1
+        );
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+    
+    #[test(tokio::test)]
     async fn unstore_unreferenced_manifests_tag_ref() -> Result<()> {
         /*
         Manifest is referenced by a tag so shouldn't be deleted
@@ -1187,6 +1230,59 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn delete_unreferenced_blob_repositories_pending() -> Result<()> {
+        /*
+        Blob is not unmounted because blob is pending.
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.delete_unreferenced_manifests().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 0) RETURNING digest;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO blobs_repositories(digest, repository_id, created_at) VALUES('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, datetime('now', '-50 days'));",
+                    params!(StmtIndex(0).column("id")),
+                )
+            ]
+        ).await?;
+
+        let blob = registry
+            .get_blob(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+        assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
+
+        assert_eq!(registry.delete_unreference_blob_repositories().await?, 0);
+
+        let blob = registry
+            .get_blob(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+        assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn dont_delete_unreferenced_blob_repositories() -> Result<()> {
         /*
         Blob is left alone because its still referenced
@@ -1292,6 +1388,57 @@ mod tests {
             .unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 0);
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn unstore_unreachable_blobs_pending() -> Result<()> {
+        /*
+        Blob is not deleted because its in pending state
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.unstore_unreachable_blobs().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 0) RETURNING digest;",
+                    vec![],
+                )
+            ]
+        ).await?;
+
+        let blob = registry
+            .get_blob(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+        assert_eq!(blob.repositories, [].into_iter().collect());
+        assert_eq!(blob.location, 1);
+
+        assert_eq!(registry.unstore_unreachable_blobs().await?, 0);
+
+        let blob = registry
+            .get_blob(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+        assert_eq!(blob.repositories, [].into_iter().collect());
+        assert_eq!(blob.location, 1);
 
         registry.teardown().await?;
 
