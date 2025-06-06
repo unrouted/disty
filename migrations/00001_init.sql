@@ -10,6 +10,7 @@ CREATE TABLE blobs (
     digest TEXT PRIMARY KEY,
     size INTEGER NOT NULL,
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this blob
+    state INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -34,6 +35,7 @@ CREATE TABLE manifests (
     size INTEGER NOT NULL,
     media_type TEXT NOT NULL,
     location INTEGER NOT NULL,  -- Bitset indicating which hosts store this manifest
+    state INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

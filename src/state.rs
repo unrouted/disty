@@ -172,6 +172,7 @@ impl RegistryState {
         created_by: &str,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
+        let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
         self.client
             .txn(vec![
@@ -180,8 +181,8 @@ impl RegistryState {
                     params!(repository),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, location, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location;",
-                    params!(digest.to_string(), size, location, created_by),
+                    "INSERT INTO blobs (digest, size, location, created_by, state) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END;",
+                    params!(digest.to_string(), size, location, created_by, cluster_size_mask),
                 ),
                 (
                     "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, (SELECT id FROM repositories WHERE name=$2));",
@@ -216,11 +217,12 @@ impl RegistryState {
 
     pub async fn blob_downloaded(&self, digest: &Digest) -> Result<()> {
         let location = 1 << (self.node_id - 1);
+        let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
         self.client
             .execute(
-                "UPDATE blobs SET location = (location | $1) WHERE digest = $2;",
-                params!(location, digest.to_string()),
+                "UPDATE blobs SET location = (location | $1) WHERE digest = $2, state = CASE WHEN (location | $1) = $3 THEN 1 ELSE state END;",
+                params!(location, digest.to_string(), cluster_size_mask),
             )
             .await?;
 
@@ -303,18 +305,21 @@ impl RegistryState {
         created_by: &str,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
+        let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
+
         let mut sql = vec![
             (
                 "INSERT INTO repositories(name) VALUES ($1) ON CONFLICT DO UPDATE SET id=id RETURNING id",
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, repository_id, created_by) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, repository_id, created_by) VALUES ($1, $2, $3, $4, $5, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $7) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
                     &info.media_type,
                     location,
+                    cluster_size_mask,
                     StmtIndex(0).column("id"),
                     created_by
                 ),
@@ -358,11 +363,12 @@ impl RegistryState {
 
     pub async fn manifest_downloaded(&self, digest: &Digest) -> Result<()> {
         let location = 1 << (self.node_id - 1);
+        let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
         self.client
             .execute(
-                "UPDATE manifests SET location = (location | $1) WHERE digest = $2;",
-                params!(location, digest.to_string()),
+                "UPDATE manifests SET location = (location | $1) WHERE digest = $2, state = CASE WHEN (location | $1) = $3 THEN 1 ELSE state END;",
+                params!(location, digest.to_string(), cluster_size_mask),
             )
             .await?;
 
@@ -497,7 +503,8 @@ impl RegistryState {
                 LEFT JOIN manifest_references mr ON m.id = mr.child_id
                 LEFT JOIN tags t ON m.id = t.manifest_id
                 WHERE
-                    mr.child_id IS NULL
+                    m.state == 1
+                    AND mr.child_id IS NULL
                     AND t.manifest_id IS NULL
                     AND m.created_at < datetime('now', '-1 day')
                     AND (m.location & $1) = $1;",
@@ -535,7 +542,8 @@ impl RegistryState {
             .execute(
                 "DELETE FROM manifests
                 WHERE
-                    id NOT IN (SELECT child_id FROM manifest_references)
+                    state == 1
+                    AND id NOT IN (SELECT child_id FROM manifest_references)
                     AND id NOT IN (SELECT manifest_id FROM tags)
                     AND location = 0
                     AND created_at < datetime('now', '-1 day');",
@@ -549,16 +557,18 @@ impl RegistryState {
         self.client
             .execute(
                 "WITH orphaned AS (
-                    SELECT br.digest, br.repository_id
-                    FROM blobs_repositories br
-                    LEFT JOIN manifest_layers ml ON br.digest = ml.blob_digest
-                    LEFT JOIN manifests m ON ml.manifest_id = m.id
-                    WHERE m.id IS NULL
-                )
-                DELETE FROM blobs_repositories
-                WHERE (digest, repository_id) IN (
-                    SELECT digest, repository_id FROM orphaned
-                );",
+                        SELECT br.digest, br.repository_id
+                        FROM blobs_repositories br
+                        JOIN blobs b ON br.digest = b.digest
+                        LEFT JOIN manifest_layers ml ON br.digest = ml.blob_digest
+                        LEFT JOIN manifests m ON ml.manifest_id = m.id
+                        WHERE m.id IS NULL
+                        AND b.state = 1
+                    )
+                    DELETE FROM blobs_repositories
+                    WHERE (digest, repository_id) IN (
+                        SELECT digest, repository_id FROM orphaned
+                    );",
                 vec![],
             )
             .await
@@ -574,7 +584,7 @@ impl RegistryState {
                 "SELECT b.*
             FROM blobs b
             LEFT JOIN blobs_repositories br ON b.digest = br.digest
-                WHERE (b.location & $1) != 0
+                WHERE b.state == 1 AND (b.location & $1) != 0
                 AND br.digest IS NULL;",
                 params!(location),
             )
@@ -883,7 +893,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george') RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
@@ -928,7 +938,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george') RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
@@ -965,7 +975,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
             ]
@@ -1008,7 +1018,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
@@ -1055,7 +1065,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
             ]
@@ -1096,7 +1106,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
             ]
@@ -1139,7 +1149,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 ),
                 (
@@ -1192,7 +1202,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 ),
                 (
@@ -1200,7 +1210,7 @@ mod tests {
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
@@ -1253,7 +1263,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 )
             ]
@@ -1304,7 +1314,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 ),
                 (
@@ -1359,7 +1369,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 )
             ]
@@ -1408,7 +1418,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days')) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
                     vec![],
                 )
             ]
