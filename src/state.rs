@@ -425,7 +425,7 @@ impl RegistryState {
         let blobs: Vec<BlobRow> = self
             .client
             .query_as(
-                "SELECT * FROM blobs WHERE (location & $1) = 0;",
+                "SELECT * FROM blobs WHERE state = 0 AND (location & $1) = 0;",
                 params!(location),
             )
             .await?;
@@ -650,7 +650,7 @@ impl RegistryState {
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
-                "SELECT m.*, r.name AS repository FROM manifests m JOIN repositories r ON m.repository_id = r.id WHERE (location & $1) = 0;",
+                "SELECT m.*, r.name AS repository FROM manifests m JOIN repositories r ON m.repository_id = r.id WHERE state = 0 AND (location & $1) = 0;",
                 params!(location),
             )
             .await?;
