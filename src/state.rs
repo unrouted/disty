@@ -313,7 +313,7 @@ impl RegistryState {
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, repository_id, created_by) VALUES ($1, $2, $3, $4, $5, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $7) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, repository_id, created_by) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
