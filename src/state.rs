@@ -221,8 +221,8 @@ impl RegistryState {
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
         self.client
             .execute(
-                "UPDATE blobs SET location = (location | $1), state = CASE WHEN (location | $1) = $3 THEN 1 ELSE state END WHERE digest = $2;",
-                params!(location, digest.to_string(), cluster_size_mask),
+                "UPDATE blobs SET location = (location | $1), state = CASE WHEN (location | $1) = $2 THEN 1 ELSE state END WHERE digest = $3;",
+                params!(location, cluster_size_mask, digest.to_string()),
             )
             .await?;
 
@@ -367,8 +367,8 @@ impl RegistryState {
         // SET bit_field = bit_field & ~(1 << bit_position) to clear a bit
         self.client
             .execute(
-                "UPDATE manifests SET location = (location | $1), state = CASE WHEN (location | $1) = $3 THEN 1 ELSE state END WHERE digest = $2;",
-                params!(location, digest.to_string(), cluster_size_mask),
+                "UPDATE manifests SET location = (location | $1), state = CASE WHEN (location | $1) = $2 THEN 1 ELSE state END WHERE digest = $3;",
+                params!(location, cluster_size_mask, digest.to_string()),
             )
             .await?;
 
