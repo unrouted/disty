@@ -39,9 +39,12 @@ pub(crate) fn start_metrics(
 ) -> Result<()> {
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
-        .with_state(state);
+        .with_state(state.clone());
 
-    let listen_addr = format!("0.0.0.0:9090",);
+    let listen_addr = format!(
+        "{}:{}",
+        state.config.prometheus.address, state.config.prometheus.port
+    );
 
     tasks.spawn(async move {
         let listener = tokio::net::TcpListener::bind(listen_addr).await?;
