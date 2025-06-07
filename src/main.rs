@@ -13,7 +13,7 @@ use tower::Layer;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use crate::error::format_error;
+use crate::{error::format_error, metrics::start_metrics};
 
 mod config;
 mod digest;
@@ -21,6 +21,7 @@ mod error;
 mod extractor;
 mod issuer;
 mod jwt;
+mod metrics;
 mod mirror;
 mod notify;
 mod registry;
@@ -93,6 +94,7 @@ async fn main() -> Result<()> {
         config: config.clone(),
         client,
         webhooks,
+        registry,
     });
 
     crate::mirror::start_mirror(&mut tasks, state.clone())?;
@@ -137,6 +139,8 @@ async fn main() -> Result<()> {
             }
         });
     }
+
+    start_metrics(&mut tasks, state.clone())?;
 
     let res = tasks.join_next().await;
 

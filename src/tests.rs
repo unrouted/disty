@@ -155,6 +155,7 @@ impl StateFixture {
                 config: configuration,
                 client,
                 webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
+                registry,
             }));
         }
 

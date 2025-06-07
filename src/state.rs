@@ -3,6 +3,7 @@ use std::{collections::HashSet, path::PathBuf};
 use anyhow::{Context, Result, bail};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
+use prometheus_client::registry::Registry;
 use serde::Deserialize;
 use tracing::info;
 use uuid::Uuid;
@@ -60,6 +61,7 @@ pub struct RegistryState {
     pub config: Configuration,
     pub client: Client,
     pub webhooks: WebhookService,
+    pub registry: Registry,
 }
 
 impl RegistryState {
