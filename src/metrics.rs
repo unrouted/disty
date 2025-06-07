@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
@@ -7,9 +7,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use prometheus_client::{encoding::text::encode, registry::Registry};
-use std::fmt::Write;
-use tokio::{sync::Mutex, task::JoinSet};
+use prometheus_client::encoding::text::encode;
+use tokio::task::JoinSet;
 
 use crate::state::RegistryState;
 
