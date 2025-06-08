@@ -107,3 +107,40 @@ pub(crate) async fn patch(
         .header("Docker-Upload-UUID", &upload_id)
         .body(Body::empty())?)
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::{Context, Result};
+    use axum::http::Request;
+
+    use test_log::test;
+
+    use crate::tests::{FixtureBuilder, RegistryFixture};
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn patch_upload_please_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v2/bar/blobs/uploads/foo")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            res.headers()
+                .get("Www-Authenticate")
+                .context("Missing header")?,
+            "Bearer realm=\"fixme\",service=\"some-audience\",scope=\"repository:bar:pull,push\""
+        );
+
+        fixture.teardown().await
+    }
+}

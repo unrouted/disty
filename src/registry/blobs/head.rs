@@ -64,3 +64,39 @@ pub(crate) async fn head(
         .header("Docker-Content-Digest", digest.to_string())
         .body(Body::empty())?)
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::{Context, Result};
+    use axum::http::Request;
+    use test_log::test;
+
+    use crate::tests::{FixtureBuilder, RegistryFixture};
+
+    use super::*;
+
+    #[test(tokio::test)]
+    pub async fn head_blob_please_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("HEAD")
+                    .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            res.headers()
+                .get("Www-Authenticate")
+                .context("Missing header")?,
+            "Bearer realm=\"fixme\",service=\"some-audience\",scope=\"repository:bar:pull\""
+        );
+
+        fixture.teardown().await
+    }
+}

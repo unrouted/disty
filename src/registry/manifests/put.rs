@@ -50,7 +50,7 @@ pub(crate) async fn put(
 
     upload_part(&upload_path, body.into_body().into_data_stream()).await?;
 
-    let size = match tokio::fs::metadata(&upload_path).await {
+    let size_ = match tokio::fs::metadata(&upload_path).await {
         Ok(result) => result.len(),
         Err(_) => {
             return Err(RegistryError::ManifestInvalid {});
@@ -113,9 +113,38 @@ mod test {
     use reqwest::header::CONTENT_TYPE;
     use test_log::test;
 
-    use crate::tests::RegistryFixture;
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
+
+    #[test(tokio::test)]
+    pub async fn put_manifest_please_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .header(
+                        CONTENT_TYPE,
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                    )
+                    .uri("/v2/bar/manifests/latest")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            res.headers()
+                .get("Www-Authenticate")
+                .context("Missing header")?,
+            "Bearer realm=\"fixme\",service=\"some-audience\",scope=\"repository:bar:pull,push\""
+        );
+
+        fixture.teardown().await
+    }
 
     #[test(tokio::test)]
     pub async fn upload_manifest() -> Result<()> {

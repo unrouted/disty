@@ -56,14 +56,39 @@ pub(crate) async fn delete(
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use axum::http::Request;
     use reqwest::header::CONTENT_TYPE;
     use test_log::test;
 
-    use crate::tests::RegistryFixture;
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
+
+    #[test(tokio::test)]
+    pub async fn delete_manifest_please_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v2/bar/manifests/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            res.headers()
+                .get("Www-Authenticate")
+                .context("Missing header")?,
+            "Bearer realm=\"fixme\",service=\"some-audience\",scope=\"repository:bar:pull,push\""
+        );
+
+        fixture.teardown().await
+    }
 
     #[test(tokio::test)]
     pub async fn delete_tag() -> Result<()> {

@@ -66,12 +66,13 @@ impl Token {
         let mut scopes = vec![];
         for req in access.iter() {
             let repository = &req.name;
-            let actions = req
+            let mut actions = req
                 .actions
                 .iter()
                 .map(|action| action.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
+                .collect::<Vec<_>>();
+            actions.sort();
+            let actions = actions.join(",");
             scopes.push(format!("repository:{repository}:{actions}"));
         }
         let scope = scopes.join(" ");
