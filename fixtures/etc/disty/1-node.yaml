@@ -1,3 +1,5 @@
+node_id: 1
+
 nodes:
 - id: 1
   addr_raft: localhost:6080
