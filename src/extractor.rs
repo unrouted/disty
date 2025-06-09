@@ -38,22 +38,19 @@ pub struct Descriptor {
 #[serde(rename_all = "camelCase")]
 enum ManifestV2 {
     #[serde(rename = "application/vnd.docker.distribution.manifest.v2+json")]
-    DockerManifestV2 {
+    Docker {
         config: Descriptor,
         layers: Vec<Descriptor>,
     },
-
-    #[serde(rename = "application/vnd.oci.image.manifest.v1+json")]
-    OciImageManifest {
-        config: Descriptor,
-        layers: Vec<Descriptor>,
-    },
-
     #[serde(rename = "application/vnd.docker.distribution.manifest.list.v2+json")]
-    DockerManifestList { manifests: Vec<Descriptor> },
-
+    DockerList { manifests: Vec<Descriptor> },
+    #[serde(rename = "application/vnd.oci.image.manifest.v1+json")]
+    Oci {
+        config: Descriptor,
+        layers: Vec<Descriptor>,
+    },
     #[serde(rename = "application/vnd.oci.image.index.v1+json")]
-    OciImageIndex { manifests: Vec<Descriptor> },
+    OciList { manifests: Vec<Descriptor> },
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,24 +77,24 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
             let mut blobs = Vec::new();
 
             let content_type = match manifest {
-                ManifestV2::DockerManifestV2 { config, layers } => {
+                ManifestV2::Docker { config, layers } => {
                     blobs.push(config);
                     blobs.extend(layers);
 
                     "application/vnd.docker.distribution.manifest.v2+json"
                 }
-                ManifestV2::OciImageManifest { config, layers } => {
+                ManifestV2::Oci { config, layers } => {
                     blobs.push(config);
                     blobs.extend(layers);
 
                     "application/vnd.oci.image.manifest.v1+json"
                 }
-                ManifestV2::DockerManifestList { manifests: inner } => {
+                ManifestV2::DockerList { manifests: inner } => {
                     manifests.extend(inner);
 
                     "application/vnd.docker.distribution.manifest.list.v2+json"
                 }
-                ManifestV2::OciImageIndex { manifests: inner } => {
+                ManifestV2::OciList { manifests: inner } => {
                     manifests.extend(inner);
 
                     "application/vnd.oci.image.index.v1+json"
