@@ -56,7 +56,7 @@ jobs:
         run: cargo test
 
   conformance-1node:
-    name: tests
+    name: conformance-1node
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -71,7 +71,7 @@ jobs:
         run: cargo build
 
       - name: Start cluster
-        run: ./target/debug/disty -c fixtures/etc/disty/1-node.yaml &
+        run: ./target/debug/disty -c fixtures/etc/disty/1-node.yaml > reigstry.log &
         env:
           ENC_KEY_ACTIVE: 828W10qknpOT
           ENC_KEYS: 828W10qknpOT/CIneMTth3mnRZZq0PMtztfWrnU+5xeiS0jrTB8iq6xc=
@@ -105,3 +105,6 @@ jobs:
           OCI_HIDE_SKIPPED_WORKFLOWS: 0
           OCI_DEBUG: 1
           OCI_DELETE_MANIFEST_BEFORE_BLOBS: 1
+
+      - name: registry.log
+        run: cat registry.log
