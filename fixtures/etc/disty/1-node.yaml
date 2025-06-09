@@ -1,0 +1,27 @@
+nodes:
+- id: 1
+  addr_raft: localhost:6080
+  addr_api: localhost:7080
+  addr_registry: localhost:8080
+
+raft:
+  secret: aaaaaaaaaaaaaaaa
+
+api:
+  secret: aaaaaaaaaaaaaaaa
+
+authentication:
+  realm: http://localhost:8080/auth/token
+  key_pair_file: token.key
+  issuer: http://localhost
+  audience: http://localhost
+
+  users:
+  - username: bob
+    password: "$2b$10$drOwzBx3RMK3Q9Pk/88.Deh1.OdY5Vg0ex/wBwWh7.RP91HhNLFGG"
+
+  acls:
+  - subject:
+      username: admin
+    actions: ["push", "pull"]
+    comment: "Admin has full access to everything."

@@ -54,3 +54,53 @@ jobs:
 
       - name: Run tests
         run: cargo test
+
+  conformance-1node:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build
+
+      - name: Start cluster
+        run: ./target/debug/disty -c fixtures/etc/disty/1-node.yaml &
+
+      - name: Wait for service to be ready
+        run: |
+          echo "Waiting for service to be ready at http://localhost:8080/v2/..."
+          for i in {1..30}; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/v2/)
+            if [ "$status" -eq 200 ]; then
+              echo "Service is ready!"
+              exit 0
+            fi
+            echo "Not ready yet (HTTP $status), retrying in 2s..."
+            sleep 2
+          done
+          echo "Service did not become ready in time"
+          exit 1
+
+      - name: Run OCI Distribution Spec conformance tests
+        uses: opencontainers/distribution-spec@main
+        # you can also run against a specific tag or commit instead
+        # uses: opencontainers/distribution-spec@v1.1.0
+        env:
+          OCI_ROOT_URL: http://localhost
+          OCI_NAMESPACE: mytestorg/mytestrepo
+          OCI_USERNAME: bob
+          OCI_PASSWORD: badmin
+          OCI_TEST_PULL: 1
+          OCI_TEST_PUSH: 1
+          OCI_TEST_CONTENT_DISCOVERY: 1
+          OCI_TEST_CONTENT_MANAGEMENT: 1
+          OCI_HIDE_SKIPPED_WORKFLOWS: 0
+          OCI_DEBUG: 1
+          OCI_DELETE_MANIFEST_BEFORE_BLOBS: 1
