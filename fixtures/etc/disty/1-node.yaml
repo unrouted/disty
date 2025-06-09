@@ -2,9 +2,9 @@ node_id: 1
 
 nodes:
 - id: 1
-  addr_raft: localhost:6080
-  addr_api: localhost:7080
-  addr_registry: localhost:8080
+  addr_raft: localhost:9997
+  addr_api: localhost:9998
+  addr_registry: localhost:9999
 
 raft:
   secret: aaaaaaaaaaaaaaaa

@@ -94,7 +94,7 @@ jobs:
       - name: Run OCI Distribution Spec conformance tests
         uses: opencontainers/distribution-spec@v1.1.1
         env:
-          OCI_ROOT_URL: http://localhost
+          OCI_ROOT_URL: http://localhost:9999
           OCI_NAMESPACE: mytestorg/mytestrepo
           OCI_USERNAME: bob
           OCI_PASSWORD: badmin
