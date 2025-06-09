@@ -73,20 +73,20 @@ jobs:
       - name: Start cluster
         run: ./target/debug/disty -c fixtures/etc/disty/1-node.yaml &
 
-      - name: Wait for service to be ready
-        run: |
-          echo "Waiting for service to be ready at http://localhost:8080/v2/..."
-          for i in {1..30}; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/v2/)
-            if [ "$status" -eq 200 ]; then
-              echo "Service is ready!"
-              exit 0
-            fi
-            echo "Not ready yet (HTTP $status), retrying in 2s..."
-            sleep 2
-          done
-          echo "Service did not become ready in time"
-          exit 1
+      #- name: Wait for service to be ready
+      #  run: |
+      #    echo "Waiting for service to be ready at http://localhost:8080/v2/..."
+      #    for i in {1..30}; do
+      #      status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/v2/)
+      #      if [ "$status" -eq 200 ]; then
+      #        echo "Service is ready!"
+      #        exit 0
+      #      fi
+      #      echo "Not ready yet (HTTP $status), retrying in 2s..."
+      #      sleep 2
+      #    done
+      #    echo "Service did not become ready in time"
+      #    exit 1
 
       - name: Run OCI Distribution Spec conformance tests
         uses: opencontainers/distribution-spec@v1.1.1

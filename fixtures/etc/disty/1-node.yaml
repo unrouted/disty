@@ -12,7 +12,7 @@ api:
 
 authentication:
   realm: http://localhost:8080/auth/token
-  key_pair_file: token.key
+  key_pair_file: fixtures/etc/disty/token.key
   issuer: http://localhost
   audience: http://localhost
 
