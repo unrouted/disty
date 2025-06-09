@@ -50,7 +50,7 @@ pub(crate) async fn put(
 
     upload_part(&upload_path, body.into_body().into_data_stream()).await?;
 
-    let size_ = match tokio::fs::metadata(&upload_path).await {
+    let _size = match tokio::fs::metadata(&upload_path).await {
         Ok(result) => result.len(),
         Err(_) => {
             return Err(RegistryError::ManifestInvalid {});

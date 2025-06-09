@@ -106,6 +106,33 @@ mod test {
     }
 
     #[test(tokio::test)]
+    pub async fn delete_repo_doesnt_exist() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        // Create the blob in a different repo
+        // Should be invisbile in the bar repo, which doesn't even exist
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::from("FOOBAR"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v2/bar/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
     pub async fn delete() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 

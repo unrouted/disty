@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
@@ -31,12 +31,6 @@ struct ManifestRow {
     media_type: String,
     location: u32,
     repository: String,
-}
-
-#[derive(Deserialize)]
-struct RepositoryRow {
-    id: u32,
-    name: String,
 }
 
 #[derive(PartialEq, Debug)]
@@ -94,15 +88,15 @@ impl RegistryState {
     }
 
     pub async fn repository_exists(&self, repository: &str) -> Result<bool> {
-        let res: Option<RepositoryRow> = self
+        let res: usize = self
             .client
-            .query_as_optional(
-                "SELECT * FROM repositories WHERE name = $1",
+            .query_as_one(
+                "SELECT COUNT(*) AS count FROM repositories WHERE name = $1",
                 params!(repository),
             )
             .await?;
 
-        Ok(res.is_some())
+        Ok(res > 0)
     }
 
     pub async fn get_blob(&self, digest: &Digest) -> Result<Option<Blob>> {

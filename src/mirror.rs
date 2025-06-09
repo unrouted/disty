@@ -242,7 +242,7 @@ fn notifications(state: Arc<RegistryState>) -> impl tokio_stream::Stream<Item = 
     futures::stream::unfold(state, |state| async {
         match state.client.listen().await {
             Ok(n) => Some((n, state)),
-            Err(e) => {
+            Err(_e) => {
                 // Decide whether to continue or stop stream
                 Some((Notification::Tick, state))
             }
