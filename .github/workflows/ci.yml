@@ -108,3 +108,4 @@ jobs:
 
       - name: registry.log
         run: cat registry.log
+        if: always()
