@@ -77,7 +77,7 @@ impl FixtureBuilder {
 #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
 pub(crate) struct StateFixture {
     _guard: Box<dyn std::any::Any + Send>,
-    dirs: Vec<TempDir>,
+    _dirs: Vec<TempDir>,
     pub registries: Vec<Arc<RegistryState>>,
     tasks: JoinSet<Result<()>>,
 }
@@ -165,7 +165,7 @@ impl StateFixture {
         registries[0].client.migrate::<Migrations>().await?;
 
         Ok(StateFixture {
-            dirs,
+            _dirs: dirs,
             registries,
             _guard: Box::new(lock),
             tasks,

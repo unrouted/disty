@@ -23,14 +23,6 @@ fn escape_glob(input: &str) -> String {
 }
 
 impl StringMatch {
-    pub fn matches(&self, value: &str) -> bool {
-        match self {
-            Self::Exact(exact) => value == exact,
-            Self::Starts { starts } => value.starts_with(starts),
-            Self::Ends { ends } => value.ends_with(ends),
-        }
-    }
-
     pub fn to_sqlite_glob(&self) -> String {
         match self {
             StringMatch::Exact(s) => escape_glob(s),

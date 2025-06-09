@@ -31,10 +31,7 @@ mod test {
     use axum::http::Request;
     use test_log::test;
 
-    use crate::{
-        issuer::issue_token,
-        tests::{FixtureBuilder, RegistryFixture},
-    };
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
 

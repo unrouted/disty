@@ -93,22 +93,6 @@ impl RegistryState {
             .join(digest.to_path())
     }
 
-    async fn get_repository(&self, repository: &str) -> Result<Option<u32>> {
-        let res: Option<RepositoryRow> = self
-            .client
-            .query_as_optional(
-                "SELECT * FROM repositories WHERE name = $1",
-                params!(repository),
-            )
-            .await?;
-
-        if let Some(row) = res {
-            return Ok(Some(row.id));
-        }
-
-        Ok(None)
-    }
-
     pub async fn repository_exists(&self, repository: &str) -> Result<bool> {
         let res: Option<RepositoryRow> = self
             .client
@@ -119,20 +103,6 @@ impl RegistryState {
             .await?;
 
         Ok(res.is_some())
-    }
-
-    pub async fn get_or_create_repository(&self, repository: &str) -> Result<u32> {
-        self.client
-            .execute(
-                "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
-                params!(repository),
-            )
-            .await?;
-
-        match self.get_repository(repository).await? {
-            Some(row) => Ok(row),
-            None => bail!("Could not find repository"),
-        }
     }
 
     pub async fn get_blob(&self, digest: &Digest) -> Result<Option<Blob>> {
@@ -205,13 +175,17 @@ impl RegistryState {
     }
 
     pub async fn mount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
-        let repository_id = self.get_or_create_repository(repository).await?;
-
         self.client
-            .execute(
-                "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, $2);",
-                params!(digest.to_string(), repository_id),
-            )
+            .txn(vec![
+                (
+                    "INSERT OR IGNORE INTO repositories(name) VALUES($1) RETURNING id;",
+                    params!(repository),
+                ),
+                (
+                    "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, $2);",
+                    params!(digest.to_string(), StmtIndex(0).column("id")),
+                )
+            ])
             .await?;
 
         Ok(())
@@ -232,14 +206,12 @@ impl RegistryState {
     }
 
     pub async fn unmount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
-        if let Some(repository_id) = self.get_repository(repository).await? {
-            self.client
-                .execute(
-                    "DELETE FROM blobs_repositories WHERE digest = $1 AND repository_id = $2;",
-                    params!(digest.to_string(), repository_id),
-                )
-                .await?;
-        }
+        self.client
+            .execute(
+                "DELETE FROM blobs_repositories WHERE digest = $1 AND repository_id = (SELECT id FROM repositories WHERE name=$2);",
+                params!(digest.to_string(), repository),
+            )
+            .await?;
 
         Ok(())
     }
@@ -689,32 +661,6 @@ mod tests {
     };
 
     use super::*;
-
-    #[test(tokio::test)]
-    async fn test_get_repository() -> Result<()> {
-        let registry = StateFixture::new().await?;
-
-        // At the start the repository shouldn't exist
-        assert_eq!(None, registry.get_repository("foo/bar").await?);
-
-        let repository_id = registry.get_or_create_repository("foo/bar").await?;
-
-        // But we should be able to create it
-        assert_eq!(
-            Some(repository_id),
-            registry.get_repository("foo/bar").await?
-        );
-
-        // And we shouldn't create duplicates
-        assert_eq!(
-            repository_id,
-            registry.get_or_create_repository("foo/bar").await?
-        );
-
-        registry.teardown().await?;
-
-        Ok(())
-    }
 
     #[test(tokio::test)]
     async fn test_blob() -> Result<()> {
