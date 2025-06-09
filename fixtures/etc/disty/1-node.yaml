@@ -13,7 +13,7 @@ api:
   secret: aaaaaaaaaaaaaaaa
 
 authentication:
-  realm: http://localhost:8080/auth/token
+  realm: http://localhost:9999/auth/token
   key_pair_file: fixtures/etc/disty/token.key
   issuer: http://localhost
   audience: http://localhost
