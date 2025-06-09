@@ -24,6 +24,6 @@ authentication:
 
   acls:
   - subject:
-      username: admin
+      username: bob
     actions: ["push", "pull"]
     comment: "Admin has full access to everything."
