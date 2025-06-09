@@ -68,7 +68,11 @@ pub(crate) async fn post(
         }
 
         if !token.has_permission(from, "pull") {
-            return Err(RegistryError::UploadInvalid {});
+            // FIXME: Re-reading the spec, it might be more appropriate to return a 202 here:
+            //    Alternatively, if a registry does not support cross-repository mounting or is
+            //    unable to mount the requested blob, it SHOULD return a 202. This indicates that
+            //    the upload session has begun and that the client MAY proceed with the upload.
+            return Err(RegistryError::AccessDenied {});
         }
 
         if let Some(blob) = registry.get_blob(&mount).await? {
@@ -232,6 +236,32 @@ mod test {
                     .method("POST")
                     .uri("/v2/bar/blobs/uploads/")
                     .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn post_uploads_has_push_not_pull_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/bar/blobs/uploads/?from=foo&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                    .header("Authorization", fixture.bearer_header(
+                        vec![Access {
+                            type_: "repository".into(),
+                            name: "bar".into(),
+                            actions: [Action::Pull, Action::Push].into_iter().collect()
+                        }]
+                    )?)
                     .body(Body::empty())?,
             )
             .await?;
