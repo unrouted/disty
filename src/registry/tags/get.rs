@@ -136,6 +136,26 @@ mod test {
     }
 
     #[test(tokio::test)]
+    pub async fn get_tags_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/bar/tags/list")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
     pub async fn get_tags() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 

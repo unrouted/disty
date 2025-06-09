@@ -31,7 +31,10 @@ mod test {
     use axum::http::Request;
     use test_log::test;
 
-    use crate::tests::{FixtureBuilder, RegistryFixture};
+    use crate::{
+        issuer::issue_token,
+        tests::{FixtureBuilder, RegistryFixture},
+    };
 
     use super::*;
 
@@ -56,6 +59,26 @@ mod test {
                 .context("Missing header")?,
             "Bearer realm=\"fixme\",service=\"some-audience\""
         );
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn get_root_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
 
         fixture.teardown().await
     }

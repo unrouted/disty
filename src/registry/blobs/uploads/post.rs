@@ -222,6 +222,26 @@ mod test {
     }
 
     #[test(tokio::test)]
+    pub async fn post_uploads_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v2/bar/blobs/uploads/")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
     pub async fn upload_whole_blob() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 

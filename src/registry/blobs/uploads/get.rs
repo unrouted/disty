@@ -97,4 +97,24 @@ mod test {
 
         fixture.teardown().await
     }
+
+    #[test(tokio::test)]
+    pub async fn get_uploads_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/bar/blobs/uploads/foo")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
 }

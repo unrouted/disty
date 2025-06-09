@@ -147,6 +147,30 @@ mod test {
     }
 
     #[test(tokio::test)]
+    pub async fn put_manifests_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .header(
+                        CONTENT_TYPE,
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                    )
+                    .uri("/v2/bar/manifests/latest")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
     pub async fn upload_manifest() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 

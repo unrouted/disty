@@ -117,4 +117,24 @@ mod test {
 
         fixture.teardown().await
     }
+
+    #[test(tokio::test)]
+    pub async fn get_manifests_no_acl() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/bar/manifests/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                    .header("Authorization", fixture.bearer_header(vec![])?)
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        fixture.teardown().await
+    }
 }

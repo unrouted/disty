@@ -16,6 +16,8 @@ use crate::{
         ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
         acl::AccessRule, lifecycle::DeletionRule,
     },
+    issuer::issue_token,
+    token::Access,
     webhook::WebhookService,
 };
 
@@ -201,6 +203,17 @@ impl RegistryFixture {
     pub fn with_state(state: StateFixture) -> Result<RegistryFixture> {
         let router = crate::router(state.registries[0].clone());
         Ok(RegistryFixture { state, router })
+    }
+
+    pub fn bearer_header(&self, access: Vec<Access>) -> Result<String> {
+        let config = self
+            .state
+            .config
+            .authentication
+            .as_ref()
+            .context("Authentication not configured")?;
+        let token = issue_token(config, "test", access)?.token;
+        Ok(format!("Bearer {token}"))
     }
 
     pub async fn request(&self, req: Request<Body>) -> Result<Response> {
