@@ -99,14 +99,14 @@ pub(crate) async fn get(
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use axum::http::Request;
     use http_body_util::BodyExt;
     use reqwest::header::CONTENT_TYPE;
     use serde_json::Value;
     use test_log::test;
 
-    use crate::tests::RegistryFixture;
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
 

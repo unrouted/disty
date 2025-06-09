@@ -27,11 +27,11 @@ pub async fn get(
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use axum::http::Request;
     use test_log::test;
 
-    use crate::tests::RegistryFixture;
+    use crate::tests::{FixtureBuilder, RegistryFixture};
 
     use super::*;
 
