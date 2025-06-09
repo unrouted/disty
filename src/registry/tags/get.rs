@@ -111,7 +111,32 @@ mod test {
     use super::*;
 
     #[test(tokio::test)]
-    pub async fn upload_manifest() -> Result<()> {
+    pub async fn get_tags_please_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v2/bar/tags/list")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            res.headers()
+                .get("Www-Authenticate")
+                .context("Missing header")?,
+            "Bearer realm=\"fixme\",service=\"some-audience\",scope=\"repository:bar:pull\""
+        );
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn get_tags() -> Result<()> {
         let fixture = RegistryFixture::new().await?;
 
         let payload = serde_json::json!({
