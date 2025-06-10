@@ -35,7 +35,7 @@ pub(crate) struct Access {
     #[serde(rename = "type")]
     pub type_: String,
     pub name: String,
-    pub actions: HashSet<Action>,
+    pub actions: Vec<Action>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -84,7 +84,7 @@ impl Token {
         self.get_challenge(vec![Access {
             type_: "repository".to_string(),
             name: repository.to_string(),
-            actions: HashSet::from([Action::Pull]),
+            actions: Vec::from([Action::Pull]),
         }])
     }
 
@@ -92,7 +92,7 @@ impl Token {
         self.get_challenge(vec![Access {
             type_: "repository".to_string(),
             name: repository.to_string(),
-            actions: HashSet::from([Action::Pull, Action::Push]),
+            actions: Vec::from([Action::Pull, Action::Push]),
         }])
     }
 

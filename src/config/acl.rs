@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Deserialize, Serialize, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Action {
-    Push,
     Pull,
+    Push,
 }
 
 impl TryFrom<String> for Action {

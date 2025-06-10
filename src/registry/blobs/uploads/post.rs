@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -42,14 +41,14 @@ pub(crate) async fn post(
         let mut access = vec![Access {
             type_: "repository".to_string(),
             name: repository.clone(),
-            actions: HashSet::from([Action::Pull, Action::Push]),
+            actions: Vec::from([Action::Pull, Action::Push]),
         }];
 
         if let Some(from) = &from {
             access.push(Access {
                 type_: "repository".to_string(),
                 name: from.clone(),
-                actions: HashSet::from([Action::Pull]),
+                actions: Vec::from([Action::Pull]),
             });
         }
 
@@ -374,7 +373,6 @@ mod test {
 
         fixture.teardown().await
     }
-
 
     #[test(tokio::test)]
     pub async fn cross_mount_with_auth() -> Result<()> {
