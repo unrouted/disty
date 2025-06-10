@@ -6,10 +6,10 @@ use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum_extra::TypedHeader;
-use headers::ContentRange;
 use serde::Deserialize;
 
 use crate::error::RegistryError;
+use crate::registry::content_range::ContentRange;
 use crate::registry::utils::upload_part;
 use crate::state::RegistryState;
 use crate::token::Token;
@@ -52,27 +52,28 @@ pub(crate) async fn patch(
     }
 
     if let Some(content_range) = content_range {
-        if let Some((start, stop)) = content_range.bytes_range() {
-            let size = match tokio::fs::metadata(&filename).await {
-                Ok(value) => value.len(),
-                _ => 0,
-            };
+        let start = content_range.0.first_byte;
+        let stop = content_range.0.last_byte;
 
-            if stop < start {
-                return Err(RegistryError::RangeNotSatisfiable {
-                    repository: repository.clone(),
-                    upload_id: upload_id.clone(),
-                    size,
-                });
-            }
+        let size = match tokio::fs::metadata(&filename).await {
+            Ok(value) => value.len(),
+            _ => 0,
+        };
 
-            if start != size {
-                return Err(RegistryError::RangeNotSatisfiable {
-                    repository: repository.clone(),
-                    upload_id: upload_id.clone(),
-                    size,
-                });
-            }
+        if stop < start {
+            return Err(RegistryError::RangeNotSatisfiable {
+                repository: repository.clone(),
+                upload_id: upload_id.clone(),
+                size,
+            });
+        }
+
+        if start != size {
+            return Err(RegistryError::RangeNotSatisfiable {
+                repository: repository.clone(),
+                upload_id: upload_id.clone(),
+                size,
+            });
         }
     }
 

@@ -10,6 +10,7 @@ use crate::state::RegistryState;
 pub(crate) use middleware::RewriteUriLayer;
 
 mod blobs;
+mod content_range;
 mod manifests;
 mod middleware;
 mod root;
