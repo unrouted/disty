@@ -374,4 +374,80 @@ mod test {
 
         fixture.teardown().await
     }
+
+
+    #[test(tokio::test)]
+    pub async fn cross_mount_with_auth() -> Result<()> {
+        let fixture =
+            RegistryFixture::with_state(FixtureBuilder::new().authenticated(true).build().await?)?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/mytestorg/mytestrepo/blobs/uploads/?digest=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .header("Authorization", fixture.bearer_header(vec![
+                    Access { type_: "repository".into(), name: "mytestorg/mytestrepo".into(), actions: [Action::Pull, Action::Push].into_iter().collect() }
+                ])?)
+                .body(Body::from("FOOBAR"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/conformance-25436bad-9cf6-4010-ad97-d1a033872a18/blobs/uploads/?from=mytestorg%2Fmytestrepo&mount=sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .header("Authorization", fixture.bearer_header(vec![
+                    Access { type_: "repository".into(), name: "mytestorg/mytestrepo".into(), actions: [Action::Pull].into_iter().collect() },
+                    Access { type_: "repository".into(), name: "conformance-25436bad-9cf6-4010-ad97-d1a033872a18".into(), actions: [Action::Push, Action::Pull].into_iter().collect() }
+                ])?)
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // Test old location still accessible
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/mytestorg/mytestrepo/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .header("Authorization", fixture.bearer_header(vec![
+                    Access { type_: "repository".into(), name: "mytestorg/mytestrepo".into(), actions: [Action::Pull].into_iter().collect() }
+                ])?)
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        // Test new location still accessible
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/conformance-25436bad-9cf6-4010-ad97-d1a033872a18/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .header("Authorization", fixture.bearer_header(vec![
+                    Access { type_: "repository".into(), name: "conformance-25436bad-9cf6-4010-ad97-d1a033872a18".into(), actions: [Action::Pull].into_iter().collect() }
+                ])?)
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"FOOBAR");
+
+        // Test not accessible elsewhere
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/baz/blobs/sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5")
+                .header("Authorization", fixture.bearer_header(vec![
+                    Access { type_: "repository".into(), name: "baz".into(), actions: [Action::Pull].into_iter().collect() }
+                ])?)
+                .body(Body::empty())?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        fixture.teardown().await
+    }
 }

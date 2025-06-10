@@ -217,9 +217,8 @@ impl RegistryFixture {
     }
 
     pub async fn request(&self, req: Request<Body>) -> Result<Response> {
-        self.router
-            .clone()
-            .oneshot(req)
+        let app = registry::RewriteUriLayer {}.layer(self.router.clone());
+        app.oneshot(req)
             .await
             .context("Failed to make test request")
     }
