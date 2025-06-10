@@ -16,9 +16,7 @@ impl Header for ContentRange {
             .next()
             .and_then(|v| v.to_str().ok())
             .and_then(|range| {
-                let Some((first_byte, last_byte)) = range.split_once("-") else {
-                    return None;
-                };
+                let (first_byte, last_byte) = range.split_once("-")?;
                 let first_byte = first_byte.parse().ok()?;
                 let last_byte = last_byte.parse().ok()?;
                 if last_byte < first_byte {
