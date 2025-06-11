@@ -69,6 +69,6 @@ CREATE TABLE tags (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(repository_id) REFERENCES repositories(id),
-    FOREIGN KEY(manifest_id) REFERENCES manifests(id) ON DELETE CASCADE,
+    FOREIGN KEY(manifest_id) REFERENCES manifests(id),
     UNIQUE(repository_id, name)
 );

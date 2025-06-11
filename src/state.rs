@@ -18,6 +18,7 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 struct BlobRow {
+    id: u32,
     digest: Digest,
     size: u64,
     location: u32,
@@ -108,26 +109,27 @@ impl RegistryState {
             )
             .await?;
 
-        let repositories: Vec<String> = self
-            .client
-            .query_as(
-                "SELECT repositories.name
-                        FROM blobs_repositories
-                        JOIN repositories ON blobs_repositories.repository_id = repositories.id
-                        WHERE blobs_repositories.digest = $1;",
-                params!(digest.to_string()),
-            )
-            .await?;
+        if let Some(row) = res {
+            let repositories: Vec<String> = self
+                .client
+                .query_as(
+                    "SELECT repositories.name
+                            FROM blobs_repositories
+                            JOIN repositories ON blobs_repositories.repository_id = repositories.id
+                            WHERE blobs_repositories.blob_id = $1;",
+                    params!(row.id as u32),
+                )
+                .await?;
 
-        Ok(match res {
-            Some(row) => Some(Blob {
+            return Ok(Some(Blob {
                 digest: row.digest,
                 size: row.size,
                 location: row.location,
                 repositories: repositories.into_iter().collect(),
-            }),
-            None => None,
-        })
+            }));
+        }
+
+        Ok(None)
     }
 
     pub async fn insert_blob(
@@ -143,16 +145,16 @@ impl RegistryState {
         self.client
             .txn(vec![
                 (
-                    "INSERT OR IGNORE INTO repositories(name) VALUES($1);",
+                    "INSERT OR IGNORE INTO repositories(name) VALUES($1) RETURNING id;",
                     params!(repository),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, location, created_by, state) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END;",
+                    "INSERT INTO blobs (digest, size, location, created_by, state) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END RETURNING id;",
                     params!(digest.to_string(), size, location, created_by, cluster_size_mask),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, (SELECT id FROM repositories WHERE name=$2));",
-                    params!(digest.to_string(), repository),
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) VALUES($1, $2);",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
                 )
             ])
             .await?;
@@ -176,8 +178,8 @@ impl RegistryState {
                     params!(repository),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(digest, repository_id) VALUES($1, $2);",
-                    params!(digest.to_string(), StmtIndex(0).column("id")),
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) SELECT id, $1 FROM blobs WHERE digest = $2;",
+                    params!(StmtIndex(0).column("id"), digest.to_string()),
                 )
             ])
             .await?;
@@ -202,7 +204,7 @@ impl RegistryState {
     pub async fn unmount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
         self.client
             .execute(
-                "DELETE FROM blobs_repositories WHERE digest = $1 AND repository_id = (SELECT id FROM repositories WHERE name=$2);",
+                "DELETE FROM blobs_repositories WHERE blob_id = (SELECT id FROM blobs WHERE digest = $1) AND repository_id = (SELECT id FROM repositories WHERE name = $2);",
                 params!(digest.to_string(), repository),
             )
             .await?;
@@ -300,7 +302,7 @@ impl RegistryState {
 
         sql.extend(info.blobs.iter().map(|descriptor| {
             (
-                "INSERT OR IGNORE INTO manifest_layers(manifest_id, blob_digest) VALUES ($1, $2);",
+                "INSERT OR IGNORE INTO manifest_layers(manifest_id, blob_id) SELECT $1, id FROM blobs WHERE digest = $2;",
                 params!(StmtIndex(1).column("id"), descriptor.digest.to_string()),
             )
         }));
@@ -410,8 +412,8 @@ impl RegistryState {
                         "SELECT repositories.name
                                 FROM blobs_repositories
                                 JOIN repositories ON blobs_repositories.repository_id = repositories.id
-                                WHERE blobs_repositories.digest = $1;",
-                        params!(blob.digest.to_string()),
+                                WHERE blobs_repositories.blob_id = $1;",
+                        params!(blob.id as u32),
                     )
                     .await?
                     .into_iter()
@@ -525,17 +527,17 @@ impl RegistryState {
         self.client
             .execute(
                 "WITH orphaned AS (
-                        SELECT br.digest, br.repository_id
+                        SELECT br.blob_id, br.repository_id
                         FROM blobs_repositories br
-                        JOIN blobs b ON br.digest = b.digest
-                        LEFT JOIN manifest_layers ml ON br.digest = ml.blob_digest
+                        JOIN blobs b ON br.blob_id = b.id
+                        LEFT JOIN manifest_layers ml ON br.blob_id = ml.blob_id
                         LEFT JOIN manifests m ON ml.manifest_id = m.id
                         WHERE m.id IS NULL
                         AND b.state = 1
                     )
                     DELETE FROM blobs_repositories
-                    WHERE (digest, repository_id) IN (
-                        SELECT digest, repository_id FROM orphaned
+                    WHERE (blob_id, repository_id) IN (
+                        SELECT blob_id, repository_id FROM orphaned
                     );",
                 vec![],
             )
@@ -550,10 +552,12 @@ impl RegistryState {
             .client
             .query_as(
                 "SELECT b.*
-            FROM blobs b
-            LEFT JOIN blobs_repositories br ON b.digest = br.digest
-                WHERE b.state == 1 AND (b.location & $1) != 0
-                AND br.digest IS NULL;",
+                        FROM blobs b
+                        LEFT JOIN blobs_repositories br ON b.id = br.blob_id
+                        WHERE b.state = 1
+                        AND (b.location & $1) != 0
+                        AND br.blob_id IS NULL;
+                        ",
                 params!(location),
             )
             .await?;
@@ -570,8 +574,8 @@ impl RegistryState {
             .into_iter()
             .map(|blob| {
                 (
-                    "UPDATE blobs SET location = location & (~$1) WHERE digest = $2;",
-                    params!(location, blob.digest.to_string()),
+                    "UPDATE blobs SET location = location & (~$1) WHERE id = $2;",
+                    params!(location, blob.id),
                 )
             })
             .collect::<Vec<_>>();
@@ -586,14 +590,14 @@ impl RegistryState {
             .execute(
                 "
                 WITH unreferenced_blobs AS (
-                    SELECT b.digest
+                    SELECT b.id
                     FROM blobs b
-                    LEFT JOIN blobs_repositories br ON b.digest = br.digest
+                    LEFT JOIN blobs_repositories br ON b.id = br.blob_id
                     WHERE b.location = 0
-                        AND br.digest IS NULL
+                        AND br.blob_id IS NULL
                     )
                     DELETE FROM blobs
-                    WHERE digest IN (SELECT digest FROM unreferenced_blobs);
+                    WHERE id IN (SELECT id FROM unreferenced_blobs);
                 ",
                 vec![],
             )
@@ -1134,13 +1138,13 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs_repositories(digest, repository_id, created_at) VALUES('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, datetime('now', '-50 days'));",
-                    params!(StmtIndex(0).column("id")),
-                )
+                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
+                ),
             ]
         ).await?;
 
@@ -1187,13 +1191,13 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 0) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs_repositories(digest, repository_id, created_at) VALUES('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, datetime('now', '-50 days'));",
-                    params!(StmtIndex(0).column("id")),
-                )
+                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
+                ),
             ]
         ).await?;
 
@@ -1240,20 +1244,20 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs_repositories(digest, repository_id, created_at) VALUES('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, datetime('now', '-50 days'));",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
                 ),
                 (
                     "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     params!(StmtIndex(0).column("id")),
                 ),
                 (
-                    "INSERT INTO manifest_layers(manifest_id, blob_digest) VALUES($1, 'sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5');",
-                    params!(StmtIndex(3).column("id")),
+                    "INSERT INTO manifest_layers(manifest_id, blob_id) VALUES($1, $2);",
+                    params!(StmtIndex(3).column("id"), StmtIndex(1).column("id")),
                 )
             ]
         ).await?;
@@ -1301,7 +1305,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 )
             ]
@@ -1352,7 +1356,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 0) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
                     vec![],
                 )
             ]
@@ -1403,13 +1407,13 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs_repositories(digest, repository_id, created_at) VALUES('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, datetime('now', '-50 days'));",
-                    params!(StmtIndex(0).column("id")),
-                )
+                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
+                ),
             ]
         ).await?;
 
@@ -1458,7 +1462,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 )
             ]
@@ -1507,7 +1511,7 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING digest;",
+                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
                     vec![],
                 )
             ]
