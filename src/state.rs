@@ -496,6 +496,7 @@ impl RegistryState {
                         WHERE t.id IS NULL
                         AND r.manifest_id IS NULL
                         AND m.state = 1
+                        AND mr.created_at < datetime('now', '-15 minutes')
                     )
                     DELETE FROM manifests_repositories
                     WHERE id IN (SELECT id FROM orphaned);",
@@ -568,7 +569,7 @@ impl RegistryState {
             .context("Unable to delete unreferenced manifests")
     }
 
-    pub async fn delete_unreference_blob_repositories(&self) -> Result<usize> {
+    pub async fn delete_unreferenced_blob_repositories(&self) -> Result<usize> {
         self.client
             .execute(
                 "WITH orphaned AS (
@@ -579,6 +580,7 @@ impl RegistryState {
                         LEFT JOIN manifests m ON ml.manifest_id = m.id
                         WHERE m.id IS NULL
                         AND b.state = 1
+                        AND br.created_at < datetime('now', '-30 minutes')
                     )
                     DELETE FROM blobs_repositories
                     WHERE (blob_id, repository_id) IN (
@@ -657,7 +659,7 @@ impl RegistryState {
         self.unstore_unreferenced_manifests().await?;
         self.delete_unreferenced_manifests().await?;
 
-        self.delete_unreference_blob_repositories().await?;
+        self.delete_unreferenced_blob_repositories().await?;
         self.unstore_unreachable_blobs().await?;
         self.delete_unstored_blobs().await?;
 
@@ -1217,7 +1219,7 @@ mod tests {
             .unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
-        assert_eq!(registry.delete_unreference_blob_repositories().await?, 1);
+        assert_eq!(registry.delete_unreferenced_blob_repositories().await?, 1);
 
         let blob = registry
             .get_blob(
@@ -1270,7 +1272,7 @@ mod tests {
             .unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
-        assert_eq!(registry.delete_unreference_blob_repositories().await?, 0);
+        assert_eq!(registry.delete_unreferenced_blob_repositories().await?, 0);
 
         let blob = registry
             .get_blob(
@@ -1331,7 +1333,7 @@ mod tests {
             .unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
-        registry.delete_unreference_blob_repositories().await?;
+        registry.delete_unreferenced_blob_repositories().await?;
 
         let blob = registry
             .get_blob(

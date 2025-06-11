@@ -17,7 +17,7 @@ use tokio_retry::Retry;
 use tokio_retry::strategy::{ExponentialBackoff, jitter};
 use tracing::{error, info, trace};
 
-mod base64url {
+pub mod base64url {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use serde::{self, Deserialize, Deserializer, Serializer};
 

@@ -11,14 +11,9 @@ use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
 
 use crate::{
-    Cache, Migrations,
     config::{
-        ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
-        acl::AccessRule, lifecycle::DeletionRule,
-    },
-    issuer::issue_token,
-    token::Access,
-    webhook::WebhookService,
+        acl::AccessRule, lifecycle::DeletionRule, ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User
+    }, issuer::issue_token, token::Access, webhook::WebhookService, Cache, Migrations
 };
 
 use super::*;
@@ -104,13 +99,6 @@ impl StateFixture {
         };
 
         let lock = EXCLUSIVE_TEST_LOCK.lock().await;
-        unsafe {
-            std::env::set_var("ENC_KEY_ACTIVE", "828W10qknpOT");
-            std::env::set_var(
-                "ENC_KEYS",
-                "828W10qknpOT/CIneMTth3mnRZZq0PMtztfWrnU+5xeiS0jrTB8iq6xc=",
-            );
-        }
 
         let nodes = (0..builder.cluster_size)
             .map(|idx| DistyNode {

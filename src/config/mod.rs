@@ -8,7 +8,7 @@ use figment::{
     value::magic::RelativePathBuf,
 };
 use figment_file_provider_adapter::FileAdapter;
-use hiqlite::{Node, NodeConfig};
+use hiqlite::{s3::EncKeys, Node, NodeConfig};
 use jwt_simple::prelude::ES256KeyPair;
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -149,6 +149,24 @@ pub struct SentryConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct BackupEncryptionKey {
+    pub id: String,
+    #[serde(with = "crate::jwt::base64url")]
+    pub key: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct BackupEncryptionConfig {
+    pub keys: Vec<BackupEncryptionKey>,
+    pub active: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct BackupConfig {
+    encryption: BackupEncryptionConfig,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Configuration {
     pub node_id: u64,
     pub nodes: Vec<DistyNode>,
@@ -162,6 +180,7 @@ pub(crate) struct Configuration {
     pub scrubber: ScrubberConfig,
     pub sentry: Option<SentryConfig>,
     pub cleanup: Vec<DeletionRule>,
+    pub backups: BackupConfig,
 }
 
 impl Configuration {
@@ -243,6 +262,10 @@ impl TryFrom<Configuration> for NodeConfig {
                 .secret
                 .context("You must provide a raft secret")?,
             secret_api: value.api.secret.context("You must provide an API secret")?,
+            enc_keys: EncKeys {
+                enc_key_active: value.backups.encryption.active.clone(),
+                enc_keys: value.backups.encryption.keys.iter().map(|key| (key.id.clone(), key.key.clone())).collect(),
+            },
             log_statements: true,
             ..Default::default()
         })
@@ -251,6 +274,9 @@ impl TryFrom<Configuration> for NodeConfig {
 
 impl Default for Configuration {
     fn default() -> Self {
+        let random_keys = EncKeys::generate().unwrap();
+        let first_key = random_keys.enc_keys.into_iter().next().unwrap();
+
         Self {
             node_id: 0,
             raft: RaftConfig::default(),
@@ -263,6 +289,7 @@ impl Default for Configuration {
             sentry: None,
             nodes: vec![],
             cleanup: vec![],
+            backups: BackupConfig { encryption: BackupEncryptionConfig { active: random_keys.enc_key_active, keys: vec![BackupEncryptionKey { id: first_key.0, key: first_key.1 }] } }
         }
     }
 }
