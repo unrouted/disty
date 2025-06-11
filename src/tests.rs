@@ -11,9 +11,14 @@ use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
 
 use crate::{
+    Cache, Migrations,
     config::{
-        acl::AccessRule, lifecycle::DeletionRule, ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User
-    }, issuer::issue_token, token::Access, webhook::WebhookService, Cache, Migrations
+        ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
+        acl::AccessRule, lifecycle::DeletionRule,
+    },
+    issuer::issue_token,
+    token::Access,
+    webhook::WebhookService,
 };
 
 use super::*;

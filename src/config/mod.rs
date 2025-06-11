@@ -8,7 +8,7 @@ use figment::{
     value::magic::RelativePathBuf,
 };
 use figment_file_provider_adapter::FileAdapter;
-use hiqlite::{s3::EncKeys, Node, NodeConfig};
+use hiqlite::{Node, NodeConfig, s3::EncKeys};
 use jwt_simple::prelude::ES256KeyPair;
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -264,7 +264,13 @@ impl TryFrom<Configuration> for NodeConfig {
             secret_api: value.api.secret.context("You must provide an API secret")?,
             enc_keys: EncKeys {
                 enc_key_active: value.backups.encryption.active.clone(),
-                enc_keys: value.backups.encryption.keys.iter().map(|key| (key.id.clone(), key.key.clone())).collect(),
+                enc_keys: value
+                    .backups
+                    .encryption
+                    .keys
+                    .iter()
+                    .map(|key| (key.id.clone(), key.key.clone()))
+                    .collect(),
             },
             log_statements: true,
             ..Default::default()
@@ -289,7 +295,15 @@ impl Default for Configuration {
             sentry: None,
             nodes: vec![],
             cleanup: vec![],
-            backups: BackupConfig { encryption: BackupEncryptionConfig { active: random_keys.enc_key_active, keys: vec![BackupEncryptionKey { id: first_key.0, key: first_key.1 }] } }
+            backups: BackupConfig {
+                encryption: BackupEncryptionConfig {
+                    active: random_keys.enc_key_active,
+                    keys: vec![BackupEncryptionKey {
+                        id: first_key.0,
+                        key: first_key.1,
+                    }],
+                },
+            },
         }
     }
 }
