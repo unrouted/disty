@@ -128,7 +128,10 @@ async fn download_manifest(
 
     let digest = manifest.digest.to_string();
 
-    let repo = &manifest.repository;
+    let repo = match manifest.repositories.iter().next() {
+        Some(repo) => repo,
+        None => bail!("Blob not available via any repository"),
+    };
 
     for node in state.config.nodes.iter() {
         // FIXME: Add extra check that we can never ever download from ourself.

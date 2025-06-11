@@ -32,7 +32,11 @@ pub(crate) async fn delete(
     }
 
     if let Ok(digest) = Digest::try_from(tag.clone()) {
-        if let Some(_manifest) = registry.get_manifest(&repository, &digest).await? {
+        if let Some(manifest) = registry.get_manifest(&digest).await? {
+            if !manifest.repositories.contains(&repository) {
+                return Err(RegistryError::ManifestNotFound {});
+            }
+
             registry.delete_manifest(&repository, &digest).await?;
 
             return Ok(Response::builder()

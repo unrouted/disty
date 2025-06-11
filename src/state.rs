@@ -31,7 +31,6 @@ struct ManifestRow {
     size: u32,
     media_type: String,
     location: u32,
-    repository: String,
 }
 
 #[derive(PartialEq, Debug)]
@@ -48,7 +47,7 @@ pub struct Manifest {
     pub size: u32,
     pub media_type: String,
     pub location: u32,
-    pub repository: String,
+    pub repositories: HashSet<String>,
 }
 
 pub struct RegistryState {
@@ -217,53 +216,72 @@ impl RegistryState {
             .client
             .query_as_optional(
                 "SELECT m.*, r.name AS repository
-                    FROM repositories r
-                    JOIN tags t ON t.repository_id = r.id
-                    JOIN manifests m ON t.manifest_id = m.id
-                    WHERE r.name = $1 AND t.name = $2;",
+                        FROM tags t
+                        JOIN manifests_repositories mr ON t.manifest_repository_id = mr.id
+                        JOIN manifests m ON mr.manifest_id = m.id
+                        JOIN repositories r ON mr.repository_id = r.id
+                        WHERE r.name = $1 AND t.name = $2;",
                 params!(repository, tag),
             )
             .await?;
 
-        Ok(match res {
-            Some(row) => Some(Manifest {
+        if let Some(row) = res {
+            let repositories: Vec<String> = self
+                .client
+                .query_as(
+                    "SELECT repositories.name
+                            FROM manifests_repositories
+                            JOIN repositories ON manifests_repositories.repository_id = repositories.id
+                            WHERE manifests_repositories.manifest_id = $1;",
+                    params!(row.id as u32),
+                )
+                .await?;
+
+            return Ok(Some(Manifest {
                 digest: row.digest,
                 size: row.size,
                 media_type: row.media_type,
                 location: row.location,
-                repository: repository.to_string(),
-            }),
-            None => None,
-        })
+                repositories: repositories.into_iter().collect(),
+            }));
+        }
+
+        Ok(None)
     }
 
-    pub async fn get_manifest(
-        &self,
-        repository: &str,
-        digest: &Digest,
-    ) -> Result<Option<Manifest>> {
+    pub async fn get_manifest(&self, digest: &Digest) -> Result<Option<Manifest>> {
         let res: Option<ManifestRow> = self
             .client
             .query_as_optional(
-                "SELECT m.*, r.name AS repository
+                "SELECT m.*
                         FROM manifests m
-                        JOIN repositories r ON m.repository_id = r.id
-                        WHERE m.digest = $1
-                        AND r.name = $2;",
-                params!(digest.to_string(), repository),
+                        WHERE m.digest = $1;",
+                params!(digest.to_string()),
             )
             .await?;
 
-        Ok(match res {
-            Some(row) => Some(Manifest {
+        if let Some(row) = res {
+            let repositories: Vec<String> = self
+                .client
+                .query_as(
+                    "SELECT repositories.name
+                            FROM manifests_repositories
+                            JOIN repositories ON manifests_repositories.repository_id = repositories.id
+                            WHERE manifests_repositories.manifest_id = $1;",
+                    params!(row.id as u32),
+                )
+                .await?;
+
+            return Ok(Some(Manifest {
                 digest: row.digest,
                 size: row.size,
                 media_type: row.media_type,
                 location: row.location,
-                repository: row.repository,
-            }),
-            None => None,
-        })
+                repositories: repositories.into_iter().collect(),
+            }));
+        }
+
+        Ok(None)
     }
 
     pub async fn insert_manifest(
@@ -283,20 +301,23 @@ impl RegistryState {
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, repository_id, created_by) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7) ON CONFLICT(repository_id, digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, created_by) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
                     &info.media_type,
                     location,
                     cluster_size_mask,
-                    StmtIndex(0).column("id"),
                     created_by
                 ),
             ),
             (
-                "INSERT INTO tags (name, repository_id, manifest_id) VALUES ($1, $2, (SELECT manifests.id FROM manifests WHERE digest=$3 AND repository_id=$2)) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_id = excluded.manifest_id;;",
-                params!(tag, StmtIndex(0).column("id"), digest.to_string()),
+                "INSERT INTO manifests_repositories (repository_id, manifest_id) VALUES ($1, $2) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
+                params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+            ),
+            (
+                "INSERT INTO tags (name, manifest_repository_id) VALUES ($1, $2) ON CONFLICT(name, manifest_repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id;",
+                params!(tag, StmtIndex(2).column("id")),
             ),
         ];
 
@@ -348,11 +369,9 @@ impl RegistryState {
     pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
         self.client
             .execute(
-                "DELETE FROM manifests
-                      WHERE digest = $1
-                      AND repository_id = (
-                        SELECT id FROM repositories WHERE name = $2
-                    );
+                "DELETE FROM manifests_repositories
+                    WHERE manifest_id = (SELECT id FROM manifests WHERE digest = $1)
+                    AND repository_id = (SELECT id FROM repositories WHERE name = $2);
                 ",
                 params!(digest.to_string(), repository),
             )
@@ -365,10 +384,11 @@ impl RegistryState {
             .client
             .query_as(
                 "SELECT tags.name
-                FROM tags
-                JOIN repositories ON tags.repository_id = repositories.id
-                WHERE repositories.name = $1
-                ORDER BY tags.name;",
+                        FROM tags
+                        JOIN manifests_repositories mr ON tags.manifest_repository_id = mr.id
+                        JOIN repositories ON mr.repository_id = repositories.id
+                        WHERE repositories.name = $1
+                        ORDER BY tags.name;",
                 params!(repository),
             )
             .await?)
@@ -378,10 +398,13 @@ impl RegistryState {
         self.client
             .execute(
                 "DELETE FROM tags
-                      WHERE name = $1
-                      AND repository_id = (
-                        SELECT id FROM repositories WHERE name = $2
-                    );
+                        WHERE name = $1
+                        AND manifest_repository_id IN (
+                            SELECT mr.id
+                            FROM manifests_repositories mr
+                            JOIN repositories r ON mr.repository_id = r.id
+                            WHERE r.name = $2
+                        );
                 ",
                 params!(tag, repository),
             )
@@ -438,14 +461,15 @@ impl RegistryState {
                 .client
                 .execute(
                     "DELETE FROM tags
-                    WHERE id IN (
-                        SELECT t.id
-                        FROM tags t
-                        JOIN repositories r ON t.repository_id = r.id
-                        WHERE t.updated_at < datetime('now', '-' || $1 || ' days')
-                        AND t.name GLOB $2
-                        AND r.name GLOB $3
-                    );",
+                            WHERE id IN (
+                                SELECT t.id
+                                FROM tags t
+                                JOIN manifests_repositories mr ON t.manifest_repository_id = mr.id
+                                JOIN repositories r ON mr.repository_id = r.id
+                                WHERE t.updated_at < datetime('now', '-' || $1 || ' days')
+                                AND t.name GLOB $2
+                                AND r.name GLOB $3
+                            );",
                     params!(
                         *older_than,
                         tag.clone().map_or("*".to_string(), |m| m.to_sqlite_glob()),
@@ -460,6 +484,29 @@ impl RegistryState {
         Ok(total_deleted)
     }
 
+    pub async fn delete_unreferenced_manifest_repositories(&self) -> Result<usize> {
+        self.client
+            .execute(
+                "WITH orphaned AS (
+                        SELECT mr.id
+                        FROM manifests_repositories mr
+                        JOIN manifests m ON mr.manifest_id = m.id
+                        LEFT JOIN tags t ON t.manifest_repository_id = mr.id
+                        LEFT JOIN manifest_references r ON r.child_id = m.id
+                        WHERE t.id IS NULL
+                        AND r.manifest_id IS NULL
+                        AND m.state = 1
+                    )
+                    DELETE FROM manifests_repositories
+                    WHERE id IN (SELECT id FROM orphaned);",
+                vec![],
+            )
+            .await
+            .context(
+                "Unable to remove manifests from repositories where they are no longer referenced",
+            )
+    }
+
     pub async fn unstore_unreferenced_manifests(&self) -> Result<usize> {
         let location = 1 << (self.node_id - 1);
         let mut deleted = vec![];
@@ -467,17 +514,12 @@ impl RegistryState {
         let manifests: Vec<ManifestRow> = self
             .client
             .query_as(
-                "SELECT m.*, r.name AS repository
-                FROM manifests m
-                JOIN repositories r ON m.repository_id = r.id
-                LEFT JOIN manifest_references mr ON m.id = mr.child_id
-                LEFT JOIN tags t ON m.id = t.manifest_id
-                WHERE
-                    m.state == 1
-                    AND mr.child_id IS NULL
-                    AND t.manifest_id IS NULL
-                    AND m.created_at < datetime('now', '-1 day')
-                    AND (m.location & $1) = $1;",
+                "SELECT m.*
+                    FROM manifests m
+                    LEFT JOIN manifests_repositories mr ON m.id = mr.manifest_id
+                    WHERE m.state = 1
+                    AND (m.location & $1) != 0
+                    AND mr.id IS NULL;",
                 params!(location),
             )
             .await?;
@@ -510,13 +552,16 @@ impl RegistryState {
     pub async fn delete_unreferenced_manifests(&self) -> Result<usize> {
         self.client
             .execute(
-                "DELETE FROM manifests
-                WHERE
-                    state == 1
-                    AND id NOT IN (SELECT child_id FROM manifest_references)
-                    AND id NOT IN (SELECT manifest_id FROM tags)
-                    AND location = 0
-                    AND created_at < datetime('now', '-1 day');",
+                "WITH unreferenced_manifests AS (
+                    SELECT m.id
+                    FROM manifests m
+                    LEFT JOIN manifests_repositories mr ON m.id = mr.manifest_id
+                    WHERE m.location = 0
+                    AND mr.id IS NULL
+                )
+                DELETE FROM manifests
+                WHERE id IN (SELECT id FROM unreferenced_manifests);
+                ",
                 vec![],
             )
             .await
@@ -607,8 +652,11 @@ impl RegistryState {
 
     pub async fn garbage_collection(&self) -> Result<()> {
         self.untag_old_tags().await?;
+
+        self.delete_unreferenced_manifest_repositories().await?;
         self.unstore_unreferenced_manifests().await?;
         self.delete_unreferenced_manifests().await?;
+
         self.delete_unreference_blob_repositories().await?;
         self.unstore_unreachable_blobs().await?;
         self.delete_unstored_blobs().await?;
@@ -622,19 +670,30 @@ impl RegistryState {
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
-                "SELECT m.*, r.name AS repository FROM manifests m JOIN repositories r ON m.repository_id = r.id WHERE state = 0 AND (location & $1) = 0;",
+                "SELECT m.* FROM manifests WHERE state = 0 AND (location & $1) = 0;",
                 params!(location),
             )
             .await?;
         let mut res = vec![];
 
         for manifest in blobs.into_iter() {
+            let repositories: Vec<String> = self
+                .client
+                .query_as(
+                    "SELECT repositories.name
+                            FROM manifests_repositories
+                            JOIN repositories ON manifests_repositories.repository_id = repositories.id
+                            WHERE manifests_repositories.manifest_id = $1;",
+                    params!(manifest.id as u32),
+                )
+                .await?;
+
             res.push(Manifest {
                 digest: manifest.digest.clone(),
                 size: manifest.size,
                 media_type: manifest.media_type,
                 location: manifest.location,
-                repository: manifest.repository,
+                repositories: repositories.into_iter().collect(),
             });
         }
 
@@ -735,7 +794,7 @@ mod tests {
             .parse()
             .unwrap();
 
-        assert_eq!(None, registry.get_manifest("library/nginx", &digest).await?);
+        assert_eq!(None, registry.get_manifest(&digest).await?);
 
         let info = ManifestInfo {
             media_type: "application/octet-stream".into(),
@@ -753,12 +812,10 @@ mod tests {
             .insert_manifest("library/nginx", "latest", &digest, &info, "bob")
             .await?;
 
-        let manifest = registry
-            .get_manifest("library/nginx", &digest)
-            .await?
-            .unwrap();
+        let manifest = registry.get_manifest(&digest).await?.unwrap();
 
         assert_eq!(manifest.digest, digest);
+        assert!(manifest.repositories.contains("library/nginx"));
 
         registry.teardown().await?;
 
@@ -839,12 +896,16 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', 1) RETURNING id;",
+                    params!(),
                 ),
                 (
-                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
                     params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(2).column("id")),
                 ),
             ]
         ).await?;
@@ -884,12 +945,16 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', 1) RETURNING id;",
+                    params!(),
                 ),
                 (
-                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
                     params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(2).column("id")),
                 ),
             ]
         ).await?;
@@ -906,9 +971,58 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn delete_unreferenced_manifest_repositories_tag_ref() -> Result<()> {
+        /*
+        Manifest is referenced by a tag so shouldn't be deleted
+        */
+        let registry = StateFixture::new().await?;
+
+        registry.delete_unreferenced_manifest_repositories().await?;
+
+        registry.client.txn(
+            [
+                (
+                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
+                    vec![],
+                ),
+                (
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
+                    params!(),
+                ),
+                (
+                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                ),
+                (
+                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(2).column("id")),
+                ),
+            ]
+        ).await?;
+
+        registry.delete_unreferenced_manifest_repositories().await?;
+
+        let manifest = registry
+            .get_manifest(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+
+        assert_eq!(manifest.location, 1);
+        assert!(manifest.repositories.contains("foo"));
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
     async fn unstore_unreferenced_manifests() -> Result<()> {
         /*
-        Manifest isn't referenced by a tag so should be deleted
+        Manifest isn't referenced by a manifests_repositories entry so should be removed from disk
         */
         let registry = StateFixture::new().await?;
 
@@ -921,27 +1035,24 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
+                    params!(),
                 ),
             ]
         ).await?;
 
         registry.unstore_unreferenced_manifests().await?;
 
-        assert_eq!(
-            registry
-                .get_manifest(
-                    "foo",
-                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                        .parse()
-                        .unwrap()
-                )
-                .await?
-                .unwrap()
-                .location,
-            0
-        );
+        let manifest = registry
+            .get_manifest(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
+
+        assert_eq!(manifest.location, 0);
 
         registry.teardown().await?;
 
@@ -951,7 +1062,7 @@ mod tests {
     #[test(tokio::test)]
     async fn unstore_unreferenced_manifests_state() -> Result<()> {
         /*
-        Manifest isn't referenced by a tag so should be deleted
+        Manifest isn't referenced by a tag so should be deleted - but its state is 0 so leave it alone
         */
         let registry = StateFixture::new().await?;
 
@@ -964,74 +1075,24 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
+                    params!(),
                 ),
             ]
         ).await?;
 
         registry.unstore_unreferenced_manifests().await?;
 
-        assert_eq!(
-            registry
-                .get_manifest(
-                    "foo",
-                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                        .parse()
-                        .unwrap()
-                )
-                .await?
-                .unwrap()
-                .location,
-            1
-        );
+        let manifest = registry
+            .get_manifest(
+                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+            .unwrap();
 
-        registry.teardown().await?;
-
-        Ok(())
-    }
-
-    #[test(tokio::test)]
-    async fn unstore_unreferenced_manifests_tag_ref() -> Result<()> {
-        /*
-        Manifest is referenced by a tag so shouldn't be deleted
-        */
-        let registry = StateFixture::new().await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-            ]
-        ).await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        assert_eq!(
-            registry
-                .get_manifest(
-                    "foo",
-                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                        .parse()
-                        .unwrap()
-                )
-                .await?
-                .unwrap()
-                .location,
-            1
-        );
+        assert_eq!(manifest.location, 1);
 
         registry.teardown().await?;
 
@@ -1054,8 +1115,8 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
+                    params!(),
                 ),
             ]
         ).await?;
@@ -1065,7 +1126,6 @@ mod tests {
         assert!(
             registry
                 .get_manifest(
-                    "foo",
                     &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
                         .parse()
                         .unwrap()
@@ -1095,8 +1155,8 @@ mod tests {
                     vec![],
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
+                    params!(),
                 ),
             ]
         ).await?;
@@ -1106,7 +1166,6 @@ mod tests {
         assert_eq!(
             registry
                 .get_manifest(
-                    "foo",
                     &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
                         .parse()
                         .unwrap()
@@ -1252,8 +1311,8 @@ mod tests {
                     params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
                 ),
                 (
-                    "INSERT INTO manifests(digest, repository_id, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', $1, 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(StmtIndex(0).column("id")),
+                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
+                    params!(),
                 ),
                 (
                     "INSERT INTO manifest_layers(manifest_id, blob_id) VALUES($1, $2);",

@@ -54,7 +54,7 @@ pub(crate) async fn get(
     }
 
     let manifest = match Digest::try_from(tag.clone()) {
-        Ok(digest) => registry.get_manifest(&repository, &digest).await?,
+        Ok(digest) => registry.get_manifest(&digest).await?,
         Err(_) => registry.get_tag(&repository, &tag).await?,
     };
 
@@ -62,6 +62,10 @@ pub(crate) async fn get(
         Some(manifest) => manifest,
         None => return Err(RegistryError::ManifestNotFound {}),
     };
+
+    if !manifest.repositories.contains(&repository) {
+        return Err(RegistryError::ManifestNotFound {});
+    }
 
     /*if !manifest.locations.contains(&app.id) {
         app.wait_for_manifest(&path.digest).await;
