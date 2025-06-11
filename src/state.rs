@@ -116,7 +116,7 @@ impl RegistryState {
                             FROM blobs_repositories
                             JOIN repositories ON blobs_repositories.repository_id = repositories.id
                             WHERE blobs_repositories.blob_id = $1;",
-                    params!(row.id as u32),
+                    params!(row.id),
                 )
                 .await?;
 
@@ -436,7 +436,7 @@ impl RegistryState {
                                 FROM blobs_repositories
                                 JOIN repositories ON blobs_repositories.repository_id = repositories.id
                                 WHERE blobs_repositories.blob_id = $1;",
-                        params!(blob.id as u32),
+                        params!(blob.id),
                     )
                     .await?
                     .into_iter()
