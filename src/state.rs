@@ -330,15 +330,15 @@ impl RegistryState {
 
         sql.extend(info.manifests.iter().map(|descriptor| {
             (
-                "INSERT OR IGNORE INTO manifest_references(manifest_id, child_id) VALUES ($1, (SELECT manifests.id FROM manifests WHERE digest=$2 AND repository_id=$3));",
-                params!(StmtIndex(1).column("id"), descriptor.digest.to_string(), StmtIndex(1).column("id")),
+                "INSERT OR IGNORE INTO manifest_references(manifest_id, child_id) VALUES ($1, (SELECT manifests.id FROM manifests WHERE digest=$2));",
+                params!(StmtIndex(1).column("id"), descriptor.digest.to_string()),
             )
         }));
 
         sql.extend(info.subject.iter().map(|descriptor| {
             (
-                "INSERT OR IGNORE INTO manifest_subject(manifest_id, subject_id) VALUES ($1, (SELECT manifests.id FROM manifests WHERE digest=$2 AND repository_id=$3));",
-                params!(StmtIndex(1).column("id"), descriptor.digest.to_string(), StmtIndex(1).column("id")),
+                "INSERT OR IGNORE INTO manifest_subject(manifest_id, subject_id) VALUES ($1, (SELECT manifests.id FROM manifests WHERE digest=$2));",
+                params!(StmtIndex(1).column("id"), descriptor.digest.to_string()),
             )
         }));
 
