@@ -96,14 +96,20 @@ pub(crate) async fn put(
     Content-Length: 0
     Docker-Content-Digest: <digest>
     */
-    Ok(Response::builder()
+    let resp = Response::builder()
         .status(StatusCode::CREATED)
         .header(
             "Location",
             format!("/v2/{}/manifests/{}", repository, digest),
         )
-        .header("Docker-Content-Digest", digest.to_string())
-        .body(Body::empty())?)
+        .header("Docker-Content-Digest", digest.to_string());
+
+    let resp = match extracted.subject {
+        Some(subject) => resp.header("OCI-Subject", subject.digest.to_string()),
+        None => resp,
+    };
+
+    Ok(resp.body(Body::empty())?)
 }
 
 #[cfg(test)]

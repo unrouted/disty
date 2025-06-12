@@ -38,19 +38,27 @@ pub struct Descriptor {
 #[serde(rename_all = "camelCase")]
 enum ManifestV2 {
     #[serde(rename = "application/vnd.docker.distribution.manifest.v2+json")]
-    Docker {
+    DockerImage {
+        subject: Option<Descriptor>,
         config: Descriptor,
         layers: Vec<Descriptor>,
     },
     #[serde(rename = "application/vnd.docker.distribution.manifest.list.v2+json")]
-    DockerList { manifests: Vec<Descriptor> },
+    DockerList {
+        subject: Option<Descriptor>,
+        manifests: Vec<Descriptor>,
+    },
     #[serde(rename = "application/vnd.oci.image.manifest.v1+json")]
-    Oci {
+    OciImage {
+        subject: Option<Descriptor>,
         config: Descriptor,
         layers: Vec<Descriptor>,
     },
     #[serde(rename = "application/vnd.oci.image.index.v1+json")]
-    OciList { manifests: Vec<Descriptor> },
+    OciList {
+        subject: Option<Descriptor>,
+        manifests: Vec<Descriptor>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +74,7 @@ pub struct ManifestInfo {
     pub size: u32,
     pub manifests: Vec<Descriptor>,
     pub blobs: Vec<Descriptor>,
+    pub subject: Option<Descriptor>,
 }
 
 pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
@@ -76,37 +85,58 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
             let mut manifests = Vec::new();
             let mut blobs = Vec::new();
 
-            let content_type = match manifest {
-                ManifestV2::Docker { config, layers } => {
+            let (content_type, subject) = match manifest {
+                ManifestV2::DockerImage {
+                    subject,
+                    config,
+                    layers,
+                } => {
                     blobs.push(config);
                     blobs.extend(layers);
 
-                    "application/vnd.docker.distribution.manifest.v2+json"
+                    (
+                        "application/vnd.docker.distribution.manifest.v2+json",
+                        subject,
+                    )
                 }
-                ManifestV2::Oci { config, layers } => {
+                ManifestV2::OciImage {
+                    subject,
+                    config,
+                    layers,
+                } => {
                     blobs.push(config);
                     blobs.extend(layers);
 
-                    "application/vnd.oci.image.manifest.v1+json"
+                    ("application/vnd.oci.image.manifest.v1+json", subject)
                 }
-                ManifestV2::DockerList { manifests: inner } => {
+                ManifestV2::DockerList {
+                    subject,
+                    manifests: inner,
+                } => {
                     manifests.extend(inner);
 
-                    "application/vnd.docker.distribution.manifest.list.v2+json"
+                    (
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                        subject,
+                    )
                 }
-                ManifestV2::OciList { manifests: inner } => {
+                ManifestV2::OciList {
+                    subject,
+                    manifests: inner,
+                } => {
                     manifests.extend(inner);
 
-                    "application/vnd.oci.image.index.v1+json"
+                    ("application/vnd.oci.image.index.v1+json", subject)
                 }
             }
             .into();
 
             Ok(ManifestInfo {
-                media_type: content_type,
+                media_type: content_type.into(),
                 size: input.len() as u32,
                 manifests,
                 blobs,
+                subject,
             })
         }
         Manifest::V1(manifest) => {
@@ -126,6 +156,7 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                 size: input.len() as u32,
                 manifests: vec![],
                 blobs,
+                subject: None,
             })
         }
     }
