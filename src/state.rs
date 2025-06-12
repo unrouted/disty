@@ -144,7 +144,7 @@ impl RegistryState {
         self.client
             .txn(vec![
                 (
-                    "INSERT OR IGNORE INTO repositories(name) VALUES($1) RETURNING id;",
+                    "INSERT INTO repositories(name) VALUES($1) RETURNING id ON CONFLICT DO UPDATE SET id=id RETURNING id;",
                     params!(repository),
                 ),
                 (
