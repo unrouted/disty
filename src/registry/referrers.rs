@@ -75,26 +75,27 @@ pub(crate) async fn get(
         return Err(RegistryError::AccessDenied {});
     }
 
-    let manifest = match registry.get_manifest(&digest).await? {
-        Some(manifest) => manifest,
-        None => return Err(RegistryError::ManifestNotFound {}),
-    };
-
-    if !manifest.repositories.contains(&repository) {
-        return Err(RegistryError::ManifestNotFound {});
+    if !registry.repository_exists(&repository).await? {
+        return Err(RegistryError::RepositoryNotFound {});
     }
 
     let mut manifests = vec![];
 
-    for manifest in registry.get_referrer(&digest).await? {
-        manifests.push(ManifestIndexItem {
-            media_type: manifest.media_type,
-            size: manifest.size,
-            digest: manifest.digest,
-            artifact_type: None,
-            annotations: BTreeMap::new(),
-        })
-    }
+    if let Some(manifest) = registry.get_manifest(&digest).await? {
+        if manifest.repositories.contains(&repository) {
+            for manifest in registry.get_referrer(&digest).await? {
+                if manifest.repositories.contains(&repository) {
+                    manifests.push(ManifestIndexItem {
+                        media_type: manifest.media_type,
+                        size: manifest.size,
+                        digest: manifest.digest,
+                        artifact_type: None,
+                        annotations: BTreeMap::new(),
+                    })
+                }
+            }
+        }
+    };
 
     let index = ManifestIndex {
         schema_version: 2,
@@ -107,8 +108,10 @@ pub(crate) async fn get(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.oci.image.index.v1+json")
-        .header(header::CONTENT_LENGTH, manifest.size)
+        .header(
+            header::CONTENT_TYPE,
+            "application/vnd.oci.image.index.v1+json",
+        )
         .body(body)?)
 }
 

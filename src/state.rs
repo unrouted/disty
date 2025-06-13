@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    path::PathBuf,
-};
+use std::{collections::HashSet, path::PathBuf};
 
 use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
@@ -425,8 +422,6 @@ impl RegistryState {
     }
 
     pub async fn get_referrer(&self, digest: &Digest) -> Result<Vec<Manifest>> {
-        let location = 1 << (self.node_id - 1);
-
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
