@@ -1,4 +1,7 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
@@ -301,14 +304,16 @@ impl RegistryState {
                 params!(repository),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, created_by) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
                     &info.media_type,
                     location,
                     cluster_size_mask,
-                    created_by
+                    created_by,
+                    &info.artifact_type,
+                    serde_json::to_string(&info.annotations)?
                 ),
             ),
             (
@@ -807,6 +812,8 @@ mod tests {
 
         let info = ManifestInfo {
             media_type: "application/octet-stream".into(),
+            artifact_type: None,
+            annotations: HashMap::new(),
             size: 55,
             manifests: vec![],
             blobs: vec![Descriptor {
