@@ -47,7 +47,7 @@ pub fn router(state: Arc<RegistryState>) -> Router {
                 .delete(manifests::delete::delete)
                 .put(manifests::put::put),
         )
-        .route("/v2/{repository}/referrers/{tag}", get(referrers::get))
+        .route("/v2/{repository}/referrers/{digest}", get(referrers::get))
         .route("/v2/{repository}/tags/list", get(tags::get::get))
         .with_state(state)
 }

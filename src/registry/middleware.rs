@@ -39,7 +39,7 @@ where
         let path = uri.path().to_string();
         let query = uri.query().unwrap_or("");
 
-        let re = Regex::new(r"(^/v2/)(.+)(/(manifests|blobs|tags).*$)").unwrap();
+        let re = Regex::new(r"(^/v2/)(.+)(/(manifests|blobs|tags|referrers).*$)").unwrap();
 
         let result = re.replace(&path, |caps: &Captures| {
             let prefix = &caps[1];

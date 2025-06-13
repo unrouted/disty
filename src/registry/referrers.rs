@@ -107,7 +107,7 @@ pub(crate) async fn get(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, manifest.media_type)
+        .header(header::CONTENT_TYPE, "application/vnd.oci.image.index.v1+json")
         .header(header::CONTENT_LENGTH, manifest.size)
         .body(body)?)
 }
