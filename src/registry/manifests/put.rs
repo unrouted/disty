@@ -65,7 +65,7 @@ pub(crate) async fn put(
     };
 
     let Ok(extracted) = parse_manifest(&tokio::fs::read_to_string(&upload_path).await?) else {
-        tracing::error!("Extraction failed");
+        tracing::error!("Extraction failed: {:?}", tokio::fs::read_to_string(&upload_path).await?);
         return Err(RegistryError::ManifestInvalid {});
     };
 
