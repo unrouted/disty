@@ -71,6 +71,7 @@ enum ManifestV2 {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 enum Manifest {
     V1(ManifestV1),
     V2(ManifestV2),
