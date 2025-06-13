@@ -424,6 +424,42 @@ impl RegistryState {
         Ok(())
     }
 
+    pub async fn get_referrer(&self, digest: &Digest) -> Result<Vec<Manifest>> {
+        let location = 1 << (self.node_id - 1);
+
+        let blobs: Vec<ManifestRow> = self
+            .client
+            .query_as(
+                "SELECT m.* FROM manifests JOIN manifest_subject ms ON m.id = ms.manifest_id JOIN manifests s ON s.id = ms.subject_id WHERE s.digest=$1;",
+                params!(digest.to_string()),
+            )
+            .await?;
+        let mut res = vec![];
+
+        for manifest in blobs.into_iter() {
+            let repositories: Vec<String> = self
+                .client
+                .query_as(
+                    "SELECT repositories.name
+                            FROM manifests_repositories
+                            JOIN repositories ON manifests_repositories.repository_id = repositories.id
+                            WHERE manifests_repositories.manifest_id = $1;",
+                    params!(manifest.id as u32),
+                )
+                .await?;
+
+            res.push(Manifest {
+                digest: manifest.digest.clone(),
+                size: manifest.size,
+                media_type: manifest.media_type,
+                location: manifest.location,
+                repositories: repositories.into_iter().collect(),
+            });
+        }
+
+        Ok(res)
+    }
+
     pub async fn get_missing_blobs(&self) -> Result<Vec<Blob>> {
         let location = 1 << (self.node_id - 1);
 

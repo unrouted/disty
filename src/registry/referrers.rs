@@ -38,15 +38,17 @@ Content-Type: application/vnd.oci.image.index.v1+json
 */
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestIndexItem {
     pub media_type: String,
-    pub size: u64,
+    pub size: u32,
     pub digest: Digest,
-    pub artifact_type: String,
+    pub artifact_type: Option<String>,
     pub annotations: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestIndex {
     pub schema_version: u64,
     pub media_type: String,
@@ -85,6 +87,16 @@ pub(crate) async fn get(
     }
 
     let mut manifests = vec![];
+
+    for manifest in registry.get_referrer(&digest).await? {
+        manifests.push(ManifestIndexItem {
+            media_type: manifest.media_type,
+            size: manifest.size,
+            digest: manifest.digest,
+            artifact_type: None,
+            annotations: BTreeMap::new(),
+        })
+    }
 
     let index = ManifestIndex {
         schema_version: 2,
