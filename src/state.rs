@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     path::PathBuf,
 };
 
@@ -762,6 +762,8 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use test_log::test;
 
     use crate::{
