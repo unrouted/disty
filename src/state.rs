@@ -505,8 +505,10 @@ impl RegistryState {
                         JOIN manifests m ON mr.manifest_id = m.id
                         LEFT JOIN tags t ON t.manifest_repository_id = mr.id
                         LEFT JOIN manifest_references r ON r.child_id = m.id
+                        LEFT JOIN manifest_subject ms ON ms.manifest_id = m.id
                         WHERE t.id IS NULL
                         AND r.manifest_id IS NULL
+                        AND ms.manifest_id IS NULL
                         AND m.state = 1
                         AND mr.created_at < datetime('now', '-15 minutes')
                     )
