@@ -425,7 +425,7 @@ impl RegistryState {
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
-                "SELECT m.* FROM manifests JOIN manifest_subject ms ON m.id = ms.manifest_id JOIN manifests s ON s.id = ms.subject_id WHERE s.digest=$1;",
+                "SELECT m.* FROM manifests m JOIN manifest_subject ms ON m.id = ms.manifest_id JOIN manifests s ON s.id = ms.subject_id WHERE s.digest=$1;",
                 params!(digest.to_string()),
             )
             .await?;
