@@ -428,9 +428,12 @@ impl RegistryState {
             manifest_id: u32,
             subject_id: u32,
         }
-        let refs: Vec<Bleh> = self.client.query_as("SELECT * FROM manifest_subject;", vec![]).await?;
+        let refs: Vec<Bleh> = self
+            .client
+            .query_as("SELECT * FROM manifest_subject;", vec![])
+            .await?;
         println!("MARKER: {:?}", refs);
- 
+
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(

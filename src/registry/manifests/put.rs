@@ -72,6 +72,11 @@ pub(crate) async fn put(
         return Err(RegistryError::ManifestInvalid {});
     };
 
+    println!(
+        "MANIFEST: {tag}: {:?}",
+        tokio::fs::read_to_string(&upload_path).await?
+    );
+
     let content_type = content_type.to_string();
     if let Some(media_type) = &extracted.media_type {
         if &content_type != media_type {

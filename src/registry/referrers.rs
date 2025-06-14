@@ -169,4 +169,29 @@ mod test {
 
         fixture.teardown().await
     }
+
+    #[test(tokio::test)]
+    pub async fn referrers_do_refer() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .body(Body::from("{}"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:ee29d2e91da0e5dbf6536f5b369148a83ef59b0ce96e49da65dd6c25eb1fa44f")
+                .body(Body::from("NHL Peanut Butter on my NHL bagel"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        fixture.teardown().await
+    }
 }
