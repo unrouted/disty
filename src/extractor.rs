@@ -36,22 +36,11 @@ pub struct Descriptor {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "mediaType")]
-#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+#[serde(rename_all_fields = "camelCase")]
 enum ManifestV2 {
-    #[serde(rename = "application/vnd.docker.distribution.manifest.v2+json")]
-    DockerImage {
-        subject: Option<Descriptor>,
-        config: Descriptor,
-        layers: Vec<Descriptor>,
-    },
-    #[serde(rename = "application/vnd.docker.distribution.manifest.list.v2+json")]
-    DockerList {
-        subject: Option<Descriptor>,
-        manifests: Vec<Descriptor>,
-    },
-    #[serde(rename = "application/vnd.oci.image.manifest.v1+json")]
     OciImage {
+        media_type: Option<String>,
         artifact_type: Option<String>,
         #[serde(default = "HashMap::new")]
         annotations: HashMap<String, String>,
@@ -59,8 +48,8 @@ enum ManifestV2 {
         config: Descriptor,
         layers: Vec<Descriptor>,
     },
-    #[serde(rename = "application/vnd.oci.image.index.v1+json")]
     OciList {
+        media_type: Option<String>,
         artifact_type: Option<String>,
         #[serde(default = "HashMap::new")]
         annotations: HashMap<String, String>,
@@ -79,7 +68,7 @@ enum Manifest {
 
 #[derive(Debug)]
 pub struct ManifestInfo {
-    pub media_type: String,
+    pub media_type: Option<String>,
     pub artifact_type: Option<String>,
     pub annotations: HashMap<String, String>,
     pub size: u32,
@@ -97,25 +86,8 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
             let mut blobs = Vec::new();
 
             match manifest {
-                ManifestV2::DockerImage {
-                    subject,
-                    config,
-                    layers,
-                } => {
-                    blobs.push(config);
-                    blobs.extend(layers);
-
-                    Ok(ManifestInfo {
-                        media_type: "application/vnd.docker.distribution.manifest.v2+json".into(),
-                        artifact_type: None,
-                        annotations: HashMap::new(),
-                        size: input.len() as u32,
-                        manifests,
-                        blobs,
-                        subject,
-                    })
-                }
                 ManifestV2::OciImage {
+                    media_type,
                     artifact_type,
                     annotations,
                     subject,
@@ -126,7 +98,7 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                     blobs.extend(layers);
 
                     Ok(ManifestInfo {
-                        media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                        media_type,
                         artifact_type,
                         annotations,
                         size: input.len() as u32,
@@ -135,24 +107,8 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                         subject,
                     })
                 }
-                ManifestV2::DockerList {
-                    subject,
-                    manifests: inner,
-                } => {
-                    manifests.extend(inner);
-
-                    Ok(ManifestInfo {
-                        media_type: "application/vnd.docker.distribution.manifest.list.v2+json"
-                            .into(),
-                        artifact_type: None,
-                        annotations: HashMap::new(),
-                        size: input.len() as u32,
-                        manifests,
-                        blobs,
-                        subject,
-                    })
-                }
                 ManifestV2::OciList {
+                    media_type,
                     artifact_type,
                     annotations,
                     subject,
@@ -161,7 +117,7 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                     manifests.extend(inner);
 
                     Ok(ManifestInfo {
-                        media_type: "application/vnd.oci.image.index.v1+json".into(),
+                        media_type,
                         artifact_type,
                         annotations,
                         size: input.len() as u32,
@@ -185,7 +141,7 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                 .collect();
 
             Ok(ManifestInfo {
-                media_type: "application/vnd.docker.distribution.manifest.v1+json".into(),
+                media_type: Some("application/vnd.docker.distribution.manifest.v1+json".into()),
                 artifact_type: None,
                 annotations: HashMap::new(),
                 size: input.len() as u32,
@@ -222,7 +178,7 @@ mod tests {
 
         let info = parse_manifest(input).unwrap();
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.docker.distribution.manifest.v2+json"
         );
         assert_eq!(info.manifests.len(), 0);
@@ -263,7 +219,7 @@ mod tests {
 
         let info = parse_manifest(input).unwrap();
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.oci.image.manifest.v1+json"
         );
         assert_eq!(info.manifests.len(), 0);
@@ -303,7 +259,7 @@ mod tests {
 
         let info = parse_manifest(input).unwrap();
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.docker.distribution.manifest.list.v2+json"
         );
         assert_eq!(info.blobs.len(), 0);
@@ -337,7 +293,10 @@ mod tests {
         "#;
 
         let info = parse_manifest(input).unwrap();
-        assert_eq!(info.media_type, "application/vnd.oci.image.index.v1+json");
+        assert_eq!(
+            info.media_type.unwrap(),
+            "application/vnd.oci.image.index.v1+json"
+        );
         assert_eq!(info.blobs.len(), 0);
         assert_eq!(info.manifests.len(), 1);
         assert_eq!(
@@ -419,7 +378,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.docker.distribution.manifest.list.v2+json"
         );
     }
@@ -456,7 +415,7 @@ mod tests {
         "#).unwrap();
 
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.docker.distribution.manifest.v2+json"
         );
     }
@@ -505,7 +464,7 @@ mod tests {
         "#).unwrap();
 
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.docker.distribution.manifest.v1+json"
         );
     }
@@ -515,8 +474,25 @@ mod tests {
         let data = include_str!("../fixtures/manifests/oci_with_annotations.json");
         let info = parse_manifest(data).unwrap();
         assert_eq!(
-            info.media_type,
+            info.media_type.unwrap(),
             "application/vnd.oci.image.manifest.v1+json"
         );
+    }
+
+    #[test]
+    fn oci_manifest_with_annotations_and_new_fields() {
+        let data = include_str!("../fixtures/manifests/oci_with_new_fields.json");
+        let info = parse_manifest(data).unwrap();
+        assert_eq!(
+            info.media_type.unwrap(),
+            "application/vnd.oci.image.manifest.v1+json"
+        );
+    }
+
+    #[test]
+    fn oci_manifest_guess_media_type() {
+        let data = include_str!("../fixtures/manifests/no_media_type.json");
+        let info = parse_manifest(data).unwrap();
+        assert_eq!(info.media_type, None);
     }
 }

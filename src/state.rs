@@ -289,6 +289,7 @@ impl RegistryState {
         repository: &str,
         tag: &str,
         digest: &Digest,
+        media_type: &str,
         info: &ManifestInfo,
         created_by: &str,
     ) -> Result<()> {
@@ -305,7 +306,7 @@ impl RegistryState {
                 params!(
                     digest.to_string(),
                     info.size,
-                    &info.media_type,
+                    media_type,
                     location,
                     cluster_size_mask,
                     created_by,
@@ -355,7 +356,7 @@ impl RegistryState {
             .await?;
 
         self.webhooks
-            .send(repository, digest, tag, &info.media_type)
+            .send(repository, digest, tag, media_type)
             .await?;
 
         Ok(())
@@ -846,7 +847,7 @@ mod tests {
         assert_eq!(None, registry.get_manifest(&digest).await?);
 
         let info = ManifestInfo {
-            media_type: "application/octet-stream".into(),
+            media_type: Some("application/octet-stream".into()),
             artifact_type: None,
             annotations: HashMap::new(),
             size: 55,
@@ -861,7 +862,14 @@ mod tests {
         };
 
         registry
-            .insert_manifest("library/nginx", "latest", &digest, &info, "bob")
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest,
+                "some/content-type",
+                &info,
+                "bob",
+            )
             .await?;
 
         let manifest = registry.get_manifest(&digest).await?.unwrap();

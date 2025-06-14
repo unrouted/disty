@@ -65,13 +65,19 @@ pub(crate) async fn put(
     };
 
     let Ok(extracted) = parse_manifest(&tokio::fs::read_to_string(&upload_path).await?) else {
-        tracing::error!("Extraction failed: {:?}", tokio::fs::read_to_string(&upload_path).await?);
+        tracing::error!(
+            "Extraction failed: {:?}",
+            tokio::fs::read_to_string(&upload_path).await?
+        );
         return Err(RegistryError::ManifestInvalid {});
     };
 
-    if content_type.to_string() != extracted.media_type {
-        tracing::error!("Content-Type doesn't match mediaType");
-        return Err(RegistryError::ManifestInvalid {});
+    let content_type = content_type.to_string();
+    if let Some(media_type) = &extracted.media_type {
+        if &content_type != media_type {
+            tracing::error!("Content-Type doesn't match mediaType");
+            return Err(RegistryError::ManifestInvalid {});
+        }
     }
 
     let dest = registry.get_manifest_path(&digest);
@@ -87,7 +93,14 @@ pub(crate) async fn put(
     }
 
     registry
-        .insert_manifest(&repository, &tag, &digest, &extracted, &token.sub)
+        .insert_manifest(
+            &repository,
+            &tag,
+            &digest,
+            &content_type,
+            &extracted,
+            &token.sub,
+        )
         .await?;
 
     /*
