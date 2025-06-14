@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::Uuid;
 
@@ -423,6 +423,14 @@ impl RegistryState {
     }
 
     pub async fn get_referrer(&self, digest: &Digest) -> Result<Vec<Manifest>> {
+        #[derive(Serialize, Deserialize, Debug)]
+        struct Bleh {
+            manifest_id: u32,
+            subject_id: u32,
+        }
+        let refs: Vec<Bleh> = self.client.query_as("SELECT * FROM manifest_subject;", vec![]).await?;
+        println!("MARKER: {:?}", refs);
+ 
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
