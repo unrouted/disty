@@ -456,16 +456,6 @@ impl RegistryState {
     }
 
     pub async fn get_referrer(&self, digest: &Digest) -> Result<Vec<Manifest>> {
-        #[derive(Serialize, Deserialize, Debug)]
-        struct Bleh {
-            manifest_id: u32,
-            subject_id: u32,
-        }
-        let refs: Vec<Bleh> = self
-            .client
-            .query_as("SELECT * FROM manifest_subject;", vec![])
-            .await?;
-
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
