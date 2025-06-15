@@ -35,7 +35,7 @@ Content-Type: application/vnd.oci.image.index.v1+json
 }
 */
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestIndexItem {
     pub media_type: String,
@@ -45,7 +45,7 @@ struct ManifestIndexItem {
     pub annotations: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestIndex {
     pub schema_version: u64,
@@ -119,6 +119,7 @@ pub(crate) async fn get(
 mod test {
     use anyhow::{Context, Result};
     use axum::http::Request;
+    use http_body_util::BodyExt;
     use test_log::test;
 
     use crate::tests::{FixtureBuilder, RegistryFixture};
@@ -191,6 +192,88 @@ mod test {
             ).await?;
 
         assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:e997eca5fa72577f59c173736ab505ee66777324419b3b4b338bd0e2286f8287")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_3.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:0a5e7446398586dc0f057cab5eecc2fa78d0ed6d0daa73a84595f8b69647062f")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_2.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:e15e91042b162252646726a7a9550e718fd09edacaa9820a4b1f05af05656acd")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_6.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:70b5c11f98715d740c6babeae1a31c0c19c091671c73ea67b2ad9b6344f1aa6a")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_7.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:b11cfd6ca08252387b328a5340932d2cee3ce8d012b370131b379c9d8b76f232")
+                .header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_8.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // The spec allows out of order pushes which is unfortunate
+        // https://github.com/opencontainers/distribution-spec/issues/459
+        // This has implications for the DAG and garbage collection
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v2/foo/manifests/tagtest0")
+                    .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                    .body(Body::from(std::fs::read_to_string(
+                        "./fixtures/manifests/ref_test_5.json",
+                    )?))?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/foo/referrers/sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d")
+                .body(Body::empty())?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let value: ManifestIndex = serde_json::from_slice(&body)?;
+
+        assert_eq!(value.manifests.len(), 5);
 
         fixture.teardown().await
     }
