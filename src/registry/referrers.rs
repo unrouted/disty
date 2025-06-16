@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::Response,
 };
@@ -60,8 +60,15 @@ pub struct ReferrerRequest {
     digest: Digest,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferrerFilters {
+    artifact_type: Option<String>,
+}
+
 pub(crate) async fn get(
     Path(ReferrerRequest { repository, digest }): Path<ReferrerRequest>,
+    Query(ReferrerFilters { artifact_type }): Query<ReferrerFilters>,
     State(registry): State<Arc<RegistryState>>,
     token: Token,
 ) -> Result<Response, RegistryError> {
@@ -85,6 +92,12 @@ pub(crate) async fn get(
         if manifest.repositories.contains(&repository) {
             for manifest in registry.get_referrer(&digest).await? {
                 if manifest.repositories.contains(&repository) {
+                    if let Some(artifact_type) = &artifact_type {
+                        if manifest.artifact_type.as_ref() != Some(artifact_type) {
+                            continue;
+                        }
+                    }
+
                     manifests.push(ManifestIndexItem {
                         media_type: manifest.media_type,
                         size: manifest.size,
@@ -104,15 +117,24 @@ pub(crate) async fn get(
         annotations: BTreeMap::new(),
     };
 
+    let resp = Response::builder().status(StatusCode::OK).header(
+        header::CONTENT_TYPE,
+        "application/vnd.oci.image.index.v1+json",
+    );
+
+    let mut filters = vec![];
+    if artifact_type.is_some() {
+        filters.push("artifactType");
+    }
+
+    let resp = match filters.is_empty() {
+        true => resp,
+        false => resp.header("OCI-Filters-Applied", filters.join(",")),
+    };
+
     let body = Body::from(serde_json::to_string(&index)?);
 
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(
-            header::CONTENT_TYPE,
-            "application/vnd.oci.image.index.v1+json",
-        )
-        .body(body)?)
+    Ok(resp.body(body)?)
 }
 
 #[cfg(test)]
@@ -274,6 +296,125 @@ mod test {
         let value: ManifestIndex = serde_json::from_slice(&body)?;
 
         assert_eq!(value.manifests.len(), 5);
+
+        for manifest in value.manifests.iter() {
+            assert_eq!(manifest.annotations.len(), 1);
+        }
+
+        fixture.teardown().await
+    }
+
+    #[test(tokio::test)]
+    pub async fn referrers_do_refer_filtered() -> Result<()> {
+        let fixture = RegistryFixture::new().await?;
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .body(Body::from("{}"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("POST")
+                .uri("/v2/foo/blobs/uploads/?digest=sha256:ee29d2e91da0e5dbf6536f5b369148a83ef59b0ce96e49da65dd6c25eb1fa44f")
+                .body(Body::from("NHL Peanut Butter on my NHL bagel"))?
+            ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:e997eca5fa72577f59c173736ab505ee66777324419b3b4b338bd0e2286f8287")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_3.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:0a5e7446398586dc0f057cab5eecc2fa78d0ed6d0daa73a84595f8b69647062f")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_2.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:e15e91042b162252646726a7a9550e718fd09edacaa9820a4b1f05af05656acd")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_6.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:70b5c11f98715d740c6babeae1a31c0c19c091671c73ea67b2ad9b6344f1aa6a")
+                .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_7.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("PUT")
+                .uri("/v2/foo/manifests/sha256:b11cfd6ca08252387b328a5340932d2cee3ce8d012b370131b379c9d8b76f232")
+                .header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .body(Body::from(std::fs::read_to_string("./fixtures/manifests/ref_test_8.json")?))?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // The spec allows out of order pushes which is unfortunate
+        // https://github.com/opencontainers/distribution-spec/issues/459
+        // This has implications for the DAG and garbage collection
+
+        let res = fixture
+            .request(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v2/foo/manifests/tagtest0")
+                    .header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                    .body(Body::from(std::fs::read_to_string(
+                        "./fixtures/manifests/ref_test_5.json",
+                    )?))?,
+            )
+            .await?;
+
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        let res = fixture.request(
+            Request::builder()
+                .method("GET")
+                .uri("/v2/foo/referrers/sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d?artifactType=application/vnd.food.stand")
+                .body(Body::empty())?
+        ).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers()
+                .get("OCI-Filters-Applied")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "artifactType"
+        );
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let value: ManifestIndex = serde_json::from_slice(&body)?;
+
+        assert_eq!(value.manifests.len(), 1);
 
         for manifest in value.manifests.iter() {
             assert_eq!(manifest.annotations.len(), 1);
