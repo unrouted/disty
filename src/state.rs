@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     path::PathBuf,
 };
 
@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::info;
 use uuid::Uuid;
 
@@ -16,6 +16,7 @@ use crate::{
     digest::Digest,
     extractor::ManifestInfo,
     notify::Notification,
+    // types::jsonkv::JsonKV,
     webhook::WebhookService,
 };
 
@@ -35,7 +36,7 @@ struct ManifestRow {
     media_type: String,
     location: u32,
     artifact_type: Option<String>,
-    annotations: HashMap<String, String>,
+    annotations: String,
 }
 
 #[derive(PartialEq, Debug)]
@@ -54,7 +55,7 @@ pub struct Manifest {
     pub location: u32,
     pub repositories: HashSet<String>,
     pub artifact_type: Option<String>,
-    pub annotations: HashMap<String, String>,
+    pub annotations: BTreeMap<String, String>,
 }
 
 pub struct RegistryState {
@@ -250,7 +251,7 @@ impl RegistryState {
                 media_type: row.media_type,
                 location: row.location,
                 repositories: repositories.into_iter().collect(),
-                annotations: row.annotations,
+                annotations: serde_json::from_str(&row.annotations)?,
                 artifact_type: row.artifact_type,
             }));
         }
@@ -288,7 +289,7 @@ impl RegistryState {
                 location: row.location,
                 repositories: repositories.into_iter().collect(),
                 artifact_type: row.artifact_type,
-                annotations: row.annotations,
+                annotations: serde_json::from_str(&row.annotations)?,
             }));
         }
 
@@ -494,7 +495,8 @@ impl RegistryState {
                 media_type: manifest.media_type,
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
-                annotations: manifest.annotations,
+                //annotations: manifest.annotations.0,
+                annotations: BTreeMap::new(),
                 artifact_type: manifest.artifact_type,
             });
         }
@@ -789,7 +791,8 @@ impl RegistryState {
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
                 artifact_type: manifest.artifact_type,
-                annotations: manifest.annotations,
+                // annotations: manifest.annotations.0,
+                annotations: BTreeMap::new(),
             });
         }
 

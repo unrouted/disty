@@ -26,11 +26,10 @@ mod mirror;
 mod notify;
 mod registry;
 mod state;
-mod token;
-mod webhook;
-
 #[cfg(test)]
 mod tests;
+mod token;
+mod webhook;
 
 #[derive(Embed)]
 #[folder = "migrations"]
