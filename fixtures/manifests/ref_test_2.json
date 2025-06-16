@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 2,
+	"mediaType": "application/vnd.oci.image.manifest.v1+json",
+	"config": {
+		"mediaType": "application/vnd.nba.strawberry.jam.croissant",
+		"digest": "sha256:de8dd16ee87b367b932e1f47c92c332966c0d09942d5f2f80063ecf630c48ae9",
+		"size": 38,
+		"newUnspecifiedField": null
+	},
+	"layers": [
+		{
+			"mediaType": "application/vnd.oci.empty.v1+json",
+			"digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+			"size": 2,
+			"newUnspecifiedField": null
+		}
+	],
+	"subject": {
+		"mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"digest": "sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d",
+		"size": 714,
+		"newUnspecifiedField": null
+	},
+	"annotations": {
+		"org.opencontainers.conformance.test": "test config b"
+	}
+}

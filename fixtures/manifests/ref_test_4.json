@@ -1,0 +1,25 @@
+{
+	"schemaVersion": 2,
+	"mediaType": "application/vnd.oci.image.manifest.v1+json",
+	"artifactType": "application/vnd.nba.strawberry.jam.croissant",
+	"config": {
+		"mediaType": "application/vnd.oci.empty.v1+json",
+		"digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+		"size": 2,
+		"newUnspecifiedField": null
+	},
+	"layers": [
+		{
+			"mediaType": "application/vnd.nba.strawberry.jam.croissant",
+			"digest": "sha256:de8dd16ee87b367b932e1f47c92c332966c0d09942d5f2f80063ecf630c48ae9",
+			"size": 38,
+			"newUnspecifiedField": null
+		}
+	],
+	"subject": {
+		"mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"digest": "sha256:029c15ea8d6b7cee775c19ba722c22890d446c7f58f581990c97f6486428cc3d",
+		"size": 714,
+		"newUnspecifiedField": null
+	}
+}

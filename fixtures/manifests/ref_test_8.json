@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 2,
+	"mediaType": "application/vnd.oci.image.index.v1+json",
+	"artifactType": "application/vnd.food.stand",
+	"manifests": [
+		{
+			"mediaType": "application/vnd.oci.image.manifest.v1+json",
+			"digest": "sha256:e15e91042b162252646726a7a9550e718fd09edacaa9820a4b1f05af05656acd",
+			"size": 790,
+			"newUnspecifiedField": null
+		},
+		{
+			"mediaType": "application/vnd.oci.image.manifest.v1+json",
+			"digest": "sha256:70b5c11f98715d740c6babeae1a31c0c19c091671c73ea67b2ad9b6344f1aa6a",
+			"size": 849,
+			"newUnspecifiedField": null
+		}
+	],
+	"subject": {
+		"mediaType": "application/vnd.oci.image.manifest.v1+json",
+		"digest": "sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d",
+		"size": 714,
+		"newUnspecifiedField": null
+	},
+	"annotations": {
+		"org.opencontainers.conformance.test": "test index"
+	}
+}
