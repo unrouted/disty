@@ -397,7 +397,7 @@ mod test {
         let res = fixture.request(
             Request::builder()
                 .method("GET")
-                .uri("/v2/foo/referrers/sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d?artifactType=application/vnd.food.stand")
+                .uri("/v2/foo/referrers/sha256:71ea9d131e44595bc882d0538103b67d45b99cbd0785bbe11d10428254fb8a1d?artifactType=application/vnd.nhl.peanut.butter.bagel")
                 .body(Body::empty())?
         ).await?;
 
@@ -414,7 +414,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: ManifestIndex = serde_json::from_slice(&body)?;
 
-        assert_eq!(value.manifests.len(), 1);
+        assert_eq!(value.manifests.len(), 2);
 
         for manifest in value.manifests.iter() {
             assert_eq!(manifest.annotations.len(), 1);

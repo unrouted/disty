@@ -94,6 +94,11 @@ pub fn parse_manifest(input: &str) -> Result<ManifestInfo, serde_json::Error> {
                     config,
                     layers,
                 } => {
+                    let artifact_type = Some(match artifact_type {
+                        Some(artifact_type) => artifact_type,
+                        None => config.media_type.clone(),
+                    });
+
                     blobs.push(config);
                     blobs.extend(layers);
 
