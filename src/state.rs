@@ -1,4 +1,7 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use anyhow::{Context, Result};
 use hiqlite::{Client, StmtIndex};
@@ -31,6 +34,8 @@ struct ManifestRow {
     size: u32,
     media_type: String,
     location: u32,
+    artifact_type: Option<String>,
+    annotations: HashMap<String, String>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -48,6 +53,8 @@ pub struct Manifest {
     pub media_type: String,
     pub location: u32,
     pub repositories: HashSet<String>,
+    pub artifact_type: Option<String>,
+    pub annotations: HashMap<String, String>,
 }
 
 pub struct RegistryState {
@@ -243,6 +250,8 @@ impl RegistryState {
                 media_type: row.media_type,
                 location: row.location,
                 repositories: repositories.into_iter().collect(),
+                annotations: row.annotations,
+                artifact_type: row.artifact_type,
             }));
         }
 
@@ -278,6 +287,8 @@ impl RegistryState {
                 media_type: row.media_type,
                 location: row.location,
                 repositories: repositories.into_iter().collect(),
+                artifact_type: row.artifact_type,
+                annotations: row.annotations,
             }));
         }
 
@@ -483,6 +494,8 @@ impl RegistryState {
                 media_type: manifest.media_type,
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
+                annotations: manifest.annotations,
+                artifact_type: manifest.artifact_type,
             });
         }
 
@@ -775,6 +788,8 @@ impl RegistryState {
                 media_type: manifest.media_type,
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
+                artifact_type: manifest.artifact_type,
+                annotations: manifest.annotations,
             });
         }
 

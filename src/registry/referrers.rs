@@ -89,8 +89,8 @@ pub(crate) async fn get(
                         media_type: manifest.media_type,
                         size: manifest.size,
                         digest: manifest.digest,
-                        artifact_type: None,
-                        annotations: BTreeMap::new(),
+                        artifact_type: manifest.artifact_type,
+                        annotations: manifest.annotations,
                     })
                 }
             }
