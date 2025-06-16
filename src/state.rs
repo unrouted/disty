@@ -475,6 +475,7 @@ impl RegistryState {
                 params!(digest.to_string()),
             )
             .await?;
+
         let mut res = vec![];
 
         for manifest in blobs.into_iter() {
@@ -495,8 +496,7 @@ impl RegistryState {
                 media_type: manifest.media_type,
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
-                //annotations: manifest.annotations.0,
-                annotations: BTreeMap::new(),
+                annotations: serde_json::from_str(&manifest.annotations)?,
                 artifact_type: manifest.artifact_type,
             });
         }
@@ -791,8 +791,7 @@ impl RegistryState {
                 location: manifest.location,
                 repositories: repositories.into_iter().collect(),
                 artifact_type: manifest.artifact_type,
-                // annotations: manifest.annotations.0,
-                annotations: BTreeMap::new(),
+                annotations: serde_json::from_str(&manifest.annotations)?,
             });
         }
 

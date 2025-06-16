@@ -275,6 +275,10 @@ mod test {
 
         assert_eq!(value.manifests.len(), 5);
 
+        for manifest in value.manifests.iter() {
+            assert_eq!(manifest.annotations.len(), 1);
+        }
+
         fixture.teardown().await
     }
 }
