@@ -141,6 +141,14 @@ async fn main() -> Result<()> {
 
     start_metrics(&mut tasks, state.clone())?;
 
+    tasks.spawn(async {
+        tokio::signal::ctrl_c()
+            .await
+            .context("Unable to listen for ctrl+c")?;
+        info!("Received ctrl+c and will shutdown...");
+        Ok(())
+    });
+
     let res = tasks.join_next().await;
 
     tasks.shutdown().await;
