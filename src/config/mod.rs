@@ -262,7 +262,6 @@ impl TryFrom<Configuration> for NodeConfig {
                 .secret
                 .context("You must provide a raft secret")?,
             secret_api: value.api.secret.context("You must provide an API secret")?,
-            wal_ignore_lock: true,
             enc_keys: EncKeys {
                 enc_key_active: value.backups.encryption.active.clone(),
                 enc_keys: value
