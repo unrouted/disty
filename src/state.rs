@@ -577,6 +577,11 @@ impl RegistryState {
     }
 
     pub async fn delete_unreferenced_manifest_repositories(&self) -> Result<usize> {
+        // If not referenced by a tag or another manifest in the same repository,
+        // unlink from that repository. You have 15mins to do the update.
+
+        // In the case of subjects, a signaure doesnt keep a subject alive. But a
+        // subject keeps the signaure alive.
         self.client
             .execute(
                 "WITH orphaned AS (
@@ -589,7 +594,7 @@ impl RegistryState {
                         WHERE t.id IS NULL
                         AND r.manifest_id IS NULL
                         AND ms.manifest_id IS NULL
-                        AND m.state = 1
+                        AND (m.state = 1 OR m.sate = 2)
                         AND mr.created_at < datetime('now', '-15 minutes')
                     )
                     DELETE FROM manifests_repositories
@@ -603,6 +608,9 @@ impl RegistryState {
     }
 
     pub async fn unstore_unreferenced_manifests(&self) -> Result<usize> {
+        // Delete from disk where not in manifests_repositories
+        // They arent reachale from a URL any more.
+        // But ignore m.state = 0 - shouldnt GC when upload not even finished
         let location = 1 << (self.node_id - 1);
         let mut deleted = vec![];
 
@@ -612,7 +620,7 @@ impl RegistryState {
                 "SELECT m.*
                     FROM manifests m
                     LEFT JOIN manifests_repositories mr ON m.id = mr.manifest_id
-                    WHERE m.state = 1
+                    WHERE (m.state = 1 OR m.sate = 2)
                     AND (m.location & $1) != 0
                     AND mr.id IS NULL;",
                 params!(location),
@@ -645,6 +653,8 @@ impl RegistryState {
     }
 
     pub async fn delete_unreferenced_manifests(&self) -> Result<usize> {
+        // Delete from manifests where no manifest_repositories
+        // and not on disk
         self.client
             .execute(
                 "WITH unreferenced_manifests AS (
