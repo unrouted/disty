@@ -1,9 +1,7 @@
--- Step 1: Add new `id` column to blobs
-ALTER TABLE blobs ADD COLUMN id INTEGER;
+-- Step 0: Disable foreign key enforcement during migration
+PRAGMA foreign_keys = OFF;
 
--- Step 2: Populate `id` with unique values (autoincrement simulation)
--- SQLite doesn't support autoincrement on existing columns directly
--- So we use a temp table to recreate blobs with new schema
+-- Step 1: Create new blobs table with `id` as AUTOINCREMENT primary key
 CREATE TABLE blobs_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     digest TEXT UNIQUE NOT NULL,
@@ -15,21 +13,24 @@ CREATE TABLE blobs_new (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert data and let SQLite assign `id`s
+-- Step 2: Populate blobs_new
 INSERT INTO blobs_new (digest, size, location, state, created_by, created_at, updated_at)
 SELECT digest, size, location, state, created_by, created_at, updated_at FROM blobs;
 
--- Create a mapping table from old digest to new id
+-- Step 3: Create temporary mapping table from digest to new id
 CREATE TEMP TABLE blob_digest_to_id AS
 SELECT digest, id FROM blobs_new;
 
--- Drop old blobs table and rename the new one
+-- Step 4: Drop old blobs table and rename new one to blobs
 DROP TABLE blobs;
 ALTER TABLE blobs_new RENAME TO blobs;
 
--- Step 3: Migrate blobs_repositories
+-- Step 5: Migrate blobs_repositories
+
+-- Rename old table
 ALTER TABLE blobs_repositories RENAME TO blobs_repositories_old;
 
+-- Create new table with blob_id foreign key
 CREATE TABLE blobs_repositories (
     blob_id INTEGER NOT NULL,
     repository_id INTEGER NOT NULL,
@@ -40,6 +41,7 @@ CREATE TABLE blobs_repositories (
     FOREIGN KEY(blob_id) REFERENCES blobs(id)
 );
 
+-- Migrate data using digest → id mapping
 INSERT INTO blobs_repositories (blob_id, repository_id, created_at, updated_at)
 SELECT b.id, br.repository_id, br.created_at, br.updated_at
 FROM blobs_repositories_old br
@@ -47,9 +49,12 @@ JOIN blob_digest_to_id b ON br.digest = b.digest;
 
 DROP TABLE blobs_repositories_old;
 
--- Step 4: Migrate manifest_layers
+-- Step 6: Migrate manifest_layers
+
+-- Rename old table
 ALTER TABLE manifest_layers RENAME TO manifest_layers_old;
 
+-- Create new table with blob_id foreign key
 CREATE TABLE manifest_layers (
     manifest_id INTEGER NOT NULL,
     blob_id INTEGER NOT NULL,
@@ -58,6 +63,7 @@ CREATE TABLE manifest_layers (
     FOREIGN KEY(blob_id) REFERENCES blobs(id)
 );
 
+-- Migrate data using digest → id mapping
 INSERT INTO manifest_layers (manifest_id, blob_id)
 SELECT ml.manifest_id, b.id
 FROM manifest_layers_old ml
@@ -65,5 +71,8 @@ JOIN blob_digest_to_id b ON ml.blob_digest = b.digest;
 
 DROP TABLE manifest_layers_old;
 
--- Step 5: Drop temporary mapping table
+-- Step 7: Drop temporary mapping table
 DROP TABLE blob_digest_to_id;
+
+-- Step 8: Re-enable foreign key checks
+PRAGMA foreign_keys = ON;
