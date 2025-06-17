@@ -10,7 +10,7 @@
 - 📦 **Distributed**: Uses Raft consensus to replicate container metadata across all nodes. Each node ensures it has all the objects in the metadata store locally.  
 - 💾 **No special storage**: Doesn't need an S3 compatible object store or a kubernetes native storage driver to provide redundancy or resilience.
 - 💡 **Minimal Dependencies**: No need for external databases
-- 🧱 **Kubernetes-Ready**: Simple to deploy as a native part of your Kubernetes cluster\
+- 🧱 **Kubernetes-Ready**: Simple to deploy as a native part of your Kubernetes cluster
 
 ---
 
@@ -19,7 +19,7 @@
 An image registry is often at that heart of your architecture. The scenarios where **disty** might be exactly what you need are:
 
 - 🛠 You **must self-host** and cannot use external or cloud-based image registries
-- 🏗 You want to **run entirely in-cluster** without dedicating extra physical or virtual machines to just the registry
+- 🏗 You want to **run entirely in-cluster** without dedicating extra physical or virtual machines to the registry
 - 🧩 You require **fault tolerance** without the complexity of maintaining separate HA storage systems
 
 ---
