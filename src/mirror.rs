@@ -276,6 +276,8 @@ pub(crate) fn start_mirror(
     let client = reqwest::ClientBuilder::new().build()?;
 
     tasks.spawn(async move {
+        state.client.wait_until_healthy_db().await;
+
         while let Some(trigger) = event_stream.next().await {
             info!("Mirroring: Reconciliation trigger: {:?}", trigger);
 
