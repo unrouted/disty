@@ -58,7 +58,7 @@ impl Default for PrometheusConfig {
     fn default() -> Self {
         Self {
             address: "0.0.0.0".to_string(),
-            port: 7080,
+            port: 9080,
         }
     }
 }
