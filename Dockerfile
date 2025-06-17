@@ -20,3 +20,4 @@ COPY --from=build /usr/src/disty/target/release/disty .
 USER 1000
 ENTRYPOINT ["./disty"]
 
+STOPSIGNAL SIGINT
