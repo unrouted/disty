@@ -766,7 +766,7 @@ impl RegistryState {
         let blobs: Vec<ManifestRow> = self
             .client
             .query_as(
-                "SELECT m.* FROM manifests WHERE state = 0 AND (location & $1) = 0;",
+                "SELECT m.* FROM manifests m WHERE state = 0 AND (location & $1) = 0;",
                 params!(location),
             )
             .await?;
