@@ -8,7 +8,7 @@ use figment::{
     value::magic::RelativePathBuf,
 };
 use figment_file_provider_adapter::FileAdapter;
-use hiqlite::{Node, NodeConfig, s3::EncKeys};
+use hiqlite::{Node, NodeConfig, ServerTlsConfig, s3::EncKeys};
 use jwt_simple::prelude::ES256KeyPair;
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::EncodePrivateKey;
@@ -272,7 +272,23 @@ impl TryFrom<Configuration> for NodeConfig {
             node_id: value.node_id,
             nodes,
             listen_addr_api: Cow::Owned(value.api.address),
+            tls_api: match value.api.tls {
+                Some(tls) => Some(ServerTlsConfig {
+                    key: tls.key.into(),
+                    cert: tls.chain.into(),
+                    danger_tls_no_verify: false,
+                }),
+                None => None,
+            },
             listen_addr_raft: Cow::Owned(value.raft.address),
+            tls_raft: match value.raft.tls {
+                Some(tls) => Some(ServerTlsConfig {
+                    key: tls.key.into(),
+                    cert: tls.chain.into(),
+                    danger_tls_no_verify: false,
+                }),
+                None => None,
+            },
             data_dir: Cow::Owned(
                 value
                     .storage
