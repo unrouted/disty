@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Mutex};
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, http::Request, response::Response};
@@ -6,13 +6,9 @@ use figment::value::magic::RelativePathBuf;
 use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
-use std::{
-    collections::HashSet,
-    net::{IpAddr, Ipv4Addr},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 use tempfile::{TempDir, tempdir};
-use tokio::{sync::Mutex, task::JoinSet};
+use tokio::task::JoinSet;
 use tower::ServiceExt;
 
 use crate::{
@@ -31,7 +27,7 @@ use super::*;
 /// A thread-safe pool of TCP ports.
 #[derive(Clone)]
 pub struct PortPool {
-    available: Arc<std::sync::Mutex<HashSet<u64>>>,
+    available: Arc<Mutex<HashSet<u64>>>,
 }
 
 impl PortPool {
@@ -39,7 +35,7 @@ impl PortPool {
     pub fn new() -> Self {
         let set: HashSet<u64> = (1..=100).collect();
         Self {
-            available: Arc::new(std::sync::Mutex::new(set)),
+            available: Arc::new(Mutex::new(set)),
         }
     }
 
@@ -62,7 +58,7 @@ impl PortPool {
 /// RAII guard that returns the port back to the pool on drop.
 pub struct LeasedPort {
     offset: u64,
-    pool: Arc<std::sync::Mutex<HashSet<u64>>>,
+    pool: Arc<Mutex<HashSet<u64>>>,
 }
 
 impl LeasedPort {
