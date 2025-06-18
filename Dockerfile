@@ -2,7 +2,7 @@ FROM rust:1-bookworm AS build
 
 WORKDIR /usr/src/disty
 
-RUN apt-get update && apt-get install -y --no-install-recommends musl-tools ca-certificates libclang-dev libc-dev cmake
+RUN apt-get update && apt-get install -y --no-install-recommends musl-tools ca-certificates libclang-dev libc-dev
 
 RUN USER=root cargo init --bin /usr/src/disty
 COPY Cargo.toml Cargo.lock .
