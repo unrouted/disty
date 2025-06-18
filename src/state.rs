@@ -594,7 +594,7 @@ impl RegistryState {
                         WHERE t.id IS NULL
                         AND r.manifest_id IS NULL
                         AND ms.manifest_id IS NULL
-                        AND (m.state = 1 OR m.sate = 2)
+                        AND (m.state = 1 OR m.state = 2)
                         AND mr.created_at < datetime('now', '-15 minutes')
                     )
                     DELETE FROM manifests_repositories
@@ -620,7 +620,7 @@ impl RegistryState {
                 "SELECT m.*
                     FROM manifests m
                     LEFT JOIN manifests_repositories mr ON m.id = mr.manifest_id
-                    WHERE (m.state = 1 OR m.sate = 2)
+                    WHERE (m.state = 1 OR m.state = 2)
                     AND (m.location & $1) != 0
                     AND mr.id IS NULL;",
                 params!(location),
