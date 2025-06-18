@@ -6,6 +6,11 @@ use figment::value::magic::RelativePathBuf;
 use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
 use prometheus_client::registry::Registry;
+use std::{
+    collections::HashSet,
+    net::{IpAddr, Ipv4Addr},
+    sync::Arc,
+};
 use tempfile::{TempDir, tempdir};
 use tokio::{sync::Mutex, task::JoinSet};
 use tower::ServiceExt;
@@ -23,7 +28,73 @@ use crate::{
 
 use super::*;
 
-pub static EXCLUSIVE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+/// A thread-safe pool of TCP ports.
+#[derive(Clone)]
+pub struct PortPool {
+    available: Arc<std::sync::Mutex<HashSet<u64>>>,
+}
+
+impl PortPool {
+    /// Create a new pool of ports in the range [start, end].
+    pub fn new() -> Self {
+        let set: HashSet<u64> = (1..=100).collect();
+        Self {
+            available: Arc::new(std::sync::Mutex::new(set)),
+        }
+    }
+
+    /// Acquire a free port from the pool.
+    /// Returns None if none available.
+    pub fn acquire(&self) -> Option<LeasedPort> {
+        let mut available = self.available.lock().unwrap();
+        if let Some(&offset) = available.iter().next() {
+            available.remove(&offset);
+            Some(LeasedPort {
+                offset,
+                pool: self.available.clone(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// RAII guard that returns the port back to the pool on drop.
+pub struct LeasedPort {
+    offset: u64,
+    pool: Arc<std::sync::Mutex<HashSet<u64>>>,
+}
+
+impl LeasedPort {
+    pub fn raft_port(&self) -> u64 {
+        10000 + (30 * self.offset)
+    }
+
+    pub fn api_port(&self) -> u64 {
+        10000 + (30 * self.offset) + 10
+    }
+
+    pub fn registry_port(&self) -> u64 {
+        10000 + (30 * self.offset) + 20
+    }
+}
+
+impl Drop for LeasedPort {
+    fn drop(&mut self) {
+        let mut available = self.pool.lock().unwrap();
+        available.insert(self.offset);
+    }
+}
+
+/// Global port pool from 10000 to 11000 (customize as you want)
+pub static GLOBAL_PORT_POOL: Lazy<PortPool> = Lazy::new(|| PortPool::new());
+
+/// Acquire a port from the global pool, panic if none available
+pub fn acquire_port() -> LeasedPort {
+    GLOBAL_PORT_POOL
+        .acquire()
+        .expect("No ports available in the pool")
+}
 
 pub struct FixtureBuilder {
     pub cluster_size: u64,
@@ -76,7 +147,7 @@ impl FixtureBuilder {
 
 #[must_use = "Fixture must be used and `.teardown().await` must be called to ensure proper cleanup."]
 pub(crate) struct StateFixture {
-    _guard: Box<dyn std::any::Any + Send>,
+    _ports: LeasedPort,
     _dirs: Vec<TempDir>,
     pub registries: Vec<Arc<RegistryState>>,
     tasks: JoinSet<Result<()>>,
@@ -88,6 +159,11 @@ impl StateFixture {
     }
 
     pub async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
+        let port_range = acquire_port();
+        let raft_port = port_range.raft_port();
+        let api_port = port_range.api_port();
+        let registry_port = port_range.registry_port();
+
         let authentication = match builder.authentication {
             true => Some(AuthenticationConfig {
                 issuer: "some-issuer".into(),
@@ -103,14 +179,12 @@ impl StateFixture {
             false => None,
         };
 
-        let lock = EXCLUSIVE_TEST_LOCK.lock().await;
-
         let nodes = (0..builder.cluster_size)
             .map(|idx| DistyNode {
                 id: (idx + 1),
-                addr_api: format!("127.0.0.1:{}", 9999 - 3 * idx),
-                addr_raft: format!("127.0.0.1:{}", 9999 - 3 * idx - 1),
-                addr_registry: format!("127.0.0.1:{}", 9999 - 3 * idx - 2),
+                addr_api: format!("127.0.0.1:{}", api_port + idx),
+                addr_raft: format!("127.0.0.1:{}", raft_port + idx),
+                addr_registry: format!("127.0.0.1:{}", registry_port + idx),
             })
             .collect::<Vec<DistyNode>>();
 
@@ -126,10 +200,12 @@ impl StateFixture {
                 node_id: node.id,
                 storage: RelativePathBuf::from(data_dir),
                 raft: RaftConfig {
+                    address: "127.0.0.1".into(),
                     secret: Some("aaaaaaaaaaaaaaaa".into()),
                     ..Default::default()
                 },
                 api: ApiConfig {
+                    address: "127.0.0.1".into(),
                     secret: Some("bbbbbbbbbbbbbbbb".into()),
                     ..Default::default()
                 },
@@ -158,9 +234,9 @@ impl StateFixture {
         registries[0].client.migrate::<Migrations>().await?;
 
         Ok(StateFixture {
+            _ports: port_range,
             _dirs: dirs,
             registries,
-            _guard: Box::new(lock),
             tasks,
         })
     }

@@ -36,16 +36,38 @@ pub struct TlsConfig {
     pub chain: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RaftConfig {
+    pub address: String,
     pub secret: Option<String>,
     pub tls: Option<TlsConfig>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+impl Default for RaftConfig {
+    fn default() -> Self {
+        Self {
+            address: "0.0.0.0".to_string(),
+            secret: None,
+            tls: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ApiConfig {
+    pub address: String,
     pub secret: Option<String>,
     pub tls: Option<TlsConfig>,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            address: "0.0.0.0".to_string(),
+            secret: None,
+            tls: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -249,6 +271,8 @@ impl TryFrom<Configuration> for NodeConfig {
         Ok(Self {
             node_id: value.node_id,
             nodes,
+            listen_addr_api: Cow::Owned(value.api.address),
+            listen_addr_raft: Cow::Owned(value.raft.address),
             data_dir: Cow::Owned(
                 value
                     .storage
