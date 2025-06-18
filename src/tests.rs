@@ -83,7 +83,7 @@ impl Drop for LeasedPort {
 }
 
 /// Global port pool from 10000 to 11000 (customize as you want)
-pub static GLOBAL_PORT_POOL: Lazy<PortPool> = Lazy::new(|| PortPool::new());
+pub static GLOBAL_PORT_POOL: Lazy<PortPool> = Lazy::new(PortPool::new);
 
 /// Acquire a port from the global pool, panic if none available
 pub fn acquire_port() -> LeasedPort {
