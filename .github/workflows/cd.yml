@@ -121,9 +121,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
       - uses: cycjimmy/semantic-release-action@v4
         with:
-          semantic_version: 19
           extra_plugins: |
             @semantic-release/changelog
             @semantic-release/git
