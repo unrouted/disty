@@ -94,6 +94,10 @@ impl WebhookService {
                             }
                             let resp = reqwest::Client::new()
                                 .post(&hook.url)
+                                .header(
+                                    "Content-Type",
+                                    "application/vnd.docker.distribution.events.v2+json",
+                                )
                                 .json(&payload)
                                 .send()
                                 .await;
