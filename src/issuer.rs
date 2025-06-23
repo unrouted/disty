@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use jwt_simple::prelude::*;
 
 use crate::config::AuthenticationConfig;
-use crate::token::{Access, AdditionalClaims};
+use crate::context::{Access, AdditionalClaims};
 
 pub(crate) struct Token {
     pub token: String,

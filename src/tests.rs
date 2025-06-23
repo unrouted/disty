@@ -17,8 +17,8 @@ use crate::{
         ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
         acl::AccessRule, lifecycle::DeletionRule,
     },
+    context::Access,
     issuer::issue_token,
-    token::Access,
     webhook::WebhookService,
 };
 

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
+    context::RequestContext,
     error::RegistryError,
     extractor::parse_manifest,
     registry::utils::{get_hash, upload_part},
     state::RegistryState,
-    token::Token,
 };
 use anyhow::Context;
 use axum::{
@@ -28,16 +28,16 @@ pub(crate) async fn put(
     Path(ManifestPutRequest { repository, tag }): Path<ManifestPutRequest>,
     content_type: TypedHeader<ContentType>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&repository),
+            challenge: context.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "push") {
+    if !context.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }
 
@@ -99,7 +99,7 @@ pub(crate) async fn put(
             &digest,
             &content_type,
             &extracted,
-            &token.sub,
+            &context.sub,
         )
         .await?;
 

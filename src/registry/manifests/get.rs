@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 use tracing::error;
 
-use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
+use crate::{context::RequestContext, digest::Digest, error::RegistryError, state::RegistryState};
 
 /*
 200 OK
@@ -41,15 +41,15 @@ pub struct ManifestGetRequest {
 pub(crate) async fn get(
     Path(ManifestGetRequest { repository, tag }): Path<ManifestGetRequest>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_pull_challenge(&repository),
+            challenge: context.get_pull_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "pull") {
+    if !context.has_permission(&repository, "pull") {
         return Err(RegistryError::AccessDenied {});
     }
 

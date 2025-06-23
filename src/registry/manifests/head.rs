@@ -7,10 +7,10 @@ use axum::response::Response;
 use serde::Deserialize;
 use tracing::debug;
 
+use crate::context::RequestContext;
 use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::state::RegistryState;
-use crate::token::Token;
 
 /*
 200 OK
@@ -41,15 +41,15 @@ pub struct ManifestGetRequest {
 pub(crate) async fn head(
     Path(ManifestGetRequest { repository, tag }): Path<ManifestGetRequest>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_pull_challenge(&repository),
+            challenge: context.get_pull_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "pull") {
+    if !context.has_permission(&repository, "pull") {
         return Err(RegistryError::AccessDenied {});
     }
 

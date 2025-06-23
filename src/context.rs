@@ -43,7 +43,7 @@ pub(crate) struct AdditionalClaims {
     pub access: Vec<Access>,
 }
 
-pub(crate) struct Token {
+pub(crate) struct RequestContext {
     pub access: Vec<Access>,
     pub sub: String,
     pub validated_token: bool,
@@ -52,7 +52,7 @@ pub(crate) struct Token {
     service: Option<String>,
 }
 
-impl Token {
+impl RequestContext {
     pub fn get_challenge(&self, access: Vec<Access>) -> String {
         let service = self
             .service
@@ -140,7 +140,7 @@ impl Token {
     }
 }
 
-impl FromRequestParts<Arc<RegistryState>> for Token {
+impl FromRequestParts<Arc<RegistryState>> for RequestContext {
     type Rejection = TokenError;
 
     async fn from_request_parts(
@@ -149,7 +149,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
     ) -> Result<Self, Self::Rejection> {
         let config = match &state.config.authentication {
             None => {
-                return Ok(Token {
+                return Ok(RequestContext {
                     access: vec![],
                     sub: "anonymous".to_string(),
                     admin: true,
@@ -164,7 +164,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
         let header = match parts.extract::<TypedHeader<Authorization<Bearer>>>().await {
             Ok(header) => header,
             Err(_) => {
-                return Ok(Token {
+                return Ok(RequestContext {
                     access: vec![],
                     sub: "anonymous".to_string(),
                     admin: false,
@@ -213,7 +213,7 @@ impl FromRequestParts<Arc<RegistryState>> for Token {
 
         debug!("Validated token for subject \"{subject}\"");
 
-        Ok(Token {
+        Ok(RequestContext {
             access: claims.custom.access.clone(),
             sub: subject,
             admin: false,

@@ -9,7 +9,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{error::RegistryError, state::RegistryState, token::Token};
+use crate::{context::RequestContext, error::RegistryError, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct TagList {
@@ -26,15 +26,15 @@ pub(crate) async fn get(
     Path(TagList { repository }): Path<TagList>,
     Query(TagQuery { last, n }): Query<TagQuery>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_pull_challenge(&repository),
+            challenge: context.get_pull_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "pull") {
+    if !context.has_permission(&repository, "pull") {
         return Err(RegistryError::AccessDenied {});
     }
 

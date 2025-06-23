@@ -7,15 +7,15 @@ use axum::{
     http::{Response, StatusCode},
 };
 
-use crate::{error::RegistryError, state::RegistryState, token::Token};
+use crate::{context::RequestContext, error::RegistryError, state::RegistryState};
 
 pub async fn get(
     State(_registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response<Body>, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_general_challenge(),
+            challenge: context.get_general_challenge(),
         });
     }
 

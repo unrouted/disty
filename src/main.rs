@@ -16,6 +16,7 @@ use tracing_subscriber::EnvFilter;
 use crate::{error::format_error, metrics::start_metrics};
 
 mod config;
+mod context;
 mod digest;
 mod error;
 mod extractor;
@@ -28,7 +29,6 @@ mod registry;
 mod state;
 #[cfg(test)]
 mod tests;
-mod token;
 mod webhook;
 
 #[derive(Embed)]

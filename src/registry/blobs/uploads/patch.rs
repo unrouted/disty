@@ -8,11 +8,11 @@ use axum::response::Response;
 use axum_extra::TypedHeader;
 use serde::Deserialize;
 
+use crate::context::RequestContext;
 use crate::error::RegistryError;
 use crate::registry::content_range::ContentRange;
 use crate::registry::utils::upload_part;
 use crate::state::RegistryState;
-use crate::token::Token;
 
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
@@ -26,17 +26,17 @@ pub(crate) async fn patch(
         upload_id,
     }): Path<BlobUploadRequest>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
     content_range: Option<TypedHeader<ContentRange>>,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&repository),
+            challenge: context.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "push") {
+    if !context.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }
 

@@ -9,7 +9,7 @@ use axum::{
 use serde::Deserialize;
 use tracing::debug;
 
-use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
+use crate::{context::RequestContext, digest::Digest, error::RegistryError, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct BlobRequest {
@@ -20,15 +20,15 @@ pub struct BlobRequest {
 pub(crate) async fn head(
     Path(BlobRequest { repository, digest }): Path<BlobRequest>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_pull_challenge(&repository),
+            challenge: context.get_pull_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "pull") {
+    if !context.has_permission(&repository, "pull") {
         debug!("Token does not have access to perform this action");
         return Err(RegistryError::AccessDenied {});
     }

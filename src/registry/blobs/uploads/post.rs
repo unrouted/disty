@@ -10,11 +10,12 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::config::acl::Action;
+use crate::context::{Access, RequestContext};
 use crate::digest::Digest;
 use crate::error::RegistryError;
 use crate::registry::utils::{upload_part, validate_hash};
 use crate::state::RegistryState;
-use crate::token::{Access, Token};
+
 #[derive(Debug, Deserialize)]
 pub struct BlobUploadRequest {
     repository: String,
@@ -34,10 +35,10 @@ pub(crate) async fn post(
         digest,
     }): Query<BlobUploadPostQuery>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         let mut access = vec![Access {
             type_: "repository".to_string(),
             name: repository.clone(),
@@ -53,11 +54,11 @@ pub(crate) async fn post(
         }
 
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_challenge(access),
+            challenge: context.get_challenge(access),
         });
     }
 
-    if !token.has_permission(&repository, "push") {
+    if !context.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }
 
@@ -66,7 +67,7 @@ pub(crate) async fn post(
             return Err(RegistryError::UploadInvalid {});
         }
 
-        if !token.has_permission(from, "pull") {
+        if !context.has_permission(from, "pull") {
             // FIXME: Re-reading the spec, it might be more appropriate to return a 202 here:
             //    Alternatively, if a registry does not support cross-repository mounting or is
             //    unable to mount the requested blob, it SHOULD return a 202. This indicates that
@@ -137,7 +138,7 @@ pub(crate) async fn post(
             }
 
             registry
-                .insert_blob(&repository, digest, stat.len() as u32, &token.sub)
+                .insert_blob(&repository, digest, stat.len() as u32, &context.sub)
                 .await?;
 
             /*

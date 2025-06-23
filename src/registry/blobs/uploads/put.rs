@@ -10,11 +10,11 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
+    context::RequestContext,
     digest::Digest,
     error::RegistryError,
     registry::utils::{upload_part, validate_hash},
     state::RegistryState,
-    token::Token,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,16 +35,16 @@ pub(crate) async fn put(
     }): Path<BlobUploadRequest>,
     Query(BlobUploadPutQuery { digest }): Query<BlobUploadPutQuery>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
     body: Request<Body>,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&repository),
+            challenge: context.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "push") {
+    if !context.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }
 
@@ -85,7 +85,7 @@ pub(crate) async fn put(
     tokio::fs::rename(filename.clone(), dest.clone()).await?;
 
     registry
-        .insert_blob(&repository, &digest, stat.len() as u32, &token.sub)
+        .insert_blob(&repository, &digest, stat.len() as u32, &context.sub)
         .await?;
 
     /*

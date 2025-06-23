@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{digest::Digest, error::RegistryError, state::RegistryState, token::Token};
+use crate::{context::RequestContext, digest::Digest, error::RegistryError, state::RegistryState};
 
 #[derive(Debug, Deserialize)]
 pub struct ManifestDeleteRequest {
@@ -19,15 +19,15 @@ pub struct ManifestDeleteRequest {
 pub(crate) async fn delete(
     Path(ManifestDeleteRequest { repository, tag }): Path<ManifestDeleteRequest>,
     State(registry): State<Arc<RegistryState>>,
-    token: Token,
+    context: RequestContext,
 ) -> Result<Response, RegistryError> {
-    if !token.validated_token {
+    if !context.validated_token {
         return Err(RegistryError::MustAuthenticate {
-            challenge: token.get_push_challenge(&repository),
+            challenge: context.get_push_challenge(&repository),
         });
     }
 
-    if !token.has_permission(&repository, "push") {
+    if !context.has_permission(&repository, "push") {
         return Err(RegistryError::AccessDenied {});
     }
 

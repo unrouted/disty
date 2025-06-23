@@ -10,11 +10,11 @@ use tracing::{debug, error, info};
 
 use crate::{
     config::acl::Action,
+    context::Access,
     digest::Digest,
     issuer::issue_token,
     notify::Notification,
     state::{Blob, Manifest, RegistryState},
-    token::Access,
 };
 
 async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> Result<()> {

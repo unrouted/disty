@@ -21,10 +21,10 @@ use crate::{
         AuthenticationConfig,
         acl::{AclCheck, Action, ResourceContext, SubjectContext},
     },
+    context::Access,
     error::RegistryError,
     issuer::issue_token,
     state::RegistryState,
-    token::Access,
 };
 
 #[derive(Debug, Deserialize)]
