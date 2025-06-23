@@ -240,7 +240,7 @@ mod tests {
     ) -> bool {
         timeout(timeout_dur, async {
             loop {
-                println!("{}", server.received_requests().await.unwrap());
+                println!("{:?}", server.received_requests().await.unwrap());
                 if server.received_requests().await.unwrap().len() >= min_count {
                     break true;
                 }
