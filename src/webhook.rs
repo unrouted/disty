@@ -177,7 +177,6 @@ async fn flush_batch(
 
     let mut attempts = 0;
     loop {
-        print!("attempt");
         let resp = client
             .post(url)
             .header(
@@ -190,7 +189,6 @@ async fn flush_batch(
 
         match resp {
             Ok(r) => {
-                println!("ok");
                 let status = r.status().as_u16().to_string();
                 webhooks_total
                     .get_or_create(&WebhookMetricLabels {
@@ -204,7 +202,6 @@ async fn flush_batch(
                 }
             }
             Err(e) => {
-                println!("Error whilst sending webhook: {e:?}");
                 error!("Error whilst sending webhook: {e:?}");
                 webhooks_total
                     .get_or_create(&WebhookMetricLabels {
@@ -240,7 +237,6 @@ mod tests {
     ) -> bool {
         timeout(timeout_dur, async {
             loop {
-                println!("{:?}", server.received_requests().await.unwrap());
                 if server.received_requests().await.unwrap().len() >= min_count {
                     break true;
                 }
