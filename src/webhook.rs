@@ -169,7 +169,9 @@ async fn flush_batch(
                     "method": "PUT",
                     "useragent": event.context.user_agent.clone().unwrap_or("".into()),
                 },
-                "actor": {},
+                "actor": {
+                    "name": event.context.sub.clone(),
+                },
                 "source": {
                     "addr": "xtal.local:5000",
                     "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
