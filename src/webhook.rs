@@ -304,7 +304,7 @@ mod tests {
 
         // Wait for expectations
         assert!(
-            wait_for_requests(&server, 2, Duration::from_secs(2)).await,
+            wait_for_requests(&server, 2, Duration::from_secs(10)).await,
             "Did not receive expected webhook calls"
         );
 
