@@ -929,6 +929,7 @@ mod tests {
             service: None,
             realm: None,
             user_agent: Some("Foo".into()),
+            method: "put".into(),
         };
 
         registry

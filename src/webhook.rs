@@ -166,7 +166,7 @@ async fn flush_batch(
                     "id": "",
                     "addr": "192.168.64.11:42961",
                     "host": "192.168.100.227:5000",
-                    "method": "PUT",
+                    "method": event.context.method.clone(),
                     "useragent": event.context.user_agent.clone().unwrap_or("".into()),
                 },
                 "actor": {
@@ -300,6 +300,7 @@ mod tests {
             service: None,
             realm: None,
             user_agent: Some("Foo".into()),
+            method: "put".into(),
         };
 
         for _ in 0..5 {

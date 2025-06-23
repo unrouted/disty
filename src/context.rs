@@ -52,6 +52,7 @@ pub(crate) struct RequestContext {
     pub realm: Option<String>,
     pub service: Option<String>,
     pub user_agent: Option<String>,
+    pub method: String,
 }
 
 impl RequestContext {
@@ -149,6 +150,8 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
         parts: &mut Parts,
         state: &Arc<RegistryState>,
     ) -> Result<Self, Self::Rejection> {
+        let method = parts.method.to_string().to_uppercase();
+
         let user_agent = parts
             .headers
             .get("user-agent")
@@ -165,6 +168,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     service: None,
                     realm: None,
                     user_agent,
+                    method,
                 });
             }
             Some(config) => config,
@@ -181,6 +185,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     service: Some(config.audience.clone()),
                     realm: Some(config.realm.clone()),
                     user_agent,
+                    method,
                 });
             }
         };
@@ -231,6 +236,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             service: Some(config.audience.clone()),
             realm: Some(config.realm.clone()),
             user_agent,
+            method,
         })
     }
 }
