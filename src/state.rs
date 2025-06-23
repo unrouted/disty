@@ -401,7 +401,17 @@ impl RegistryState {
             .await?;
 
         self.webhooks
-            .send(context, repository, digest, tag, media_type)
+            .send(
+                context,
+                repository,
+                &crate::extractor::Descriptor {
+                    media_type: media_type.into(),
+                    digest: digest.clone(),
+                    size: Some(info.size.into()),
+                    platform: None,
+                },
+                tag,
+            )
             .await?;
 
         Ok(())

@@ -13,7 +13,7 @@ use tokio::time::{Instant, sleep, sleep_until};
 use tracing::error;
 
 use crate::context::RequestContext;
-use crate::digest::Digest;
+use crate::extractor::Descriptor;
 
 pub struct WebhookConfig {
     pub matcher: Regex,
@@ -27,9 +27,8 @@ pub struct WebhookConfig {
 pub struct Event {
     pub context: RequestContext,
     pub repository: String,
-    pub digest: Digest,
-    pub content_type: String,
     pub tag: String,
+    pub descriptor: Descriptor,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug)]
@@ -119,16 +118,14 @@ impl WebhookService {
         &self,
         context: &RequestContext,
         repository: &str,
-        digest: &Digest,
+        descriptor: &Descriptor,
         tag: &str,
-        content_type: &str,
     ) -> Result<()> {
         let event = Event {
             context: context.clone(),
             repository: repository.to_string(),
-            digest: digest.clone(),
+            descriptor: descriptor.clone(),
             tag: tag.to_string(),
-            content_type: content_type.to_string(),
         };
 
         for worker in self.workers.values() {
@@ -154,12 +151,12 @@ async fn flush_batch(
                 "timestamp": "2016-03-09T14:44:26.402973972-08:00",
                 "action": "push",
                 "target": {
-                    "mediaType": event.content_type,
-                    "size": 708,
-                    "digest": event.digest,
-                    "length": 708,
+                    "mediaType": event.descriptor.media_type,
+                    "size": event.descriptor.size,
+                    "digest": event.descriptor.digest,
+                    "length": event.descriptor.size,
                     "repository": event.repository,
-                    "url": format!("/v2/{}/manifests/{}", event.repository, event.digest),
+                    "url": format!("/v2/{}/manifests/{}", event.repository, event.descriptor.digest),
                     "tag": event.tag,
                 },
                 "request": {
@@ -305,16 +302,17 @@ mod tests {
         };
 
         for _ in 0..5 {
+            let desc = Descriptor {
+                digest: "sha256:fea8895f450959fa676bcc1df0611ea93823a735a01205fd8622846041d0c7cf"
+                    .parse()
+                    .unwrap(),
+                media_type: "application/vnd.docker.distribution.manifest.v2+json".into(),
+                size: Some(32),
+                platform: None,
+            };
+
             service
-                .send(
-                    &req,
-                    "library/myapp",
-                    &"sha256:fea8895f450959fa676bcc1df0611ea93823a735a01205fd8622846041d0c7cf"
-                        .parse()
-                        .unwrap(),
-                    "latest",
-                    "application/vnd.docker.distribution.manifest.v2+json",
-                )
+                .send(&req, "library/myapp", &desc, "latest")
                 .await
                 .unwrap();
         }
