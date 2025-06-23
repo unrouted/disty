@@ -163,7 +163,7 @@ async fn flush_batch(
                     "tag": event.tag,
                 },
                 "request": {
-                    "id": "",
+                    "id": event.context.request_id.clone(),
                     "addr": "192.168.64.11:42961",
                     "host": "192.168.100.227:5000",
                     "method": event.context.method.clone(),
@@ -301,6 +301,7 @@ mod tests {
             realm: None,
             user_agent: Some("Foo".into()),
             method: "put".into(),
+            request_id: "abcdef".into(),
         };
 
         for _ in 0..5 {

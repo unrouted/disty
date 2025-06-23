@@ -930,6 +930,7 @@ mod tests {
             realm: None,
             user_agent: Some("Foo".into()),
             method: "put".into(),
+            request_id: "abcdef".into(),
         };
 
         registry

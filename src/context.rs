@@ -11,6 +11,7 @@ use jwt_simple::prelude::*;
 use reqwest::StatusCode;
 use std::{collections::HashSet, sync::Arc};
 use thiserror::Error;
+use tower_http::request_id::RequestId;
 use tracing::{debug, info};
 
 use crate::{config::acl::Action, state::RegistryState};
@@ -53,6 +54,7 @@ pub(crate) struct RequestContext {
     pub service: Option<String>,
     pub user_agent: Option<String>,
     pub method: String,
+    pub request_id: String,
 }
 
 impl RequestContext {
@@ -152,6 +154,17 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
     ) -> Result<Self, Self::Rejection> {
         let method = parts.method.to_string().to_uppercase();
 
+        let request_id = match parts.extensions.get::<RequestId>() {
+            Some(request_id) => request_id
+                .header_value()
+                .to_str()
+                .unwrap_or("invalid-request-id")
+                .to_string(),
+            None => {
+                return Err(TokenError::Invalid);
+            }
+        };
+
         let user_agent = parts
             .headers
             .get("user-agent")
@@ -169,6 +182,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     realm: None,
                     user_agent,
                     method,
+                    request_id,
                 });
             }
             Some(config) => config,
@@ -186,6 +200,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     realm: Some(config.realm.clone()),
                     user_agent,
                     method,
+                    request_id,
                 });
             }
         };
@@ -237,6 +252,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             realm: Some(config.realm.clone()),
             user_agent,
             method,
+            request_id,
         })
     }
 }
