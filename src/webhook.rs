@@ -66,7 +66,7 @@ impl WebhookService {
             let webhooks_total = webhooks_total.clone();
 
             tasks.spawn(async move {
-                let client = reqwest::Client::new();
+                let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap();
                 let mut buffer = Vec::new();
                 let mut deadline = Instant::now() + config.flush_interval;
 
