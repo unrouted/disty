@@ -6,15 +6,19 @@ use prometheus_client::registry::Registry;
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tokio::time::{Duration, Instant, sleep, sleep_until};
+use tokio::time::{Instant, sleep, sleep_until};
+use tracing::error;
 
 use crate::digest::Digest;
 
-pub(crate) struct WebhookConfig {
+pub struct WebhookConfig {
     pub matcher: Regex,
     pub url: String,
+    pub flush_interval: Duration,
+    pub retry_base: Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -36,8 +40,8 @@ struct WebhookWorker {
     tx: mpsc::Sender<Event>,
 }
 
-pub(crate) struct WebhookService {
-    workers: HashMap<String, WebhookWorker>, // Keyed by webhook URL
+pub struct WebhookService {
+    workers: HashMap<String, WebhookWorker>,
 }
 
 impl WebhookService {
@@ -64,7 +68,7 @@ impl WebhookService {
             tasks.spawn(async move {
                 let client = reqwest::Client::new();
                 let mut buffer = Vec::new();
-                let mut deadline = Instant::now() + Duration::from_secs(5);
+                let mut deadline = Instant::now() + config.flush_interval;
 
                 loop {
                     tokio::select! {
@@ -76,15 +80,14 @@ impl WebhookService {
                                     }
 
                                     if buffer.len() >= 10 {
-                                        flush_batch(&client, &buffer, &url, &webhooks_total).await;
+                                        flush_batch(&client, &buffer, &url, &webhooks_total, config.retry_base).await;
                                         buffer.clear();
-                                        deadline = Instant::now() + Duration::from_secs(5);
+                                        deadline = Instant::now() + config.flush_interval;
                                     }
                                 }
                                 None => {
-                                    // Channel closed, flush remaining and exit
                                     if !buffer.is_empty() {
-                                        flush_batch(&client, &buffer, &url, &webhooks_total).await;
+                                        flush_batch(&client, &buffer, &url, &webhooks_total, config.retry_base).await;
                                     }
                                     break;
                                 }
@@ -92,10 +95,10 @@ impl WebhookService {
                         }
                         _ = sleep_until(deadline) => {
                             if !buffer.is_empty() {
-                                flush_batch(&client, &buffer, &url, &webhooks_total).await;
+                                flush_batch(&client, &buffer, &url, &webhooks_total, config.retry_base).await;
                                 buffer.clear();
                             }
-                            deadline = Instant::now() + Duration::from_secs(5);
+                            deadline = Instant::now() + config.flush_interval;
                         }
                     }
                 }
@@ -109,7 +112,7 @@ impl WebhookService {
         Self { workers }
     }
 
-    pub(crate) async fn send(
+    pub async fn send(
         &self,
         repository: &str,
         digest: &Digest,
@@ -136,6 +139,7 @@ async fn flush_batch(
     batch: &[Event],
     url: &str,
     webhooks_total: &Family<WebhookMetricLabels, Counter>,
+    retry_base: Duration,
 ) {
     let events_json: Vec<_> = batch
         .iter()
@@ -173,6 +177,7 @@ async fn flush_batch(
 
     let mut attempts = 0;
     loop {
+        print!("attempt");
         let resp = client
             .post(url)
             .header(
@@ -197,7 +202,8 @@ async fn flush_batch(
                     break;
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                error!("Error whilst sending webhook: {e:?}");
                 webhooks_total
                     .get_or_create(&WebhookMetricLabels {
                         status: "000".to_string(),
@@ -208,7 +214,100 @@ async fn flush_batch(
         }
 
         attempts += 1;
-        let backoff = Duration::from_secs((1 << attempts).min(30));
+        let backoff = retry_base * (1 << attempts).min(10);
         sleep(backoff).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use regex::Regex;
+    use test_log::test;
+    use tokio::time::{self, Duration, timeout};
+    use wiremock::matchers::*;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn wait_for_requests(
+        server: &MockServer,
+        min_count: usize,
+        timeout_dur: Duration,
+    ) -> bool {
+        timeout(timeout_dur, async {
+            loop {
+                if server.received_requests().await.unwrap().len() >= min_count {
+                    break true;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    #[test(tokio::test)]
+    async fn test_webhook_batching_and_retry_virtual_time() {
+        time::pause();
+
+        let server = MockServer::start().await;
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_2 = call_count.clone();
+        // First failure
+        Mock::given(method("POST"))
+            .and(path("/webhook"))
+            .respond_with(move |_: &wiremock::Request| {
+                let n = call_count_2.fetch_add(1, Ordering::SeqCst);
+                if n == 0 {
+                    ResponseTemplate::new(500)
+                } else {
+                    ResponseTemplate::new(200)
+                }
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let mut registry = Registry::default();
+        let mut tasks = JoinSet::new();
+
+        let service = WebhookService::start(
+            &mut tasks,
+            vec![WebhookConfig {
+                matcher: Regex::new(".*").unwrap(),
+                url: format!("{}/webhook", server.uri()),
+                flush_interval: Duration::from_millis(100),
+                retry_base: Duration::from_millis(50),
+            }],
+            &mut registry,
+        );
+
+        for _ in 0..5 {
+            service
+                .send(
+                    "library/myapp",
+                    &"sha256:fea8895f450959fa676bcc1df0611ea93823a735a01205fd8622846041d0c7cf"
+                        .parse()
+                        .unwrap(),
+                    "latest",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                )
+                .await
+                .unwrap();
+        }
+
+        // Advance virtual time to trigger batching + retry
+        time::advance(Duration::from_secs(1)).await;
+
+        // Wait for expectations
+        assert!(
+            wait_for_requests(&server, 2, Duration::from_secs(2)).await,
+            "Did not receive expected webhook calls"
+        );
+
+        tasks.shutdown().await;
     }
 }
