@@ -50,6 +50,7 @@ pub(crate) struct RequestContext {
     admin: bool,
     realm: Option<String>,
     service: Option<String>,
+    pub user_agent: Option<String>,
 }
 
 impl RequestContext {
@@ -147,6 +148,12 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
         parts: &mut Parts,
         state: &Arc<RegistryState>,
     ) -> Result<Self, Self::Rejection> {
+        let user_agent = parts
+            .headers
+            .get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
         let config = match &state.config.authentication {
             None => {
                 return Ok(RequestContext {
@@ -156,6 +163,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     validated_token: true,
                     service: None,
                     realm: None,
+                    user_agent,
                 });
             }
             Some(config) => config,
@@ -171,6 +179,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     validated_token: false,
                     service: Some(config.audience.clone()),
                     realm: Some(config.realm.clone()),
+                    user_agent,
                 });
             }
         };
@@ -220,6 +229,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             validated_token: true,
             service: Some(config.audience.clone()),
             realm: Some(config.realm.clone()),
+            user_agent,
         })
     }
 }
