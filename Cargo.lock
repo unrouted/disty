@@ -1166,6 +1166,7 @@ dependencies = [
  "hiqlite",
  "hiqlite-macros",
  "hostname",
+ "http",
  "http-body-util",
  "httpdate",
  "ip_network",
@@ -1196,6 +1197,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -4280,6 +4282,8 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
