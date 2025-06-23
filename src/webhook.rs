@@ -17,6 +17,7 @@ use crate::digest::Digest;
 pub struct WebhookConfig {
     pub matcher: Regex,
     pub url: String,
+    pub timeout: Duration,
     pub flush_interval: Duration,
     pub retry_base: Duration,
 }
@@ -66,7 +67,7 @@ impl WebhookService {
             let webhooks_total = webhooks_total.clone();
 
             tasks.spawn(async move {
-                let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build().unwrap();
+                let client = reqwest::Client::builder().timeout(config.timeout).build().unwrap();
                 let mut buffer = Vec::new();
                 let mut deadline = Instant::now() + config.flush_interval;
 
@@ -278,6 +279,7 @@ mod tests {
             vec![WebhookConfig {
                 matcher: Regex::new(".*").unwrap(),
                 url: format!("{}/webhook", server.uri()),
+                timeout: Duration::from_millis(100),
                 flush_interval: Duration::from_millis(100),
                 retry_base: Duration::from_millis(50),
             }],
