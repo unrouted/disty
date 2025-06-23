@@ -4,16 +4,20 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
+use tokio::time::{Duration, sleep};
 
 use crate::digest::Digest;
 
 pub(crate) struct WebhookConfig {
-    matcher: regex::Regex,
-    url: String,
+    pub matcher: regex::Regex,
+    pub url: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct Event {
     pub repository: String,
     pub digest: Digest,
@@ -24,10 +28,16 @@ pub struct Event {
 #[derive(Clone, Hash, PartialEq, Eq, EncodeLabelSet, Debug)]
 struct WebhookMetricLabels {
     status: String,
+    url: String,
+}
+
+#[derive(Clone)]
+struct WebhookWorker {
+    tx: mpsc::Sender<Event>,
 }
 
 pub(crate) struct WebhookService {
-    tx: tokio::sync::mpsc::Sender<Event>,
+    workers: HashMap<String, WebhookWorker>, // Keyed by webhook URL
 }
 
 impl WebhookService {
@@ -43,87 +53,102 @@ impl WebhookService {
             webhooks_total.clone(),
         );
 
-        let (tx, mut rx) = mpsc::channel::<Event>(100);
+        let webhooks_total = &webhooks_total; // Reference for safe use
+        let mut workers = HashMap::new();
 
-        tasks.spawn(async move {
-            loop {
-                match rx.recv().await {
-                    None => {
-                        return Ok(());
+        for config in webhooks {
+            let (tx, mut rx) = mpsc::channel::<Event>(100);
+            let url = config.url.clone();
+            let matcher = config.matcher.clone();
+
+            // Clone only what is safe
+            let webhooks_total = webhooks_total.clone();
+
+            tasks.spawn(async move {
+                let client = reqwest::Client::new();
+                while let Some(event) = rx.recv().await {
+                    let match_target = format!("{}:{}", event.repository, event.tag);
+                    if !matcher.is_match(&match_target) {
+                        continue;
                     }
-                    Some(Event {
-                        repository,
-                        digest,
-                        tag,
-                        content_type,
-                    }) => {
-                        // FIXME: This is just enough webhook for what I personally need. Sorry if
-                        // you need it to be valid!
-                        let payload = json!({
+
+                    let payload = json!({
+                        "id": "",
+                        "timestamp": "2016-03-09T14:44:26.402973972-08:00",
+                        "action": "push",
+                        "target": {
+                            "mediaType": event.content_type,
+                            "size": 708,
+                            "digest": event.digest,
+                            "length": 708,
+                            "repository": event.repository,
+                            "url": format!("/v2/{}/manifests/{}", event.repository, event.digest),
+                            "tag": event.tag,
+                        },
+                        "request": {
                             "id": "",
-                            "timestamp": "2016-03-09T14:44:26.402973972-08:00",
-                            "action": "push",
-                            "target": {
-                                "mediaType": content_type,
-                                "size": 708,
-                                "digest": digest,
-                                "length": 708,
-                                "repository": repository,
-                                "url": format!("/v2/{repository}/manifests/{digest}"),
-                                "tag": tag,
-                            },
-                            "request": {
-                                "id": "",
-                                "addr": "192.168.64.11:42961",
-                                "host": "192.168.100.227:5000",
-                                "method": "PUT",
-                                "useragent": "curl/7.38.0",
-                            },
-                            "actor": {},
-                            "source": {
-                                "addr": "xtal.local:5000",
-                                "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
-                            },
-                        });
+                            "addr": "192.168.64.11:42961",
+                            "host": "192.168.100.227:5000",
+                            "method": "PUT",
+                            "useragent": "curl/7.38.0",
+                        },
+                        "actor": {},
+                        "source": {
+                            "addr": "xtal.local:5000",
+                            "instanceID": "a53db899-3b4b-4a62-a067-8dd013beaca4",
+                        },
+                    });
 
-                        let match_target = format!("{repository}:{tag}");
+                    let mut attempts = 0;
 
-                        for hook in &webhooks {
-                            if !hook.matcher.is_match(&match_target) {
-                                continue;
-                            }
-                            let resp = reqwest::Client::new()
-                                .post(&hook.url)
-                                .header(
-                                    "Content-Type",
-                                    "application/vnd.docker.distribution.events.v2+json",
-                                )
-                                .json(&payload)
-                                .send()
-                                .await;
+                    loop {
+                        let resp = client
+                            .post(&url)
+                            .header(
+                                "Content-Type",
+                                "application/vnd.docker.distribution.events.v2+json",
+                            )
+                            .json(&payload)
+                            .send()
+                            .await;
 
-                            if let Ok(resp) = resp {
-                                let labels = WebhookMetricLabels {
-                                    status: resp.status().to_string(),
-                                };
-                                webhooks_total.get_or_create(&labels).inc();
+                        match resp {
+                            Ok(r) => {
+                                let status = r.status().as_u16().to_string();
+                                webhooks_total
+                                    .get_or_create(&WebhookMetricLabels {
+                                        status,
+                                        url: url.clone(),
+                                    })
+                                    .inc();
 
-                                if resp.status() != 200 {
-                                    // FIXME: Log failures here
+                                if r.status().is_success() {
+                                    break;
                                 }
-                            } else {
-                                let labels = WebhookMetricLabels {
-                                    status: String::from("000"),
-                                };
-                                webhooks_total.get_or_create(&labels).inc();
+                            }
+                            Err(_) => {
+                                webhooks_total
+                                    .get_or_create(&WebhookMetricLabels {
+                                        status: "000".to_string(),
+                                        url: url.clone(),
+                                    })
+                                    .inc();
                             }
                         }
+
+                        attempts += 1;
+                        let backoff = Duration::from_secs((1 << attempts).min(30));
+                        sleep(backoff).await;
                     }
                 }
-            }
-        });
 
-        Self { tx }
+                Ok(())
+            });
+
+            workers.insert(config.url.clone(), WebhookWorker { tx });
+        }
+
+        Self { workers }
     }
 
     pub(crate) async fn send(
@@ -133,14 +158,16 @@ impl WebhookService {
         tag: &str,
         content_type: &str,
     ) -> Result<()> {
-        self.tx
-            .send(Event {
-                repository: repository.to_string(),
-                digest: digest.clone(),
-                tag: tag.to_string(),
-                content_type: content_type.to_string(),
-            })
-            .await?;
+        let event = Event {
+            repository: repository.to_string(),
+            digest: digest.clone(),
+            tag: tag.to_string(),
+            content_type: content_type.to_string(),
+        };
+
+        for worker in self.workers.values() {
+            worker.tx.send(event.clone()).await.ok();
+        }
 
         Ok(())
     }
