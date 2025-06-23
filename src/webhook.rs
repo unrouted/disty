@@ -167,7 +167,7 @@ async fn flush_batch(
                     "addr": "192.168.64.11:42961",
                     "host": "192.168.100.227:5000",
                     "method": "PUT",
-                    "useragent": "curl/7.38.0",
+                    "useragent": event.context.user_agent.clone().unwrap_or("".into()),
                 },
                 "actor": {},
                 "source": {
