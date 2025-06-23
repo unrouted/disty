@@ -73,6 +73,6 @@ pub fn router(state: Arc<RegistryState>) -> Router {
                 .on_request(DefaultOnRequest::new().level(Level::INFO))
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
-        .layer(SetRequestIdLayer::x_request_id(RequestIdGenerator))
         .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(RequestIdGenerator))
 }
