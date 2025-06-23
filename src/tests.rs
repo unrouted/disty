@@ -1,7 +1,11 @@
-use std::{ops::Deref, sync::Mutex};
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    ops::Deref,
+    sync::Mutex,
+};
 
 use anyhow::{Context, Result};
-use axum::{Router, body::Body, http::Request, response::Response};
+use axum::{Router, body::Body, extract::ConnectInfo, http::Request, response::Response};
 use figment::value::magic::RelativePathBuf;
 use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
@@ -281,7 +285,10 @@ impl RegistryFixture {
         Ok(format!("Bearer {token}"))
     }
 
-    pub async fn request(&self, req: Request<Body>) -> Result<Response> {
+    pub async fn request(&self, mut req: Request<Body>) -> Result<Response> {
+        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3124);
+        req.extensions_mut().insert(ConnectInfo(socket));
+
         let app = registry::RewriteUriLayer {}.layer(self.router.clone());
         app.oneshot(req)
             .await

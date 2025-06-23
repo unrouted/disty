@@ -941,6 +941,7 @@ mod tests {
             user_agent: Some("Foo".into()),
             method: "put".into(),
             request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
         };
 
         registry

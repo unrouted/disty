@@ -1,7 +1,7 @@
 use axum::{
     RequestPartsExt,
     body::Body,
-    extract::FromRequestParts,
+    extract::{ConnectInfo, FromRequestParts},
     http::request::Parts,
     response::{IntoResponse, Response},
 };
@@ -9,7 +9,7 @@ use axum_extra::TypedHeader;
 use headers::{Authorization, authorization::Bearer};
 use jwt_simple::prelude::*;
 use reqwest::StatusCode;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 use thiserror::Error;
 use tower_http::request_id::RequestId;
 use tracing::{debug, info};
@@ -55,6 +55,7 @@ pub(crate) struct RequestContext {
     pub user_agent: Option<String>,
     pub method: String,
     pub request_id: String,
+    pub peer: SocketAddr,
 }
 
 impl RequestContext {
@@ -171,6 +172,11 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
+        let peer = match parts.extensions.get::<ConnectInfo<SocketAddr>>() {
+            Some(connect_info) => connect_info.0,
+            None => return Err(TokenError::Invalid),
+        };
+
         let config = match &state.config.authentication {
             None => {
                 return Ok(RequestContext {
@@ -183,6 +189,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     user_agent,
                     method,
                     request_id,
+                    peer,
                 });
             }
             Some(config) => config,
@@ -201,6 +208,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     user_agent,
                     method,
                     request_id,
+                    peer,
                 });
             }
         };
@@ -253,6 +261,7 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             user_agent,
             method,
             request_id,
+            peer,
         })
     }
 }

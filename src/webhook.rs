@@ -161,7 +161,7 @@ async fn flush_batch(
                 },
                 "request": {
                     "id": event.context.request_id.clone(),
-                    "addr": "192.168.64.11:42961",
+                    "addr": event.context.peer.to_string(),
                     "host": "192.168.100.227:5000",
                     "method": event.context.method.clone(),
                     "useragent": event.context.user_agent.clone().unwrap_or("".into()),
@@ -299,6 +299,7 @@ mod tests {
             user_agent: Some("Foo".into()),
             method: "put".into(),
             request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
         };
 
         for _ in 0..5 {
