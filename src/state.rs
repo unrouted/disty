@@ -13,10 +13,10 @@ use uuid::Uuid;
 
 use crate::{
     config::{Configuration, lifecycle::DeletionRule},
+    context::RequestContext,
     digest::Digest,
     extractor::ManifestInfo,
     notify::Notification,
-    // types::jsonkv::JsonKV,
     webhook::WebhookService,
 };
 
@@ -303,7 +303,7 @@ impl RegistryState {
         digest: &Digest,
         media_type: &str,
         info: &ManifestInfo,
-        created_by: &str,
+        context: &RequestContext,
     ) -> Result<()> {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
@@ -321,7 +321,7 @@ impl RegistryState {
                     media_type,
                     location,
                     cluster_size_mask,
-                    created_by,
+                    &context.sub,
                     &info.artifact_type,
                     serde_json::to_string(&info.annotations)?
                 ),
@@ -359,7 +359,7 @@ impl RegistryState {
                         desc.digest.to_string(),
                         desc.size.unwrap_or(0) as u32,
                         &desc.media_type,
-                        created_by
+                        &context.sub
                     ),
                 ));
                 sql.push((
@@ -401,7 +401,7 @@ impl RegistryState {
             .await?;
 
         self.webhooks
-            .send(repository, digest, tag, media_type)
+            .send(context, repository, digest, tag, media_type)
             .await?;
 
         Ok(())
@@ -921,6 +921,16 @@ mod tests {
             subject: None,
         };
 
+        let req = RequestContext {
+            access: vec![],
+            sub: "bob".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+        };
+
         registry
             .insert_manifest(
                 "library/nginx",
@@ -928,7 +938,7 @@ mod tests {
                 &digest,
                 "some/content-type",
                 &info,
-                "bob",
+                &req,
             )
             .await?;
 

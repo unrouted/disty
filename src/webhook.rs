@@ -12,6 +12,7 @@ use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep, sleep_until};
 use tracing::error;
 
+use crate::context::RequestContext;
 use crate::digest::Digest;
 
 pub struct WebhookConfig {
@@ -24,6 +25,7 @@ pub struct WebhookConfig {
 
 #[derive(Clone, Debug)]
 pub struct Event {
+    pub context: RequestContext,
     pub repository: String,
     pub digest: Digest,
     pub content_type: String,
@@ -115,12 +117,14 @@ impl WebhookService {
 
     pub async fn send(
         &self,
+        context: &RequestContext,
         repository: &str,
         digest: &Digest,
         tag: &str,
         content_type: &str,
     ) -> Result<()> {
         let event = Event {
+            context: context.clone(),
             repository: repository.to_string(),
             digest: digest.clone(),
             tag: tag.to_string(),
@@ -286,9 +290,20 @@ mod tests {
             &mut registry,
         );
 
+        let req = RequestContext {
+            access: vec![],
+            sub: "anonymous".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+        };
+
         for _ in 0..5 {
             service
                 .send(
+                    &req,
                     "library/myapp",
                     &"sha256:fea8895f450959fa676bcc1df0611ea93823a735a01205fd8622846041d0c7cf"
                         .parse()

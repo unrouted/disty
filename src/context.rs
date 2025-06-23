@@ -43,13 +43,14 @@ pub(crate) struct AdditionalClaims {
     pub access: Vec<Access>,
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct RequestContext {
     pub access: Vec<Access>,
     pub sub: String,
     pub validated_token: bool,
-    admin: bool,
-    realm: Option<String>,
-    service: Option<String>,
+    pub admin: bool,
+    pub realm: Option<String>,
+    pub service: Option<String>,
     pub user_agent: Option<String>,
 }
 

@@ -99,7 +99,7 @@ pub(crate) async fn put(
             &digest,
             &content_type,
             &extracted,
-            &context.sub,
+            &context,
         )
         .await?;
 
