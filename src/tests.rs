@@ -225,7 +225,7 @@ impl StateFixture {
                 node_id: node.id,
                 config: configuration,
                 client,
-                webhooks: WebhookService::start(&mut tasks, vec![], &mut registry),
+                webhooks: WebhookService::start(&mut tasks, &[], &mut registry),
                 registry,
             }));
         }

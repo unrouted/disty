@@ -3,7 +3,6 @@ use prometheus_client::encoding::EncodeLabelSet;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
-use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -12,16 +11,9 @@ use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep, sleep_until};
 use tracing::error;
 
+use crate::config::WebhookConfig;
 use crate::context::RequestContext;
 use crate::extractor::Descriptor;
-
-pub struct WebhookConfig {
-    pub matcher: Regex,
-    pub url: String,
-    pub timeout: Duration,
-    pub flush_interval: Duration,
-    pub retry_base: Duration,
-}
 
 #[derive(Clone, Debug)]
 pub struct Event {
@@ -49,7 +41,7 @@ pub struct WebhookService {
 impl WebhookService {
     pub fn start(
         tasks: &mut JoinSet<Result<()>>,
-        webhooks: Vec<WebhookConfig>,
+        webhooks: &[WebhookConfig],
         registry: &mut Registry,
     ) -> Self {
         let webhooks_total = Family::<WebhookMetricLabels, Counter>::default();
@@ -61,7 +53,7 @@ impl WebhookService {
 
         let mut workers = HashMap::new();
 
-        for config in webhooks {
+        for config in webhooks.iter().cloned() {
             let (tx, mut rx) = mpsc::channel::<Event>(100);
             let url = config.url.clone();
             let matcher = config.matcher.clone();
@@ -279,7 +271,7 @@ mod tests {
 
         let service = WebhookService::start(
             &mut tasks,
-            vec![WebhookConfig {
+            &[WebhookConfig {
                 matcher: Regex::new(".*").unwrap(),
                 url: format!("{}/webhook", server.uri()),
                 timeout: Duration::from_millis(100),

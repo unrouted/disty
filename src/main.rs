@@ -86,7 +86,8 @@ async fn main() -> Result<()> {
 
     let mut tasks = JoinSet::new();
 
-    let webhooks = crate::webhook::WebhookService::start(&mut tasks, vec![], &mut registry);
+    let webhooks =
+        crate::webhook::WebhookService::start(&mut tasks, &config.webhooks, &mut registry);
 
     let state = Arc::new(RegistryState {
         node_id,

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, path::PathBuf, sync::Arc, time::Duration};
 
 use acl::AccessRule;
 use anyhow::{Context, Result, bail};
@@ -20,6 +20,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{config::lifecycle::DeletionRule, jwt::JWKSPublicKey};
 
 pub(crate) mod acl;
+pub(crate) mod duration;
 pub(crate) mod lifecycle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,10 +155,15 @@ pub enum User {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
-    pub url: String,
-
     #[serde(with = "serde_regex")]
     pub matcher: Regex,
+    pub url: String,
+    #[serde(with = "crate::config::duration")]
+    pub timeout: Duration,
+    #[serde(with = "crate::config::duration")]
+    pub flush_interval: Duration,
+    #[serde(with = "crate::config::duration")]
+    pub retry_base: Duration,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -436,7 +442,10 @@ mod test {
         let data = r#"
         {
             "url": "http://localhost:1234",
-            "matcher": "matcher.*"
+            "matcher": "matcher.*",
+            "timeout": 5,
+            "retry_base": 5,
+            "flush_interval": 5
         }"#;
 
         let t: WebhookConfig = serde_json::from_str(data).unwrap();
