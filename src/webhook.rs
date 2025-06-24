@@ -73,7 +73,7 @@ impl WebhookService {
                                         buffer.push(event);
                                     }
 
-                                    if buffer.len() >= 10 {
+                                    if buffer.len() >= config.batch_size {
                                         flush_batch(&client, &buffer, &url, &webhooks_total, config.retry_base).await;
                                         buffer.clear();
                                         deadline = Instant::now() + config.flush_interval;
@@ -277,6 +277,7 @@ mod tests {
                 timeout: Duration::from_millis(100),
                 flush_interval: Duration::from_millis(100),
                 retry_base: Duration::from_millis(50),
+                batch_size: 10,
             }],
             &mut registry,
         );

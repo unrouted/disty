@@ -165,6 +165,10 @@ const fn default_retry_base() -> Duration {
     Duration::from_secs(5)
 }
 
+const fn default_batch_size() -> usize {
+    10
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     #[serde(with = "serde_regex")]
@@ -176,6 +180,8 @@ pub struct WebhookConfig {
     pub flush_interval: Duration,
     #[serde(with = "crate::config::duration", default = "default_retry_base")]
     pub retry_base: Duration,
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
