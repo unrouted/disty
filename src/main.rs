@@ -59,7 +59,7 @@ impl CacheIndex for Cache {
 #[clap(author, version, about, long_about = None)]
 pub struct Opt {
     #[clap(short, long, value_parser)]
-    pub config: Option<std::path::PathBuf>,
+    pub config: Vec<std::path::PathBuf>,
 }
 
 #[tokio::main]

@@ -230,21 +230,23 @@ pub(crate) struct Configuration {
 }
 
 impl Configuration {
-    pub fn figment(config: Option<PathBuf>) -> Figment {
+    pub fn figment(configs: Vec<PathBuf>) -> Figment {
+        let fig = Figment::from(Serialized::defaults(Configuration::default()));
+
         let app_dirs = AppDirs::new(Some("disty"), true).unwrap();
         let config_dir = app_dirs.config_dir;
         let config_path = config_dir.join("config.yaml");
 
-        let fig = Figment::from(Serialized::defaults(Configuration::default()));
+        let fig = match config_path.exists() {
+            true => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
+            false => fig,
+        };
 
-        match config {
-            Some(config_path) => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
-            None => match config_path.exists() {
-                true => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
-                false => fig,
-            },
-        }
-        .merge(FileAdapter::wrap(Env::prefixed("DISTY_")))
+        let fig = configs.into_iter().fold(fig, |fig, config_path| {
+            fig.merge(FileAdapter::wrap(Yaml::file(config_path)))
+        });
+
+        fig.merge(FileAdapter::wrap(Env::prefixed("DISTY_")))
     }
 
     pub fn config(figment: Figment) -> Result<Configuration> {
@@ -389,7 +391,7 @@ mod test {
         }
 
         let config =
-            Configuration::config(Configuration::figment(None).join(("node_id", 1)).join((
+            Configuration::config(Configuration::figment(vec![]).join(("node_id", 1)).join((
                 "nodes",
                 vec![DistyNode {
                     id: 1,
@@ -434,7 +436,7 @@ mod test {
 
             let path = jail.directory().join("config.yaml");
 
-            let config: Configuration = Configuration::figment(Some(path))
+            let config: Configuration = Configuration::figment(vec![path])
                 .extract()
                 .expect("Configuration should be parseable");
 
