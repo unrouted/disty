@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Local};
 use prometheus_client::encoding::EncodeLabelSet;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
@@ -17,6 +18,7 @@ use crate::extractor::Descriptor;
 
 #[derive(Clone, Debug)]
 pub struct Event {
+    pub timestamp: DateTime<Local>,
     pub context: RequestContext,
     pub repository: String,
     pub tag: String,
@@ -114,6 +116,7 @@ impl WebhookService {
         tag: &str,
     ) -> Result<()> {
         let event = Event {
+            timestamp: Local::now(),
             context: context.clone(),
             repository: repository.to_string(),
             descriptor: descriptor.clone(),
@@ -140,7 +143,7 @@ async fn flush_batch(
         .map(|event| {
             json!({
                 "id": "",
-                "timestamp": "2016-03-09T14:44:26.402973972-08:00",
+                "timestamp": event.timestamp.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 "action": "push",
                 "target": {
                     "mediaType": event.descriptor.media_type,
