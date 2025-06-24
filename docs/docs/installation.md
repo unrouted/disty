@@ -42,6 +42,8 @@ metadata:
   namespace: disty
 data:
   config.yaml: |
+    url: https://registry.example.com
+
     nodes:
     - id: 1
       addr_raft: registry-0.registry.disty.svc:6080
@@ -65,10 +67,7 @@ data:
       secret: aaaaaaaaaaaaaaaa
 
     authentication:
-      realm: https://registry.example.com/auth/token
       key_pair_file: /token-auth/tls.key
-      issuer: https://registry.example.com
-      audience: https://registry.example.com
 
       users:
       - username: admin
@@ -100,7 +99,7 @@ spec:
   selector:
     matchLabels:
       app: disty
-      
+
   template:
     metadata:
       labels:
@@ -134,7 +133,7 @@ spec:
         - -c
         - /config/config.yaml
         volumeMounts:
-        - name: data 
+        - name: data
           mountPath: "/data"
         - name: config
           mountPath: "/config"

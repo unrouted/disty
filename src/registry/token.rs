@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::{
     config::{
-        AuthenticationConfig,
+        Configuration,
         acl::{AclCheck, Action, ResourceContext, SubjectContext},
     },
     context::Access,
@@ -41,11 +41,15 @@ pub(crate) struct TokenResponse {
 }
 
 pub async fn authenticate(
-    issuer: &AuthenticationConfig,
+    config: &Configuration,
     req_username: &str,
     req_password: &str,
 ) -> Result<Option<(String, HashMap<String, Value>)>> {
-    for user in &issuer.users {
+    let Some(authentication) = config.authentication.as_ref() else {
+        return Ok(None);
+    };
+
+    for user in &authentication.users {
         match user {
             crate::config::User::Password { username, password } => {
                 if username != req_username {
@@ -89,15 +93,17 @@ pub(crate) async fn token(
     authorization: TypedHeader<Authorization<Basic>>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
-    let issuer = registry.config.authentication.as_ref().unwrap();
-
-    let Some((token_subject, claims)) =
-        authenticate(issuer, authorization.username(), authorization.password()).await?
+    let Some((token_subject, claims)) = authenticate(
+        &registry.config,
+        authorization.username(),
+        authorization.password(),
+    )
+    .await?
     else {
         return Ok((StatusCode::UNAUTHORIZED, "Invalid credentials").into_response());
     };
 
-    if service != issuer.issuer {
+    if service != registry.config.url {
         return Ok((StatusCode::UNAUTHORIZED, "Invalid service").into_response());
     }
 
@@ -109,34 +115,35 @@ pub(crate) async fn token(
 
     let mut access_map: BTreeMap<String, HashSet<Action>> = BTreeMap::new();
 
-    for scope in &scope {
-        for scope in scope.split(" ") {
-            let parts: Vec<&str> = scope.split(':').collect();
-            if parts.len() == 3 && parts[0] == "repository" {
-                let repo = parts[1];
-                let actions: Vec<_> = parts[2]
-                    .split(",")
-                    .map(|split| Action::try_from(split.to_string()).unwrap())
-                    .collect();
+    if let Some(authentication) = registry.config.authentication.as_ref() {
+        for scope in &scope {
+            for scope in scope.split(" ") {
+                let parts: Vec<&str> = scope.split(':').collect();
+                if parts.len() == 3 && parts[0] == "repository" {
+                    let repo = parts[1];
+                    let actions: Vec<_> = parts[2]
+                        .split(",")
+                        .map(|split| Action::try_from(split.to_string()).unwrap())
+                        .collect();
 
-                let allowed_actions = issuer.acls.check_access(
-                    &subject,
-                    &ResourceContext {
-                        repository: repo.to_string(),
-                    },
-                );
-                for action in actions {
-                    if allowed_actions.contains(&action) {
-                        access_map
-                            .entry(repo.to_string())
-                            .or_default()
-                            .insert(action);
+                    let allowed_actions = authentication.acls.check_access(
+                        &subject,
+                        &ResourceContext {
+                            repository: repo.to_string(),
+                        },
+                    );
+                    for action in actions {
+                        if allowed_actions.contains(&action) {
+                            access_map
+                                .entry(repo.to_string())
+                                .or_default()
+                                .insert(action);
+                        }
                     }
                 }
             }
         }
     }
-
     let access_entries = access_map
         .into_iter()
         .map(|(repo, actions)| {
@@ -150,7 +157,7 @@ pub(crate) async fn token(
         })
         .collect();
 
-    let token = issue_token(issuer, &token_subject, access_entries)?;
+    let token = issue_token(&registry.config, &token_subject, access_entries)?;
 
     Ok(Json(TokenResponse {
         token: token.token,
@@ -207,7 +214,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -218,7 +225,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -226,11 +233,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -266,7 +275,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?scope=repository%3Aconformance-25436bad-9cf6-4010-ad97-d1a033872a18%3Apull%2Cpush+repository%3Amytestorg%2Fmytestrepo%3Apull&service=some-issuer")
+                    .uri("/auth/token?scope=repository%3Aconformance-25436bad-9cf6-4010-ad97-d1a033872a18%3Apull%2Cpush+repository%3Amytestorg%2Fmytestrepo%3Apull&service=http://localhost")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -277,7 +286,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -285,11 +294,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -338,7 +349,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -349,7 +360,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -357,11 +368,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -410,7 +423,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -421,7 +434,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -429,11 +442,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -490,7 +505,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -501,7 +516,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -509,11 +524,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -585,7 +602,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -596,7 +613,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -604,11 +621,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair
@@ -644,14 +663,15 @@ mod test {
         .collect::<HashMap<String, String>>();
         let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
             .with_issuer("gitlab.example.com")
-            .with_audience("localhost")
+            .with_audience("http://localhost")
             .with_subject("project_path:my-group/my-project:ref_type:branch:ref:feature-branch-1");
 
         let token = key.sign(claims)?;
 
-        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com", "localhost")
-            .with_cache(key.public_key())
-            .await;
+        let issuer =
+            JWKSPublicKey::new("http://localhost", "gitlab.example.com", "http://localhost")
+                .with_cache(key.public_key())
+                .await;
 
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()
@@ -688,7 +708,7 @@ mod test {
                 Request::builder()
                     .extension(ConnectInfo::<SocketAddr>("127.0.0.1:8123".parse()?))
                     .method("GET")
-                    .uri("/auth/token?service=some-issuer&scope=repository%3Abadger%3Apull%2Cpush")
+                    .uri("/auth/token?service=http://localhost&scope=repository%3Abadger%3Apull%2Cpush")
                     .header("Authorization", value)
                     .body(Body::empty())?,
             )
@@ -699,7 +719,7 @@ mod test {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let value: TokenResponse = serde_json::from_slice(&body)?;
 
-        let issuer = fixture.state.config.authentication.as_ref().unwrap();
+        let issuer = "http://localhost".to_string();
 
         let options = VerificationOptions {
             // accept tokens even if they have expired up to 15 minutes after the deadline
@@ -707,11 +727,13 @@ mod test {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[issuer.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[issuer.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[issuer.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[issuer.clone()])),
             ..Default::default()
         };
+
+        let issuer = fixture.state.config.authentication.as_ref().unwrap();
 
         let claims: JWTClaims<Value> = issuer
             .key_pair

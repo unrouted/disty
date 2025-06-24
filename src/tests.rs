@@ -166,9 +166,6 @@ impl StateFixture {
 
         let authentication = match builder.authentication {
             true => Some(AuthenticationConfig {
-                issuer: "some-issuer".into(),
-                audience: "some-audience".into(),
-                realm: "fixme".into(),
                 key_pair: KeyPair {
                     original: "".into(),
                     key_pair: Arc::new(ES256KeyPair::generate()),
@@ -197,6 +194,7 @@ impl StateFixture {
             let data_dir = dir.path();
 
             let configuration = Configuration {
+                url: "http://localhost".into(),
                 node_id: node.id,
                 storage: RelativePathBuf::from(data_dir),
                 raft: RaftConfig {
@@ -275,13 +273,7 @@ impl RegistryFixture {
     }
 
     pub fn bearer_header(&self, access: Vec<Access>) -> Result<String> {
-        let config = self
-            .state
-            .config
-            .authentication
-            .as_ref()
-            .context("Authentication not configured")?;
-        let token = issue_token(config, "test", access)?.token;
+        let token = issue_token(&self.state.config, "test", access)?.token;
         Ok(format!("Bearer {token}"))
     }
 

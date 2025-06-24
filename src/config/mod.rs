@@ -132,9 +132,6 @@ impl<'de> Deserialize<'de> for KeyPair {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct AuthenticationConfig {
-    pub issuer: String,
-    pub audience: String,
-    pub realm: String,
     pub key_pair: KeyPair,
     pub users: Vec<User>,
     pub acls: Vec<AccessRule>,
@@ -214,6 +211,7 @@ pub(crate) struct BackupConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Configuration {
+    pub url: String,
     pub node_id: u64,
     pub nodes: Vec<DistyNode>,
     pub raft: RaftConfig,
@@ -350,6 +348,7 @@ impl Default for Configuration {
         let first_key = random_keys.enc_keys.into_iter().next().unwrap();
 
         Self {
+            url: "http://localhost".into(),
             node_id: 0,
             raft: RaftConfig::default(),
             api: ApiConfig::default(),
@@ -423,9 +422,6 @@ mod test {
                 r#"
                 {
                   "authentication": {
-                    "issuer": "Test Issuer",
-                    "realm": "testrealm",
-                    "audience": "myservice",
                     "key_pair_file": "token.key",
                     "users": [],
                     "acls": []
@@ -445,9 +441,6 @@ mod test {
                 .as_ref()
                 .expect("Authentication shouldn't be empty");
 
-            assert_eq!(t.issuer, "Test Issuer");
-            assert_eq!(t.realm, "testrealm");
-            assert_eq!(t.audience, "myservice");
             assert_eq!(
                 t.key_pair.key_pair.public_key().to_pem().unwrap(),
                 "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPEUDSJJ2ThQmq1py0QUp1VHfLxOS\nGjl1uDis2P2rq3YWN96TDWgYbmk4v1Fd3sznlgTnM7cZ22NrrdKvM4TmVg==\n-----END PUBLIC KEY-----\n"

@@ -46,9 +46,9 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
     let req = client.get(url);
 
     let req = match &state.config.authentication {
-        Some(issuer) => {
+        Some(_) => {
             let token = issue_token(
-                issuer,
+                &state.config,
                 "system:mirror",
                 vec![Access {
                     type_: "repository".to_string(),
@@ -152,9 +152,9 @@ async fn download_manifest(
     let req = client.get(url);
 
     let req = match &state.config.authentication {
-        Some(issuer) => {
+        Some(_) => {
             let token = issue_token(
-                issuer,
+                &state.config,
                 "system:mirror",
                 vec![Access {
                     type_: "repository".to_string(),

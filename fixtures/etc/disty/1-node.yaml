@@ -1,10 +1,12 @@
+url: http://localhost:9999
+
 node_id: 1
 
 nodes:
-- id: 1
-  addr_raft: localhost:9997
-  addr_api: localhost:9998
-  addr_registry: localhost:9999
+  - id: 1
+    addr_raft: localhost:9997
+    addr_api: localhost:9998
+    addr_registry: localhost:9999
 
 raft:
   secret: aaaaaaaaaaaaaaaa
@@ -13,17 +15,14 @@ api:
   secret: aaaaaaaaaaaaaaaa
 
 authentication:
-  realm: http://localhost:9999/auth/token
   key_pair_file: fixtures/etc/disty/token.key
-  issuer: http://localhost
-  audience: http://localhost
 
   users:
-  - username: bob
-    password: "$2b$10$drOwzBx3RMK3Q9Pk/88.Deh1.OdY5Vg0ex/wBwWh7.RP91HhNLFGG"
+    - username: bob
+      password: "$2b$10$drOwzBx3RMK3Q9Pk/88.Deh1.OdY5Vg0ex/wBwWh7.RP91HhNLFGG"
 
   acls:
-  - subject:
-      username: bob
-    actions: ["push", "pull"]
-    comment: "Admin has full access to everything."
+    - subject:
+        username: bob
+      actions: ["push", "pull"]
+      comment: "Admin has full access to everything."

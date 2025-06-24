@@ -203,8 +203,8 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
                     sub: "anonymous".to_string(),
                     admin: false,
                     validated_token: false,
-                    service: Some(config.audience.clone()),
-                    realm: Some(config.realm.clone()),
+                    service: Some(state.config.url.clone()),
+                    realm: Some(format!("{}/auth/token", state.config.url)),
                     user_agent,
                     method,
                     request_id,
@@ -221,9 +221,9 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             // reject tokens if they were issued more than 1 hour ago
             max_validity: Some(Duration::from_hours(1)),
             // reject tokens if they don't include an issuer from that list
-            allowed_issuers: Some(HashSet::from_strings(&[config.issuer.clone()])),
+            allowed_issuers: Some(HashSet::from_strings(&[state.config.url.clone()])),
             // validate it is a token for us
-            allowed_audiences: Some(HashSet::from_strings(&[config.audience.clone()])),
+            allowed_audiences: Some(HashSet::from_strings(&[state.config.url.clone()])),
             ..Default::default()
         };
 
@@ -256,8 +256,8 @@ impl FromRequestParts<Arc<RegistryState>> for RequestContext {
             sub: subject,
             admin: false,
             validated_token: true,
-            service: Some(config.audience.clone()),
-            realm: Some(config.realm.clone()),
+            service: Some(state.config.url.clone()),
+            realm: Some(format!("{}/auth/token", state.config.url)),
             user_agent,
             method,
             request_id,
