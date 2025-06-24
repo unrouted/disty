@@ -153,16 +153,28 @@ pub enum User {
     },
 }
 
+const fn default_timeout() -> Duration {
+    Duration::from_secs(5)
+}
+
+const fn default_flush_interval() -> Duration {
+    Duration::from_secs(5)
+}
+
+const fn default_retry_base() -> Duration {
+    Duration::from_secs(5)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WebhookConfig {
     #[serde(with = "serde_regex")]
     pub matcher: Regex,
     pub url: String,
-    #[serde(with = "crate::config::duration")]
+    #[serde(with = "crate::config::duration", default = "default_timeout")]
     pub timeout: Duration,
-    #[serde(with = "crate::config::duration")]
+    #[serde(with = "crate::config::duration", default = "default_flush_interval")]
     pub flush_interval: Duration,
-    #[serde(with = "crate::config::duration")]
+    #[serde(with = "crate::config::duration", default = "default_retry_base")]
     pub retry_base: Duration,
 }
 
@@ -442,10 +454,7 @@ mod test {
         let data = r#"
         {
             "url": "http://localhost:1234",
-            "matcher": "matcher.*",
-            "timeout": 5,
-            "retry_base": 5,
-            "flush_interval": 5
+            "matcher": "matcher.*"
         }"#;
 
         let t: WebhookConfig = serde_json::from_str(data).unwrap();
