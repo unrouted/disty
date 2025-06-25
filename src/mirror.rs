@@ -66,6 +66,11 @@ async fn download_blob(blob: &Blob, state: &RegistryState, client: &Client) -> R
 
     let file_name = state.get_temp_path();
 
+    let parent = file_name
+        .parent()
+        .context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
+
     let mut file = tokio::fs::File::create(&file_name).await?;
 
     let mut hasher = ring::digest::Context::new(&ring::digest::SHA256);
@@ -171,6 +176,11 @@ async fn download_manifest(
     let mut resp = req.send().await?.error_for_status()?;
 
     let file_name = state.get_temp_path();
+
+    let parent = file_name
+        .parent()
+        .context("Couldn't find parent directory")?;
+    tokio::fs::create_dir_all(parent).await?;
 
     let mut file = tokio::fs::File::create(&file_name).await?;
 
