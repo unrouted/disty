@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{io::SeekFrom, ops::Bound, sync::Arc};
 
 use axum::{
     body::Body,
@@ -6,7 +6,10 @@ use axum::{
     http::{StatusCode, header},
     response::Response,
 };
+use axum_extra::TypedHeader;
+use headers::Range;
 use serde::Deserialize;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 use tracing::debug;
 
@@ -20,6 +23,7 @@ pub struct BlobRequest {
 
 pub(crate) async fn get(
     Path(BlobRequest { repository, digest }): Path<BlobRequest>,
+    range: Option<TypedHeader<Range>>,
     State(registry): State<Arc<RegistryState>>,
     context: RequestContext,
 ) -> Result<Response, RegistryError> {
@@ -58,7 +62,34 @@ pub(crate) async fn get(
         return Err(RegistryError::BlobNotFound {});
     }
 
-    let blob_file = tokio::fs::File::open(blob_path).await?;
+    let mut blob_file = tokio::fs::File::open(blob_path).await?;
+
+    if let Some(TypedHeader(range)) = range {
+        if let Some((Bound::Included(start), Bound::Included(end))) =
+            range.satisfiable_ranges(blob.size).next()
+        {
+            if start > end || end >= blob.size {
+                return Ok(Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .body(Body::empty())?);
+            }
+
+            blob_file.seek(SeekFrom::Start(start)).await?;
+
+            let stream = ReaderStream::new(blob_file.take(end - start + 1));
+
+            return Ok(Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header("Docker-Content-Digest", digest.to_string())
+                .header(header::CONTENT_TYPE, "application/octet-stream")
+                .header(header::CONTENT_LENGTH, (end - start + 1).to_string())
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {}-{}/{}", start, end, blob.size),
+                )
+                .body(Body::from_stream(stream))?);
+        }
+    }
 
     Ok(Response::builder()
         .status(StatusCode::OK)
