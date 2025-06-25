@@ -68,7 +68,7 @@ pub async fn authenticate(
 
                 return Ok(
                     match issuer
-                        .verify::<HashMap<String, Value>>(req_password)
+                        .verify::<HashMap<String, Value>>(config, req_password)
                         .await?
                     {
                         Some(claims) => {
@@ -476,12 +476,12 @@ mod test {
         .collect::<HashMap<String, String>>();
         let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
             .with_issuer("gitlab.example.com")
-            .with_audience("localhost")
+            .with_audience("http://localhost")
             .with_subject("project_path:my-group/my-project:ref_type:branch:ref:feature-branch-1");
 
         let token = key.sign(claims)?;
 
-        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com", "localhost")
+        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com")
             .with_cache(key.public_key())
             .await;
 
@@ -558,12 +558,12 @@ mod test {
         .collect::<HashMap<String, String>>();
         let claims = Claims::with_custom_claims(custom_claims, Duration::from_mins(10))
             .with_issuer("gitlab.example.com")
-            .with_audience("localhost")
+            .with_audience("http://localhost")
             .with_subject("project_path:my-group/my-project:ref_type:branch:ref:feature-branch-1");
 
         let token = key.sign(claims)?;
 
-        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com", "localhost")
+        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com")
             .with_cache(key.public_key())
             .await;
 
@@ -668,10 +668,9 @@ mod test {
 
         let token = key.sign(claims)?;
 
-        let issuer =
-            JWKSPublicKey::new("http://localhost", "gitlab.example.com", "http://localhost")
-                .with_cache(key.public_key())
-                .await;
+        let issuer = JWKSPublicKey::new("http://localhost", "gitlab.example.com")
+            .with_cache(key.public_key())
+            .await;
 
         let fixture = RegistryFixture::with_state(
             FixtureBuilder::new()

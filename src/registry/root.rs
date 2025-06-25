@@ -54,7 +54,7 @@ mod test {
             res.headers()
                 .get("Www-Authenticate")
                 .context("Missing header")?,
-            "Bearer realm=\"http://localhost\",service=\"http://localhost\""
+            "Bearer realm=\"http://localhost/auth/token\",service=\"http://localhost\""
         );
 
         fixture.teardown().await

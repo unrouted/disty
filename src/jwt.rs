@@ -17,6 +17,8 @@ use tokio_retry::Retry;
 use tokio_retry::strategy::{ExponentialBackoff, jitter};
 use tracing::{error, info, trace};
 
+use crate::config::Configuration;
+
 pub mod base64url {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use serde::{self, Deserialize, Deserializer, Serializer};
@@ -105,7 +107,6 @@ pub struct JWKSPublicKey {
     bearer_token: Option<String>,
     ca: Option<String>,
     issuer: String,
-    audience: String,
 }
 
 fn default_inner() -> Arc<RwLock<JWKSCache>> {
@@ -117,7 +118,7 @@ fn default_inner() -> Arc<RwLock<JWKSCache>> {
 
 impl JWKSPublicKey {
     #[cfg(test)]
-    pub fn new(jwks_url: &str, issuer: &str, audience: &str) -> Self {
+    pub fn new(jwks_url: &str, issuer: &str) -> Self {
         Self {
             inner: Arc::new(RwLock::new(JWKSCache {
                 keys: JwkDocument { keys: vec![] },
@@ -125,7 +126,6 @@ impl JWKSPublicKey {
             })),
             jwks_url: jwks_url.to_string(),
             issuer: issuer.to_string(),
-            audience: audience.to_string(),
             bearer_token: None,
             ca: None,
         }
@@ -252,7 +252,11 @@ impl JWKSPublicKey {
     /// Verify token and return Ok(Some(claims)) if valid,
     /// Ok(None) if verification fails,
     /// Err(_) if a runtime error occurred (e.g. network error)
-    pub async fn verify<C>(&self, token: &str) -> Result<Option<JWTClaims<C>>>
+    pub async fn verify<C>(
+        &self,
+        config: &Configuration,
+        token: &str,
+    ) -> Result<Option<JWTClaims<C>>>
     where
         C: DeserializeOwned + Serialize,
     {
@@ -265,7 +269,7 @@ impl JWKSPublicKey {
             token,
             Some(VerificationOptions {
                 allowed_issuers: Some([self.issuer.clone()].into_iter().collect()),
-                allowed_audiences: Some([self.audience.clone()].into_iter().collect()),
+                allowed_audiences: Some([config.url.clone()].into_iter().collect()),
                 ..Default::default()
             }),
         ) {
