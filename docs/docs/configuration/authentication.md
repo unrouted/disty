@@ -25,7 +25,6 @@ authentication:
   - username: gitlab
     issuer:
       issuer: gitlab.example.com
-      audience: registry.example.com
       jwks_url: https://gitlab.example.com/oauth/discovery/keys
 ```
 
@@ -37,7 +36,6 @@ authentication:
   - username: kubelet
     issuer:
       issuer: kubernetes/serviceaccount
-      audience: registry.example.com
       jwks_url: https://kubernetes.default.svc/openid/v1/jwks
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
       ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
