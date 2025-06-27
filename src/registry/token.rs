@@ -90,74 +90,79 @@ pub async fn authenticate(
 pub(crate) async fn token(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Query(TokenRequest { service, scope }): Query<TokenRequest>,
-    authorization: TypedHeader<Authorization<Basic>>,
+    authorization: Option<TypedHeader<Authorization<Basic>>>,
     State(registry): State<Arc<RegistryState>>,
 ) -> Result<Response, RegistryError> {
-    let Some((token_subject, claims)) = authenticate(
-        &registry.config,
-        authorization.username(),
-        authorization.password(),
-    )
-    .await?
-    else {
-        return Ok((StatusCode::UNAUTHORIZED, "Invalid credentials").into_response());
-    };
-
     if service != registry.config.url {
         return Ok((StatusCode::UNAUTHORIZED, "Invalid service").into_response());
     }
 
-    let subject = SubjectContext {
-        username: authorization.username().to_string(),
-        claims: claims.clone(),
-        ip: addr.ip(),
-    };
+    let token = match authorization {
+        Some(authorization) => {
+            let Some((token_subject, claims)) = authenticate(
+                &registry.config,
+                authorization.username(),
+                authorization.password(),
+            )
+            .await?
+            else {
+                return Ok((StatusCode::UNAUTHORIZED, "Invalid credentials").into_response());
+            };
 
-    let mut access_map: BTreeMap<String, HashSet<Action>> = BTreeMap::new();
+            let subject = SubjectContext {
+                username: authorization.username().to_string(),
+                claims: claims.clone(),
+                ip: addr.ip(),
+            };
 
-    if let Some(authentication) = registry.config.authentication.as_ref() {
-        for scope in &scope {
-            for scope in scope.split(" ") {
-                let parts: Vec<&str> = scope.split(':').collect();
-                if parts.len() == 3 && parts[0] == "repository" {
-                    let repo = parts[1];
-                    let actions: Vec<_> = parts[2]
-                        .split(",")
-                        .map(|split| Action::try_from(split.to_string()).unwrap())
-                        .collect();
+            let mut access_map: BTreeMap<String, HashSet<Action>> = BTreeMap::new();
 
-                    let allowed_actions = authentication.acls.check_access(
-                        &subject,
-                        &ResourceContext {
-                            repository: repo.to_string(),
-                        },
-                    );
-                    for action in actions {
-                        if allowed_actions.contains(&action) {
-                            access_map
-                                .entry(repo.to_string())
-                                .or_default()
-                                .insert(action);
+            if let Some(authentication) = registry.config.authentication.as_ref() {
+                for scope in &scope {
+                    for scope in scope.split(" ") {
+                        let parts: Vec<&str> = scope.split(':').collect();
+                        if parts.len() == 3 && parts[0] == "repository" {
+                            let repo = parts[1];
+                            let actions: Vec<_> = parts[2]
+                                .split(",")
+                                .map(|split| Action::try_from(split.to_string()).unwrap())
+                                .collect();
+
+                            let allowed_actions = authentication.acls.check_access(
+                                &subject,
+                                &ResourceContext {
+                                    repository: repo.to_string(),
+                                },
+                            );
+                            for action in actions {
+                                if allowed_actions.contains(&action) {
+                                    access_map
+                                        .entry(repo.to_string())
+                                        .or_default()
+                                        .insert(action);
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-    }
-    let access_entries = access_map
-        .into_iter()
-        .map(|(repo, actions)| {
-            let mut actions: Vec<_> = actions.into_iter().collect();
-            actions.sort();
-            Access {
-                type_: "repository".to_string(),
-                name: repo,
-                actions,
-            }
-        })
-        .collect();
+            let access_entries = access_map
+                .into_iter()
+                .map(|(repo, actions)| {
+                    let mut actions: Vec<_> = actions.into_iter().collect();
+                    actions.sort();
+                    Access {
+                        type_: "repository".to_string(),
+                        name: repo,
+                        actions,
+                    }
+                })
+                .collect();
 
-    let token = issue_token(&registry.config, &token_subject, access_entries)?;
+            issue_token(&registry.config, &token_subject, access_entries)?
+        }
+        None => issue_token(&registry.config, "internal:anonymous", vec![])?,
+    };
 
     Ok(Json(TokenResponse {
         token: token.token,
