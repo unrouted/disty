@@ -331,8 +331,8 @@ impl RegistryState {
                 params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
             ),
             (
-                "INSERT INTO tags (name, manifest_repository_id) VALUES ($1, $2) ON CONFLICT(name, manifest_repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id;",
-                params!(tag, StmtIndex(2).column("id")),
+                "INSERT INTO tags (name, repository_id, manifest_repository_id) VALUES ($1, $2, $3) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id;",
+                params!(tag, StmtIndex(0).column("id"), StmtIndex(2).column("id")),
             ),
         ];
 
@@ -1047,8 +1047,8 @@ mod tests {
                     params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
                 ),
                 (
-                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(2).column("id")),
+                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(2).column("id")),
                 ),
             ]
         ).await?;
@@ -1096,8 +1096,8 @@ mod tests {
                     params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
                 ),
                 (
-                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(2).column("id")),
+                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(1).column("id"), StmtIndex(2).column("id")),
                 ),
             ]
         ).await?;
@@ -1137,8 +1137,8 @@ mod tests {
                     params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
                 ),
                 (
-                    "INSERT INTO tags(name, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(2).column("id")),
+                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(2).column("id")),
                 ),
             ]
         ).await?;
