@@ -274,7 +274,10 @@ impl JWKSPublicKey {
             }),
         ) {
             Ok(claims) => Ok(Some(claims)),
-            Err(_e) => Ok(None),
+            Err(e) => {
+                error!("Unable to verify token: {e:?}");
+                Ok(None)
+            }
         }
     }
 }
