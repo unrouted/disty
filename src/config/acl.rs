@@ -38,7 +38,7 @@ impl std::fmt::Display for Action {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, rename_all_fields = "camelCase")]
 pub enum StringMatch {
     Exact(String),
     Regex {
