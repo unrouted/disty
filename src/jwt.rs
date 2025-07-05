@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
@@ -160,7 +160,7 @@ impl JWKSPublicKey {
 
         let retry_strategy = ExponentialBackoff::from_millis(300).map(jitter).take(3);
 
-        let (body, headers) = Retry::spawn(retry_strategy, || async {
+        let bob = Retry::spawn(retry_strategy, || async {
             let req = client.get(&self.jwks_url);
 
             let req = match &self.bearer_token {
@@ -181,7 +181,15 @@ impl JWKSPublicKey {
             let body = resp.text().await.context("Failed to read body")?;
             Ok::<_, anyhow::Error>((body, headers))
         })
-        .await?;
+        .await;
+
+        let (body, headers) = match bob {
+            Ok((body, headers)) => (body, headers),
+            Err(e) => {
+                error!("Error: {}", e);
+                bail!("Error: {}", e);
+            }
+        };
 
         error!("Got JWKS document from {}", self.jwks_url);
 
