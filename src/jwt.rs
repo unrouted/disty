@@ -168,6 +168,8 @@ impl JWKSPublicKey {
                 Some(bearer_token) => req.bearer_auth(bearer_token),
             };
 
+            error!("Sending JWKS request to {}", self.jwks_url);
+
             let resp = req
                 .send()
                 .await
@@ -180,6 +182,8 @@ impl JWKSPublicKey {
             Ok::<_, anyhow::Error>((body, headers))
         })
         .await?;
+
+        error!("Got JWKS document from {}", self.jwks_url);
 
         let jwks: JwkDocument = serde_json::from_str(&body).context("Failed to parse JWKS JSON")?;
 
