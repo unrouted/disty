@@ -153,7 +153,9 @@ impl JWKSPublicKey {
             None => client,
             Some(ca) => {
                 let ca_cert = Certificate::from_pem(ca.as_bytes())?;
-                client.add_root_certificate(ca_cert)
+                client
+                    .tls_built_in_root_certs(false)
+                    .add_root_certificate(ca_cert)
             }
         };
 
