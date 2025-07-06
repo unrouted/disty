@@ -18,6 +18,7 @@ use tokio_retry2::{MapErr, Retry, RetryError};
 use tracing::{error, info, trace};
 
 use crate::config::Configuration;
+use crate::error::format_error;
 
 pub mod base64url {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -193,7 +194,7 @@ impl JWKSPublicKey {
                 Ok::<_, RetryError<anyhow::Error>>((body, headers))
             },
             |e, _d| {
-                error!("Error fetching jwks: {:?}", e);
+                error!("Error fetching jwks: {:?}", format_error(e));
             },
         )
         .await?;
