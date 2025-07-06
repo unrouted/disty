@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
@@ -13,8 +13,8 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tokio_retry::Retry;
-use tokio_retry::strategy::{ExponentialBackoff, jitter};
+use tokio_retry2::strategy::{ExponentialFactorBackoff, MaxInterval, jitter};
+use tokio_retry2::{MapErr, Retry, RetryError};
 use tracing::{error, info, trace};
 
 use crate::config::Configuration;
@@ -158,38 +158,45 @@ impl JWKSPublicKey {
 
         let client = client.build().context("Failed to build HTTP client")?;
 
-        let retry_strategy = ExponentialBackoff::from_millis(300).map(jitter).take(3);
+        let retry_strategy = ExponentialFactorBackoff::from_millis(10, 1.0)
+            .max_interval(10)
+            .map(jitter)
+            .take(3);
 
-        let bob = Retry::spawn(retry_strategy, || async {
-            let req = client.get(&self.jwks_url);
+        let (body, headers) = Retry::spawn_notify(
+            retry_strategy,
+            || async {
+                let req = client.get(&self.jwks_url);
 
-            let req = match &self.bearer_token {
-                None => req,
-                Some(bearer_token) => req.bearer_auth(bearer_token),
-            };
+                let req = match &self.bearer_token {
+                    None => req,
+                    Some(bearer_token) => req.bearer_auth(bearer_token),
+                };
 
-            error!("Sending JWKS request to {}", self.jwks_url);
+                error!("Sending JWKS request to {}", self.jwks_url);
 
-            let resp = req
-                .send()
-                .await
-                .context("Request failed")?
-                .error_for_status()
-                .context("Non-success status")?;
+                let resp = req
+                    .send()
+                    .await
+                    .context("Request failed")
+                    .map_transient_err()?
+                    .error_for_status()
+                    .context("Non-success status")
+                    .map_transient_err()?;
 
-            let headers = resp.headers().clone();
-            let body = resp.text().await.context("Failed to read body")?;
-            Ok::<_, anyhow::Error>((body, headers))
-        })
-        .await;
-
-        let (body, headers) = match bob {
-            Ok((body, headers)) => (body, headers),
-            Err(e) => {
-                error!("Error: {}", e);
-                bail!("Error: {}", e);
-            }
-        };
+                let headers = resp.headers().clone();
+                let body = resp
+                    .text()
+                    .await
+                    .context("Failed to read body")
+                    .map_transient_err()?;
+                Ok::<_, RetryError<anyhow::Error>>((body, headers))
+            },
+            |e, _d| {
+                error!("Error fetching jwks: {:?}", e);
+            },
+        )
+        .await?;
 
         error!("Got JWKS document from {}", self.jwks_url);
 
