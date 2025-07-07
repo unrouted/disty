@@ -64,4 +64,4 @@ assert-json-diff = "2.0.2"
 figment = { version = "0.10.19", features = ["env", "test", "yaml"] }
 wiremock = "0.6.4"
 tokio = { version="*", features=["test-util"] }
-rcgen = "0.14.1"
+rcgen = {version="0.14.1", default-features=false, features=["aws_lc_rs", "crypto", "pem"] }
