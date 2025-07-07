@@ -156,7 +156,9 @@ impl JWKSPublicKey {
                 let mut root_store = RootCertStore::empty();
 
                 let pem_bytes = ca.as_bytes();
-                let certs =  rustls_pemfile::certs(&mut &*pem_bytes).collect::<Result<Vec<CertificateDer<'_>>, std::io::Error>>().context("Invalid certificates")?;
+                let certs = rustls_pemfile::certs(&mut &*pem_bytes)
+                    .collect::<Result<Vec<CertificateDer<'_>>, std::io::Error>>()
+                    .context("Invalid certificates")?;
                 let (_, ignored) = root_store.add_parsable_certificates(certs.into_iter());
                 if ignored > 0 {
                     error!("{} certificates ignored", ignored);
