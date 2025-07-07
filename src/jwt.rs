@@ -2,11 +2,8 @@ use anyhow::{Context, Result};
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
-use reqwest::Client;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
-use rustls::crypto::aws_lc_rs::default_provider;
-use rustls::pki_types::CertificateDer;
-use rustls::{ClientConfig, RootCertStore};
+use reqwest::{Certificate, Client};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -153,24 +150,9 @@ impl JWKSPublicKey {
         let client = match &self.ca {
             None => client,
             Some(ca) => {
-                let mut root_store = RootCertStore::empty();
-
-                let pem_bytes = ca.as_bytes();
-                error!("{:?}", pem_bytes);
-                let certs = rustls_pemfile::certs(&mut &*pem_bytes)
-                    .collect::<Result<Vec<CertificateDer<'_>>, std::io::Error>>()
-                    .context("Invalid certificates")?;
-                let (added, ignored) = root_store.add_parsable_certificates(certs.into_iter());
-                error!("{} certificates added", added);
-                if ignored > 0 {
-                    error!("{} certificates ignored", ignored);
-                }
-                let tls_config = ClientConfig::builder_with_provider(Arc::new(default_provider()))
-                    .with_safe_default_protocol_versions()?
-                    .with_root_certificates(root_store)
-                    .with_no_client_auth();
-
-                client.use_preconfigured_tls(tls_config)
+                let cert =
+                    Certificate::from_pem(ca.as_bytes()).context("Invalid CA certificate")?;
+                client.add_root_certificate(cert)
             }
         };
 
@@ -194,8 +176,6 @@ impl JWKSPublicKey {
                     None => req,
                     Some(bearer_token) => req.bearer_auth(bearer_token),
                 };
-
-                error!("Sending JWKS request to {}", self.jwks_url);
 
                 let resp = req
                     .send()

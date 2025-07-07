@@ -1183,8 +1183,6 @@ dependencies = [
  "regex",
  "reqwest",
  "ring",
- "rustls",
- "rustls-pemfile",
  "schema",
  "sec1",
  "serde",
