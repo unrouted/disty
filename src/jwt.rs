@@ -5,6 +5,7 @@ use jwt_simple::prelude::*;
 use reqwest::Client;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
 use rustls::crypto::aws_lc_rs::default_provider;
+use rustls::pki_types::CertificateDer;
 use rustls::{ClientConfig, RootCertStore};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -155,10 +156,11 @@ impl JWKSPublicKey {
                 let mut root_store = RootCertStore::empty();
 
                 let pem_bytes = ca.as_bytes();
-                for cert in rustls_pemfile::certs(&mut &*pem_bytes) {
-                    root_store.add(cert?)?;
+                let certs =  rustls_pemfile::certs(&mut &*pem_bytes).collect::<Result<Vec<CertificateDer<'_>>, std::io::Error>>().context("Invalid certificates")?;
+                let (_, ignored) = root_store.add_parsable_certificates(certs.into_iter());
+                if ignored > 0 {
+                    error!("{} certificates ignored", ignored);
                 }
-
                 let tls_config = ClientConfig::builder_with_provider(Arc::new(default_provider()))
                     .with_safe_default_protocol_versions()?
                     .with_root_certificates(root_store)
