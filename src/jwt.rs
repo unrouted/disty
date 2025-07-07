@@ -2,15 +2,14 @@ use anyhow::{Context, Result};
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
-use reqwest::Certificate;
+use reqwest::Client;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
+use rustls::{ClientConfig, RootCertStore};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio_retry2::strategy::{ExponentialFactorBackoff, MaxInterval, jitter};
@@ -144,7 +143,7 @@ impl JWKSPublicKey {
         self
     }
 
-    async fn fetch_jwks(&self) -> Result<(JwkDocument, Instant)> {
+    fn client(&self) -> Result<Client> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5));
@@ -152,14 +151,26 @@ impl JWKSPublicKey {
         let client = match &self.ca {
             None => client,
             Some(ca) => {
-                let ca_cert = Certificate::from_pem(ca.as_bytes())?;
-                client
-                    .tls_built_in_root_certs(false)
-                    .add_root_certificate(ca_cert)
+                let mut root_store = RootCertStore::empty();
+
+                let pem_bytes = ca.as_bytes();
+                for cert in rustls_pemfile::certs(&mut &*pem_bytes) {
+                    root_store.add(cert?)?;
+                }
+
+                let tls_config = ClientConfig::builder()
+                    .with_root_certificates(root_store)
+                    .with_no_client_auth();
+
+                client.use_preconfigured_tls(tls_config)
             }
         };
 
-        let client = client.build().context("Failed to build HTTP client")?;
+        Ok(client.build().context("Failed to build HTTP client")?)
+    }
+
+    async fn fetch_jwks(&self) -> Result<(JwkDocument, Instant)> {
+        let client = self.client()?;
 
         let retry_strategy = ExponentialFactorBackoff::from_millis(10, 1.0)
             .max_interval(10)
@@ -330,4 +341,29 @@ fn parse_cache_headers(headers: &reqwest::header::HeaderMap) -> Option<Instant> 
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rcgen::{CertifiedKey, generate_simple_self_signed};
+    use serde_json::json;
+    use test_log::test;
+
+    #[test(tokio::test)]
+    async fn test_build_jwks() {
+        let subject_alt_names = vec!["hello.world.example".to_string(), "localhost".to_string()];
+        let CertifiedKey {
+            cert,
+            signing_key: _,
+        } = generate_simple_self_signed(subject_alt_names).unwrap();
+
+        let jwks: JWKSPublicKey = serde_json::from_value(json!({
+            "jwks_url": "http://localhost/jwks",
+            "issuer": "https://localhost",
+            "ca": cert.pem(),
+        }))
+        .unwrap();
+        let _ = jwks.client().unwrap();
+    }
 }

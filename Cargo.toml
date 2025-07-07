@@ -34,6 +34,8 @@ rand = "0.9.1"
 regex = "1.11.1"
 reqwest = { version = "0.12.20", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 ring = "0.17.14"
+rustls = "0.23.28"
+rustls-pemfile = "2.2.0"
 schema = "0.1.0"
 sec1 = { version = "0.7.3", features = ["pem", "pkcs8"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -62,3 +64,4 @@ assert-json-diff = "2.0.2"
 figment = { version = "0.10.19", features = ["env", "test", "yaml"] }
 wiremock = "0.6.4"
 tokio = { version="*", features=["test-util"] }
+rcgen = "0.14.1"
