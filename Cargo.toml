@@ -16,7 +16,7 @@ figment_file_provider_adapter = "0.1.1"
 futures = "0.3.31"
 futures-util = "0.3.31"
 headers = "0.4.1"
-hiqlite = { version = "0.8.0", default-features = false, features = ["auto-heal", "sqlite", "listen_notify_local"] }
+hiqlite = { version = "0.9.0", default-features = false, features = ["auto-heal", "sqlite", "listen_notify_local"] }
 hiqlite-macros = "0.8.0"
 hostname = "0.4.1"
 http = "1.3.1"

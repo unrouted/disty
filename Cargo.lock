@@ -995,6 +995,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptr"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9841e0d681d07fc1f285260eb5723255e0229783b0bac9336df426a5d5849c7b"
+dependencies = [
+ "argon2",
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "bincode",
+ "bytes",
+ "chacha20poly1305",
+ "dotenvy",
+ "flume",
+ "futures",
+ "lazy_static",
+ "rand 0.9.1",
+ "regex",
+ "reqwest",
+ "s3-simple",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ct-codecs"
 version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1163,7 +1191,7 @@ dependencies = [
  "futures",
  "futures-util",
  "headers",
- "hiqlite",
+ "hiqlite 0.9.0",
  "hiqlite-macros",
  "hostname",
  "http",
@@ -1744,15 +1772,14 @@ dependencies = [
  "bytes",
  "chrono",
  "cron",
- "cryptr",
+ "cryptr 0.6.1",
  "deadpool 0.12.2",
  "dotenvy",
  "fastwebsockets",
  "flume",
- "futures-util",
  "getrandom 0.3.3",
  "hex",
- "hiqlite-wal",
+ "hiqlite-wal 0.8.0",
  "hostname",
  "http-body-util",
  "hyper",
@@ -1781,12 +1808,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "hiqlite"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d6851ef46f316573f058e672fe6842ac307b4f31298d532944608f8233e910a"
+dependencies = [
+ "axum",
+ "axum-server",
+ "bincode",
+ "byteorder",
+ "bytes",
+ "chrono",
+ "cryptr 0.7.0",
+ "deadpool 0.12.2",
+ "dotenvy",
+ "fastwebsockets",
+ "flume",
+ "futures-util",
+ "getrandom 0.3.3",
+ "hex",
+ "hiqlite-wal 0.9.0",
+ "hostname",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "lazy_static",
+ "lz4-sys",
+ "openraft",
+ "reqwest",
+ "rusqlite",
+ "rust-embed",
+ "rust_decimal",
+ "rustls",
+ "serde",
+ "serde_json",
+ "serde_rusqlite",
+ "sha2 0.10.9",
+ "strum",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-rustls",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "hiqlite-macros"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54e30654c1bd9962fcf4e01538b1835d2aff66ce774b515b000bc1d6baec1e93"
 dependencies = [
- "hiqlite",
+ "hiqlite 0.8.0",
  "rust-embed",
 ]
 
@@ -1795,6 +1869,25 @@ name = "hiqlite-wal"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ef565a1f79862fb139007e75bd2bae92229c8be4826e00f0492015c57f331fa"
+dependencies = [
+ "bincode",
+ "byteorder",
+ "crc",
+ "flume",
+ "fs4",
+ "memmap2",
+ "openraft",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hiqlite-wal"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f422d13c223c4804f76c7f4a051a3f0a5db3d12fc87bd2de5de0c661530e08ac"
 dependencies = [
  "bincode",
  "byteorder",
