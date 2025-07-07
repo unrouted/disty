@@ -2,7 +2,10 @@ use figment::{
     Error, Metadata, Profile, Provider,
     value::{Dict, Map, Tag, Value},
 };
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 pub struct RecursiveFileProvider<P> {
     inner: P,
@@ -23,8 +26,20 @@ impl<P: Provider> Provider for RecursiveFileProvider<P> {
         let data = self.inner.data()?;
         let mut out = Map::new();
 
+        // Figure out base_path dynamically
+        let base_path = self
+            .inner
+            .metadata()
+            .source
+            .as_ref()
+            .and_then(|s| match s {
+                figment::Source::File(path) => path.parent().map(|p| p.to_path_buf()),
+                _ => None,
+            })
+            .unwrap_or_else(|| PathBuf::from("."));
+
         for (profile, dict) in data {
-            let transformed = transform_dict(dict)?;
+            let transformed = transform_dict(&base_path, dict)?;
             out.insert(profile, transformed);
         }
 
@@ -36,16 +51,23 @@ impl<P: Provider> Provider for RecursiveFileProvider<P> {
     }
 }
 
-fn transform_dict(dict: Dict) -> Result<Dict, Error> {
+fn transform_dict(base_path: &PathBuf, dict: Dict) -> Result<Dict, Error> {
     let mut new_dict = BTreeMap::new();
 
     for (k, v) in dict {
-        let new_v = transform_value(v)?;
+        let new_v = transform_value(base_path, v)?;
 
         if k.ends_with("_file") {
-            if let Value::String(_, path) = &new_v {
-                let contents = std::fs::read_to_string(path)
-                    .map_err(|e| Error::from(format!("Failed to read '{}': {}", path, e)))?;
+            if let Value::String(_, path_str) = &new_v {
+                let path = Path::new(path_str);
+                let final_path = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    base_path.join(path)
+                };
+                let contents = std::fs::read_to_string(path).map_err(|e| {
+                    Error::from(format!("Failed to read '{:?}': {}", final_path, e))
+                })?;
                 let new_key = k.trim_end_matches("_file").to_string();
                 // Use Tag::Default or copy the original tag
                 new_dict.insert(new_key, Value::String(Tag::Default, contents));
@@ -58,14 +80,17 @@ fn transform_dict(dict: Dict) -> Result<Dict, Error> {
     Ok(new_dict)
 }
 
-fn transform_value(value: Value) -> Result<Value, Error> {
+fn transform_value(base_path: &PathBuf, value: Value) -> Result<Value, Error> {
     match value {
         Value::Dict(tag, dict) => {
-            let transformed = transform_dict(dict)?;
+            let transformed = transform_dict(base_path, dict)?;
             Ok(Value::Dict(tag, transformed))
         }
         Value::Array(tag, arr) => {
-            let new_arr: Result<Vec<_>, _> = arr.into_iter().map(transform_value).collect();
+            let new_arr: Result<Vec<_>, _> = arr
+                .into_iter()
+                .map(|v| transform_value(base_path, v))
+                .collect();
             Ok(Value::Array(tag, new_arr?))
         }
         other => Ok(other),
