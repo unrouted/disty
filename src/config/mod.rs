@@ -7,7 +7,6 @@ use figment::{
     providers::{Env, Format, Serialized, Yaml},
     value::magic::RelativePathBuf,
 };
-use figment_file_provider_adapter::FileAdapter;
 use hiqlite::{Node, NodeConfig, ServerTlsConfig, s3::EncKeys};
 use jwt_simple::prelude::ES256KeyPair;
 use p256::ecdsa::SigningKey;
@@ -17,10 +16,14 @@ use regex::Regex;
 use sec1::DecodeEcPrivateKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{config::lifecycle::DeletionRule, jwt::JWKSPublicKey};
+use crate::{
+    config::{files::RecursiveFileProvider, lifecycle::DeletionRule},
+    jwt::JWKSPublicKey,
+};
 
 pub(crate) mod acl;
 pub(crate) mod duration;
+pub(crate) mod files;
 pub(crate) mod lifecycle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,15 +239,15 @@ impl Configuration {
         let config_path = config_dir.join("config.yaml");
 
         let fig = match config_path.exists() {
-            true => fig.merge(FileAdapter::wrap(Yaml::file(config_path))),
+            true => fig.merge(RecursiveFileProvider::new(Yaml::file(config_path))),
             false => fig,
         };
 
         let fig = configs.into_iter().fold(fig, |fig, config_path| {
-            fig.merge(FileAdapter::wrap(Yaml::file(config_path)))
+            fig.merge(RecursiveFileProvider::new(Yaml::file(config_path)))
         });
 
-        fig.merge(FileAdapter::wrap(Env::prefixed("DISTY_")))
+        fig.merge(RecursiveFileProvider::new(Env::prefixed("DISTY_")))
     }
 
     pub fn config(figment: Figment) -> Result<Configuration> {
