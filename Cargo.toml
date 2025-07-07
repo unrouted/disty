@@ -65,3 +65,4 @@ figment = { version = "0.10.19", features = ["env", "test", "yaml"] }
 wiremock = "0.6.4"
 tokio = { version="*", features=["test-util"] }
 rcgen = "0.14.1"
+serde_yaml = "0.9.34"

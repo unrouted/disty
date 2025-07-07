@@ -1191,6 +1191,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_regex",
+ "serde_yaml",
  "strum",
  "tempfile",
  "test-log",
