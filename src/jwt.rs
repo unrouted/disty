@@ -4,6 +4,7 @@ use base64::engine::general_purpose::STANDARD_NO_PAD;
 use jwt_simple::prelude::*;
 use reqwest::Client;
 use reqwest::header::{CACHE_CONTROL, EXPIRES};
+use rustls::crypto::aws_lc_rs::default_provider;
 use rustls::{ClientConfig, RootCertStore};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -158,7 +159,8 @@ impl JWKSPublicKey {
                     root_store.add(cert?)?;
                 }
 
-                let tls_config = ClientConfig::builder()
+                let tls_config = ClientConfig::builder_with_provider(Arc::new(default_provider()))
+                    .with_safe_default_protocol_versions()?
                     .with_root_certificates(root_store)
                     .with_no_client_auth();
 
