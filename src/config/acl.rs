@@ -207,19 +207,9 @@ impl<T> OptionExt<T> for Option<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
-
     use super::*;
     use serde_json::json;
     use serde_yaml;
-
-    fn mk_context(claims: Value) -> SubjectContext {
-        SubjectContext {
-            username: "test-user".into(),
-            claims,
-            ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        }
-    }
 
     #[test]
     fn test_nested_object_match_yaml() {
@@ -238,8 +228,24 @@ kubernetes.io:
             }
         });
 
-        println!("matcher = {:#?}", matcher);
-        println!("claims  = {:#?}", claims);
+        assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_nested_object_match_regex() {
+        let yaml = r#"
+kubernetes.io:
+  pod:
+    name: {regex: ^my.*}
+"#;
+
+        let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
+
+        let claims = json!({
+            "kubernetes.io": {
+                "pod": { "name": "my-pod" }
+            }
+        });
 
         assert!(matcher.matches(&claims));
     }
