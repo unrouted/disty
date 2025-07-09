@@ -107,10 +107,28 @@ impl NumberMatch {
     }
 }
 
-/// Value matcher: supports string, number, and logical operators.
+/// IP matching strategies.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum IpMatch {
+    Exact(IpAddr),
+    Network(IpNetwork),
+}
+
+impl IpMatch {
+    fn matches(&self, ip: &IpAddr) -> bool {
+        match self {
+            IpMatch::Exact(addr) => addr == ip,
+            IpMatch::Network(net) => net.contains(*ip),
+        }
+    }
+}
+
+/// Value matcher: supports string, number, ip, and logical operators.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ValueMatch {
+    Ip(IpMatch),
     String(StringMatch),
     Number(NumberMatch),
     Exists(bool),
@@ -124,6 +142,11 @@ impl ValueMatch {
         match self {
             ValueMatch::String(sm) => value.as_str().map(|s| sm.matches(s)).unwrap_or(false),
             ValueMatch::Number(nm) => nm.matches(value),
+            ValueMatch::Ip(ipm) => value
+                .as_str()
+                .and_then(|s| s.parse::<IpAddr>().ok())
+                .map(|ip| ipm.matches(&ip))
+                .unwrap_or(false),
             ValueMatch::Exists(true) => !value.is_null(),
             ValueMatch::Exists(false) => value.is_null(),
             ValueMatch::Not { not } => !not.matches(value),
@@ -133,7 +156,7 @@ impl ValueMatch {
     }
 }
 
-/// Single claim matcher, can target via pointer or jsonpath
+/// Single claim matcher.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClaimMatch {
@@ -171,7 +194,7 @@ impl ClaimMatch {
     }
 }
 
-/// Claims matcher that combines multiple ClaimMatch with logic
+/// Claims matcher that combines multiple ClaimMatch.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", untagged)]
 pub enum ClaimsMatch {
@@ -208,7 +231,7 @@ pub struct ResourceContext {
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct SubjectMatch {
-    pub network: Option<IpNetwork>,
+    pub network: Option<ValueMatch>,
     pub username: Option<ValueMatch>,
     pub claims: Option<ClaimsMatch>,
 }
@@ -218,7 +241,10 @@ impl SubjectMatch {
         self.username
             .as_ref()
             .is_none_or(|m| m.matches(&Value::String(ctx.username.clone())))
-            && self.network.as_ref().is_none_or(|net| net.contains(ctx.ip))
+            && self
+                .network
+                .as_ref()
+                .is_none_or(|m| m.matches(&Value::String(ctx.ip.to_string())))
             && self
                 .claims
                 .as_ref()
@@ -382,5 +408,38 @@ mod tests {
     fn test_value_match_exists_false() {
         let matcher = ValueMatch::Exists(false);
         assert!(!matcher.matches(&json!("anything")));
+    }
+
+    #[test]
+    fn test_subject_match_network() {
+        let yaml = indoc! {r#"
+            network: "10.0.0.0/24"
+        "#};
+        let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "10.0.0.42".parse().unwrap(),
+        };
+        assert!(matcher.matches(&ctx));
+    }
+
+    #[test]
+    fn test_subject_match_network_or() {
+        let yaml = indoc! {r#"
+            network:
+              or:
+                - "192.168.1.0/24"
+                - "10.0.0.42"
+        "#};
+        let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "10.0.0.42".parse().unwrap(),
+        };
+        assert!(matcher.matches(&ctx));
     }
 }
