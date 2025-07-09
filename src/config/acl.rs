@@ -1,13 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-};
+use std::{collections::HashSet, net::IpAddr};
 
 use ip_network::IpNetwork;
+use jsonpath_rust::JsonPath;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use jsonpath_rust::JsonPathQuery;
 
 /// Represents an action that can be allowed.
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Deserialize, Serialize, PartialOrd, Ord)]
@@ -67,34 +64,89 @@ impl StringMatch {
 #[serde(rename_all = "camelCase", untagged)]
 pub enum ValueMatch {
     Exact(String),
-    Regex { #[serde(with = "serde_regex")] regex: Regex },
-    Gt(String),
-    Lt(String),
+    Regex {
+        #[serde(with = "serde_regex")]
+        regex: Regex,
+    },
+    Gt {
+        gt: serde_json::Number,
+    },
+    Lt {
+        lt: serde_json::Number,
+    },
     Exists(bool),
-    Not(Box<ValueMatch>),
-    And { and: Vec<ValueMatch> },
-    Or  { or: Vec<ValueMatch> },
+    Not {
+        not: Box<ValueMatch>,
+    },
+    And {
+        and: Vec<ValueMatch>,
+    },
+    Or {
+        or: Vec<ValueMatch>,
+    },
 }
 
 impl ValueMatch {
-    pub fn matches(&self, input: &str) -> bool {
+    pub fn matches(&self, value: &Value) -> bool {
+        println!("Must match {self:?} against {value:?}");
+
         match self {
-            ValueMatch::Exact(s) => s == input,
-            ValueMatch::Regex { regex } => regex.is_match(input),
-            ValueMatch::Gt(s) => input > s,
-            ValueMatch::Lt(s) => input < s,
+            ValueMatch::Exact(s) => {
+                if let Some(val_str) = value.as_str() {
+                    val_str == s
+                } else if let Some(val_num) = value.as_i64() {
+                    s.parse::<i64>().map_or(false, |n| n == val_num)
+                } else if let Some(val_num) = value.as_u64() {
+                    s.parse::<u64>().map_or(false, |n| n == val_num)
+                } else if let Some(val_num) = value.as_f64() {
+                    s.parse::<f64>()
+                        .map_or(false, |n| (n - val_num).abs() < f64::EPSILON)
+                } else {
+                    false
+                }
+            }
+            ValueMatch::Regex { regex } => {
+                if let Some(val_str) = value.as_str() {
+                    regex.is_match(val_str)
+                } else {
+                    false
+                }
+            }
+            ValueMatch::Gt { gt } => {
+                if let Some(val_num) = value.as_i64() {
+                    gt.as_i64().map_or(false, |n| n < val_num)
+                } else if let Some(val_num) = value.as_u64() {
+                    gt.as_u64().map_or(false, |n| n < val_num)
+                } else if let Some(val_num) = value.as_f64() {
+                    gt.as_f64().map_or(false, |n| n < val_num)
+                } else {
+                    println!("D");
+                    false
+                }
+            }
+            ValueMatch::Lt { lt } => {
+                if let Some(val_num) = value.as_i64() {
+                    lt.as_i64().map_or(false, |n| n > val_num)
+                } else if let Some(val_num) = value.as_u64() {
+                    lt.as_u64().map_or(false, |n| n > val_num)
+                } else if let Some(val_num) = value.as_f64() {
+                    lt.as_f64().map_or(false, |n| n > val_num)
+                } else {
+                    false
+                }
+            }
             ValueMatch::Exists(true) => true,
             ValueMatch::Exists(false) => false,
-            ValueMatch::Not(inner) => !inner.matches(input),
-            ValueMatch::And { and } => and.iter().all(|m| m.matches(input)),
-            ValueMatch::Or { or } => or.iter().any(|m| m.matches(input)),
+            ValueMatch::Not { not } => !not.matches(value),
+            ValueMatch::And { and } => and.iter().all(|m| m.matches(value)),
+            ValueMatch::Or { or } => or.iter().any(|m| m.matches(value)),
         }
     }
 }
 
 /// Single claim matcher, can target via pointer or jsonpath
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClaimMatch {
     pub pointer: Option<String>,
     pub path: Option<String>,
@@ -106,42 +158,29 @@ pub struct ClaimMatch {
 
 impl ClaimMatch {
     pub fn matches(&self, claims: &Value) -> bool {
+        println!("{self:?}: trying to invoking matches on {claims:?}");
+
         if let Some(ptr) = &self.pointer {
             if let Some(matcher) = &self.match_ {
                 if let Some(target) = claims.pointer(ptr) {
-                    if let Some(s) = Self::value_as_string(target) {
-                        return matcher.matches(&s);
-                    }
+                    return matcher.matches(target);
                 }
             }
             return false;
         }
 
         if let Some(path) = &self.path {
-            let mut finder = JsonPathQuery::from_str(claims, path);
-            if let Ok(values) = finder.find() {
-                if let Some(matcher) = &self.any {
-                    return values.iter()
-                        .filter_map(Self::value_as_string)
-                        .any(|s| matcher.matches(&s));
-                }
-                if let Some(matcher) = &self.all {
-                    let strs: Vec<String> = values.iter().filter_map(Self::value_as_string).collect();
-                    return !strs.is_empty() && strs.iter().all(|s| matcher.matches(s));
-                }
+            let values = claims.query(path).unwrap();
+            if let Some(matcher) = &self.any {
+                return values.iter().any(|s| matcher.matches(&s));
+            }
+            if let Some(matcher) = &self.all {
+                return values.iter().all(|s| matcher.matches(&s));
             }
             return false;
         }
 
         false
-    }
-
-    fn value_as_string(v: &Value) -> Option<String> {
-        match v {
-            Value::String(s) => Some(s.clone()),
-            Value::Number(n) => Some(n.to_string()),
-            _ => None,
-        }
     }
 }
 
@@ -149,15 +188,16 @@ impl ClaimMatch {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", untagged)]
 pub enum ClaimsMatch {
-    Single(ClaimMatch),
-    List(Vec<ClaimMatch>),
     And { and: Vec<ClaimsMatch> },
-    Or  { or: Vec<ClaimsMatch> },
+    Or { or: Vec<ClaimsMatch> },
     Not { not: Box<ClaimsMatch> },
+    List(Vec<ClaimMatch>),
+    Single(ClaimMatch),
 }
 
 impl ClaimsMatch {
     pub fn matches(&self, claims: &Value) -> bool {
+        println!("{self:?}: trying to invoke claim matche on {claims:?}");
         match self {
             ClaimsMatch::Single(c) => c.matches(claims),
             ClaimsMatch::List(list) => list.iter().all(|c| c.matches(claims)),
@@ -249,32 +289,19 @@ impl AclCheck for [AccessRule] {
     }
 }
 
-/// Utility: trait to simplify Option checks
-trait OptionExt<T> {
-    fn is_none_or<F: FnOnce(&T) -> bool>(&self, f: F) -> bool;
-}
-
-impl<T> OptionExt<T> for Option<T> {
-    fn is_none_or<F: FnOnce(&T) -> bool>(&self, f: F) -> bool {
-        match self {
-            None => true,
-            Some(v) => f(v),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
     use serde_json::json;
     use serde_yaml;
 
     #[test]
     fn test_pointer_exact_match() {
-        let yaml = r#"
-pointer: /foo
-match: "bar"
-"#;
+        let yaml = indoc! {r#"
+            pointer: /foo
+            match: "bar"
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
@@ -282,13 +309,13 @@ match: "bar"
 
     #[test]
     fn test_pointer_or_match() {
-        let yaml = r#"
-pointer: /foo
-match:
-  or:
-    - "bar"
-    - "baz"
-"#;
+        let yaml = indoc! {r#"
+            pointer: /foo
+            match:
+              or:
+                - "bar"
+                - "baz"
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "baz"});
         assert!(matcher.matches(&claims));
@@ -296,11 +323,11 @@ match:
 
     #[test]
     fn test_pointer_not_match() {
-        let yaml = r#"
-pointer: /foo
-match:
-  not: "baz"
-"#;
+        let yaml = indoc! {r#"
+            pointer: /foo
+            match:
+              not: "baz"
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
@@ -308,25 +335,25 @@ match:
 
     #[test]
     fn test_pointer_gt_lt_match() {
-        let yaml = r#"
-pointer: /foo
-match:
-  and:
-    - gt: "apple"
-    - lt: "dog"
-"#;
+        let yaml = indoc! {r#"
+            pointer: /foo
+            match:
+              and:
+                - gt: 0
+                - lt: 10
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"foo": "banana"});
+        let claims = json!({"foo": 5});
         assert!(matcher.matches(&claims));
     }
 
     #[test]
     fn test_path_any_regex() {
-        let yaml = r#"
-path: "$.items[*].name"
-any:
-  regex: "^dev.*"
-"#;
+        let yaml = indoc! {r#"
+            path: "$.items[*].name"
+            any:
+              regex: "^dev.*"
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
         assert!(matcher.matches(&claims));
@@ -334,10 +361,10 @@ any:
 
     #[test]
     fn test_path_all_exact() {
-        let yaml = r#"
-path: "$.items[*].env"
-all: "prod"
-"#;
+        let yaml = indoc! {r#"
+            path: "$.items[*].env"
+            all: "prod"
+        "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"items": [{"env": "prod"}, {"env": "prod"}]});
         assert!(matcher.matches(&claims));
@@ -345,19 +372,16 @@ all: "prod"
 
     #[test]
     fn test_claimsmatch_and_or() {
-        let yaml = r#"
-and:
-  - single:
-      pointer: /foo
-      match: "bar"
-  - or:
-      - single:
-          pointer: /baz
-          match: "qux"
-      - single:
-          pointer: /baz
-          match: "quux"
-"#;
+        let yaml = indoc! {r#"
+            and:
+              - pointer: /foo
+                match: "bar"
+              - or:
+                  - pointer: /baz
+                    match: "qux"
+                  - pointer: /baz
+                    match: "quux"
+        "#};
         let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar", "baz": "quux"});
         assert!(matcher.matches(&claims));
@@ -366,12 +390,12 @@ and:
     #[test]
     fn test_value_match_exists_true() {
         let matcher = ValueMatch::Exists(true);
-        assert!(matcher.matches("anything"));
+        assert!(matcher.matches(&json!("anything")));
     }
 
     #[test]
     fn test_value_match_exists_false() {
         let matcher = ValueMatch::Exists(false);
-        assert!(!matcher.matches("anything"));
+        assert!(!matcher.matches(&json!("anything")));
     }
 }

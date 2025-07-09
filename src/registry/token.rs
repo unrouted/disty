@@ -579,7 +579,8 @@ mod test {
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
                         claims: Some(serde_json::from_value(json!({
-                            "project_path": "my-group/my-project",
+                            "pointer": "/project_path",
+                            "match": "my-group/my-project",
                         }))?),
                         ..Default::default()
                     }),
@@ -679,7 +680,8 @@ mod test {
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
                         claims: Some(serde_json::from_value(json!({
-                            "project_path": "my-group/bobs-project",
+                            "pointer": "/project_path",
+                            "match": "my-group/bobs-project",
                         }))?),
                         ..Default::default()
                     }),
