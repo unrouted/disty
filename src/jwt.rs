@@ -168,7 +168,7 @@ impl JWKSPublicKey {
             }
         };
 
-        Ok(client.build().context("Failed to build HTTP client")?)
+        client.build().context("Failed to build HTTP client")
     }
 
     async fn fetch_jwks(&self) -> Result<(JwkDocument, Instant)> {

@@ -84,19 +84,17 @@ pub enum ValueMatch {
 
 impl ValueMatch {
     pub fn matches(&self, value: &Value) -> bool {
-        println!("Must match {self:?} against {value:?}");
-
         match self {
             ValueMatch::Exact(s) => {
                 if let Some(val_str) = value.as_str() {
                     val_str == s
                 } else if let Some(val_num) = value.as_i64() {
-                    s.parse::<i64>().map_or(false, |n| n == val_num)
+                    s.parse::<i64>() == Ok(val_num)
                 } else if let Some(val_num) = value.as_u64() {
-                    s.parse::<u64>().map_or(false, |n| n == val_num)
+                    s.parse::<u64>() == Ok(val_num)
                 } else if let Some(val_num) = value.as_f64() {
                     s.parse::<f64>()
-                        .map_or(false, |n| (n - val_num).abs() < f64::EPSILON)
+                        .is_ok_and(|n| (n - val_num).abs() < f64::EPSILON)
                 } else {
                     false
                 }
@@ -110,23 +108,22 @@ impl ValueMatch {
             }
             ValueMatch::Gt { gt } => {
                 if let Some(val_num) = value.as_i64() {
-                    gt.as_i64().map_or(false, |n| n < val_num)
+                    gt.as_i64().is_some_and(|n| n < val_num)
                 } else if let Some(val_num) = value.as_u64() {
-                    gt.as_u64().map_or(false, |n| n < val_num)
+                    gt.as_u64().is_some_and(|n| n < val_num)
                 } else if let Some(val_num) = value.as_f64() {
-                    gt.as_f64().map_or(false, |n| n < val_num)
+                    gt.as_f64().is_some_and(|n| n < val_num)
                 } else {
-                    println!("D");
                     false
                 }
             }
             ValueMatch::Lt { lt } => {
                 if let Some(val_num) = value.as_i64() {
-                    lt.as_i64().map_or(false, |n| n > val_num)
+                    lt.as_i64().is_some_and(|n| n > val_num)
                 } else if let Some(val_num) = value.as_u64() {
-                    lt.as_u64().map_or(false, |n| n > val_num)
+                    lt.as_u64().is_some_and(|n| n > val_num)
                 } else if let Some(val_num) = value.as_f64() {
-                    lt.as_f64().map_or(false, |n| n > val_num)
+                    lt.as_f64().is_some_and(|n| n > val_num)
                 } else {
                     false
                 }
@@ -154,8 +151,6 @@ pub struct ClaimMatch {
 
 impl ClaimMatch {
     pub fn matches(&self, claims: &Value) -> bool {
-        println!("{self:?}: trying to invoking matches on {claims:?}");
-
         if let Some(ptr) = &self.pointer {
             if let Some(matcher) = &self.match_ {
                 if let Some(target) = claims.pointer(ptr) {
@@ -168,10 +163,10 @@ impl ClaimMatch {
         if let Some(path) = &self.path {
             let values = claims.query(path).unwrap();
             if let Some(matcher) = &self.any {
-                return values.iter().any(|s| matcher.matches(&s));
+                return values.iter().any(|s| matcher.matches(s));
             }
             if let Some(matcher) = &self.all {
-                return values.iter().all(|s| matcher.matches(&s));
+                return values.iter().all(|s| matcher.matches(s));
             }
             return false;
         }
@@ -193,7 +188,6 @@ pub enum ClaimsMatch {
 
 impl ClaimsMatch {
     pub fn matches(&self, claims: &Value) -> bool {
-        println!("{self:?}: trying to invoke claim matche on {claims:?}");
         match self {
             ClaimsMatch::Single(c) => c.matches(claims),
             ClaimsMatch::List(list) => list.iter().all(|c| c.matches(claims)),
@@ -290,7 +284,6 @@ mod tests {
     use super::*;
     use indoc::indoc;
     use serde_json::json;
-    use serde_yaml;
 
     #[test]
     fn test_pointer_exact_match() {
