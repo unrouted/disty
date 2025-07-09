@@ -189,7 +189,7 @@ mod test {
     use jwt_simple::prelude::*;
     use serde_json::Value;
     use serde_json::json;
-    use std::net::SocketAddr;
+    use std::{collections::HashMap, net::SocketAddr};
     use test_log::test;
 
     use super::*;
