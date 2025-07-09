@@ -37,7 +37,7 @@ impl std::fmt::Display for Action {
 
 /// String matching strategies.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged, rename_all_fields = "camelCase")]
+#[serde(untagged)]
 pub enum StringMatch {
     Exact(String),
     Regex {
@@ -55,81 +55,77 @@ impl StringMatch {
     }
 }
 
-/// Value matcher used in ClaimMatch
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", untagged)]
+/// Number matching strategies.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum NumberMatch {
+    Exact(serde_json::Number),
+    Gt { gt: serde_json::Number },
+    Lt { lt: serde_json::Number },
+}
+
+impl NumberMatch {
+    fn matches(&self, value: &Value) -> bool {
+        let val = if let Some(n) = value.as_i64() {
+            serde_json::Number::from(n)
+        } else if let Some(n) = value.as_u64() {
+            serde_json::Number::from(n)
+        } else if let Some(f) = value.as_f64() {
+            return match self {
+                NumberMatch::Exact(num) => num
+                    .as_f64()
+                    .map(|v| (v - f).abs() < f64::EPSILON)
+                    .unwrap_or(false),
+                NumberMatch::Gt { gt } => gt.as_f64().map(|v| f > v).unwrap_or(false),
+                NumberMatch::Lt { lt } => lt.as_f64().map(|v| f < v).unwrap_or(false),
+            };
+        } else {
+            return false;
+        };
+
+        match self {
+            NumberMatch::Exact(num) => num == &val,
+            NumberMatch::Gt { gt } => {
+                if let (Some(gt_i), Some(val_i)) = (gt.as_i64(), val.as_i64()) {
+                    val_i > gt_i
+                } else if let (Some(gt_u), Some(val_u)) = (gt.as_u64(), val.as_u64()) {
+                    val_u > gt_u
+                } else {
+                    false
+                }
+            }
+            NumberMatch::Lt { lt } => {
+                if let (Some(lt_i), Some(val_i)) = (lt.as_i64(), val.as_i64()) {
+                    val_i < lt_i
+                } else if let (Some(lt_u), Some(val_u)) = (lt.as_u64(), val.as_u64()) {
+                    val_u < lt_u
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+/// Value matcher: supports string, number, and logical operators.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum ValueMatch {
-    Exact(String),
-    Regex {
-        #[serde(with = "serde_regex")]
-        regex: Regex,
-    },
-    Gt {
-        gt: serde_json::Number,
-    },
-    Lt {
-        lt: serde_json::Number,
-    },
+    String(StringMatch),
+    Number(NumberMatch),
     Exists(bool),
-    Not {
-        not: Box<ValueMatch>,
-    },
-    And {
-        and: Vec<ValueMatch>,
-    },
-    Or {
-        or: Vec<ValueMatch>,
-    },
+    Not { not: Box<ValueMatch> },
+    And { and: Vec<ValueMatch> },
+    Or { or: Vec<ValueMatch> },
 }
 
 impl ValueMatch {
     pub fn matches(&self, value: &Value) -> bool {
         match self {
-            ValueMatch::Exact(s) => {
-                if let Some(val_str) = value.as_str() {
-                    val_str == s
-                } else if let Some(val_num) = value.as_i64() {
-                    s.parse::<i64>() == Ok(val_num)
-                } else if let Some(val_num) = value.as_u64() {
-                    s.parse::<u64>() == Ok(val_num)
-                } else if let Some(val_num) = value.as_f64() {
-                    s.parse::<f64>()
-                        .is_ok_and(|n| (n - val_num).abs() < f64::EPSILON)
-                } else {
-                    false
-                }
-            }
-            ValueMatch::Regex { regex } => {
-                if let Some(val_str) = value.as_str() {
-                    regex.is_match(val_str)
-                } else {
-                    false
-                }
-            }
-            ValueMatch::Gt { gt } => {
-                if let Some(val_num) = value.as_i64() {
-                    gt.as_i64().is_some_and(|n| n < val_num)
-                } else if let Some(val_num) = value.as_u64() {
-                    gt.as_u64().is_some_and(|n| n < val_num)
-                } else if let Some(val_num) = value.as_f64() {
-                    gt.as_f64().is_some_and(|n| n < val_num)
-                } else {
-                    false
-                }
-            }
-            ValueMatch::Lt { lt } => {
-                if let Some(val_num) = value.as_i64() {
-                    lt.as_i64().is_some_and(|n| n > val_num)
-                } else if let Some(val_num) = value.as_u64() {
-                    lt.as_u64().is_some_and(|n| n > val_num)
-                } else if let Some(val_num) = value.as_f64() {
-                    lt.as_f64().is_some_and(|n| n > val_num)
-                } else {
-                    false
-                }
-            }
-            ValueMatch::Exists(true) => true,
-            ValueMatch::Exists(false) => false,
+            ValueMatch::String(sm) => value.as_str().map(|s| sm.matches(s)).unwrap_or(false),
+            ValueMatch::Number(nm) => nm.matches(value),
+            ValueMatch::Exists(true) => !value.is_null(),
+            ValueMatch::Exists(false) => value.is_null(),
             ValueMatch::Not { not } => !not.matches(value),
             ValueMatch::And { and } => and.iter().all(|m| m.matches(value)),
             ValueMatch::Or { or } => or.iter().any(|m| m.matches(value)),
