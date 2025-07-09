@@ -426,6 +426,29 @@ mod tests {
     }
 
     #[test]
+    fn test_subject_match_network_not() {
+        let yaml = indoc! {r#"
+            network:
+              not: "10.0.0.0/24"
+        "#};
+        let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "10.0.0.42".parse().unwrap(),
+        };
+        assert!(!matcher.matches(&ctx));
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "1.1.1.1".parse().unwrap(),
+        };
+        assert!(matcher.matches(&ctx));
+    }
+
+    #[test]
     fn test_subject_match_network_or() {
         let yaml = indoc! {r#"
             network:
