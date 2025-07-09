@@ -73,8 +73,31 @@ authentication:
   acls:
     - subject:
         claims:
-          environment: production
-          namespace_path: { regex: ^mynamespace/.*$ }
+          - pointer: /environment
+            match: production
+          - pointer: /namespace_path
+            match: { regex: ^mynamespace/.*$ }
+      resource:
+        repository: { regex: ^mynamespace/.*$ }
+      actions: [push, pull]
+      comment: Product builds in mynamespace can do what they like to mynamespace
+```
+
+You can combine acls use `or` and `and`:
+
+
+```yaml
+authentication:
+  acls:
+    - subject:
+        claims:
+          - or:
+              - pointer: /environment
+                match: production
+              - pointer: /environment
+                match: dev
+          - pointer: /namespace_path
+            match: { regex: ^mynamespace/.*$ }
       resource:
         repository: { regex: ^mynamespace/.*$ }
       actions: [push, pull]
