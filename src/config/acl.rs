@@ -209,7 +209,7 @@ pub struct ResourceContext {
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct SubjectMatch {
     pub network: Option<IpNetwork>,
-    pub username: Option<StringMatch>,
+    pub username: Option<ValueMatch>,
     pub claims: Option<ClaimsMatch>,
 }
 
@@ -217,7 +217,7 @@ impl SubjectMatch {
     fn matches(&self, ctx: &SubjectContext) -> bool {
         self.username
             .as_ref()
-            .is_none_or(|m| m.matches(&ctx.username))
+            .is_none_or(|m| m.matches(&Value::String(ctx.username.clone())))
             && self.network.as_ref().is_none_or(|net| net.contains(ctx.ip))
             && self
                 .claims
@@ -228,14 +228,14 @@ impl SubjectMatch {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ResourceMatch {
-    pub repository: Option<StringMatch>,
+    pub repository: Option<ValueMatch>,
 }
 
 impl ResourceMatch {
     fn matches(&self, ctx: &ResourceContext) -> bool {
         self.repository
             .as_ref()
-            .is_none_or(|m| m.matches(&ctx.repository))
+            .is_none_or(|m| m.matches(&Value::String(ctx.repository.clone())))
     }
 }
 

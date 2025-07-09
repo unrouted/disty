@@ -176,7 +176,7 @@ mod test {
     use crate::{
         config::{
             User,
-            acl::{AccessRule, StringMatch, SubjectMatch},
+            acl::{AccessRule, SubjectMatch},
         },
         jwt::JWKSPublicKey,
         tests::{FixtureBuilder, RegistryFixture},
@@ -332,7 +332,7 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        username: Some(StringMatch::Exact("username".into())),
+                        username: Some(serde_json::from_value(json!("username")).unwrap()),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
@@ -406,7 +406,7 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        username: Some(StringMatch::Exact("bob".into())),
+                        username: Some(serde_json::from_value(json!("bob")).unwrap()),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
