@@ -251,14 +251,14 @@ pub struct SubjectMatch {
 
 impl SubjectMatch {
     pub fn matches(&self, ctx: &SubjectContext) -> bool {
-        self.username.as_ref().map_or(true, |m| {
-            m.matches(Some(&Value::String(ctx.username.clone())))
-        }) && self.network.as_ref().map_or(true, |m| {
-            m.matches(Some(&Value::String(ctx.ip.to_string())))
-        }) && self
-            .claims
+        self.username
             .as_ref()
-            .map_or(true, |m| m.matches(&ctx.claims))
+            .is_none_or(|m| m.matches(Some(&Value::String(ctx.username.clone()))))
+            && self
+                .network
+                .as_ref()
+                .is_none_or(|m| m.matches(Some(&Value::String(ctx.ip.to_string()))))
+            && self.claims.as_ref().is_none_or(|m| m.matches(&ctx.claims))
     }
 }
 
