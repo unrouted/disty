@@ -54,20 +54,17 @@ pub enum Matcher<T> {
 }
 
 impl<T: MatchLeaf> Matcher<T> {
-    pub fn matches(&self, value: &Value) -> bool {
+    pub fn matches(&self, opt_value: Option<&Value>) -> bool {
         match self {
-            Matcher::Single(leaf) => leaf.matches(value),
+            Matcher::Single(leaf) => {
+                opt_value.map(|v| leaf.matches(v)).unwrap_or(false)
+            }
             Matcher::Exists { exists } => {
-                let is_missing = value.is_null() || value == &Value::Null;
-                if *exists {
-                    !is_missing
-                } else {
-                    is_missing
-                }
-            },
-            Matcher::And { and } => and.iter().all(|m| m.matches(value)),
-            Matcher::Or { or } => or.iter().any(|m| m.matches(value)),
-            Matcher::Not { not } => !not.matches(value),
+                opt_value.is_some() == *exists
+            }
+            Matcher::And { and } => and.iter().all(|m| m.matches(opt_value)),
+            Matcher::Or { or } => or.iter().any(|m| m.matches(opt_value)),
+            Matcher::Not { not } => !not.matches(opt_value),
         }
     }
 }
@@ -193,21 +190,32 @@ pub struct ClaimMatch {
 impl ClaimMatch {
     pub fn matches(&self, claims: &Value) -> bool {
         if let Some(ptr) = &self.pointer {
+            let target = claims.pointer(ptr);
+            let opt_value = target;
             if let Some(matcher) = &self.match_ {
-                if let Some(target) = claims.pointer(ptr) {
-                    return matcher.matches(target);
-                }
+                return matcher.matches(opt_value);
             }
             return false;
         }
 
         if let Some(path) = &self.path {
-            let values = claims.query(path).unwrap();
+            let values = claims.query(path).unwrap_or_else(|_| vec![]);
+            if values.is_empty() {
+                // run matcher once with None
+                if let Some(matcher) = &self.any {
+                    return matcher.matches(None);
+                }
+                if let Some(matcher) = &self.all {
+                    return matcher.matches(None);
+                }
+                return false;
+            }
+
             if let Some(matcher) = &self.any {
-                return values.iter().any(|v| matcher.matches(v));
+                return values.iter().any(|v| matcher.matches(Some(v)));
             }
             if let Some(matcher) = &self.all {
-                return values.iter().all(|v| matcher.matches(v));
+                return values.iter().all(|v| matcher.matches(Some(v)));
             }
             return false;
         }
@@ -249,11 +257,11 @@ impl SubjectMatch {
     pub fn matches(&self, ctx: &SubjectContext) -> bool {
         self.username
             .as_ref()
-            .map_or(true, |m| m.matches(&Value::String(ctx.username.clone())))
+            .map_or(true, |m| m.matches(Some(&Value::String(ctx.username.clone()))))
             && self
                 .network
                 .as_ref()
-                .map_or(true, |m| m.matches(&Value::String(ctx.ip.to_string())))
+                .map_or(true, |m| m.matches(Some(&Value::String(ctx.ip.to_string()))))
             && self
                 .claims
                 .as_ref()
@@ -282,7 +290,7 @@ impl ResourceMatch {
     fn matches(&self, ctx: &ResourceContext) -> bool {
         self.repository
             .as_ref()
-            .is_none_or(|m| m.matches(&Value::String(ctx.repository.clone())))
+            .is_none_or(|m| m.matches(Some(&Value::String(ctx.repository.clone()))))
     }
 }
 
@@ -497,6 +505,31 @@ mod tests {
             username: "alice".into(),
             claims: json!({}),
             ip: "10.0.0.42".parse().unwrap(),
+        };
+        assert!(matcher.matches(&ctx));
+    }
+
+        #[test]
+    fn test_subject_match_network_and_not() {
+        let yaml = indoc! {r#"
+            network:
+              and:
+                - "192.168.1.0/24"
+                - not: "192.168.1.1"
+        "#};
+        let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "192.168.1.1".parse().unwrap(),
+        };
+        assert!(!matcher.matches(&ctx));
+
+        let ctx = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "192.168.1.2".parse().unwrap(),
         };
         assert!(matcher.matches(&ctx));
     }
