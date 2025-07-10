@@ -35,7 +35,47 @@ impl std::fmt::Display for Action {
     }
 }
 
-/// String matching strategies.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ValueMatcher {
+    Ip(IpMatch),
+    String(StringMatch),
+    Number(NumberMatch),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Matcher<T> {
+    Single(T),
+    Exists { exists: bool },
+    And { and: Vec<Matcher<T>> },
+    Or { or: Vec<Matcher<T>> },
+    Not { not: Box<Matcher<T>> },
+}
+
+impl<T: MatchLeaf> Matcher<T> {
+    pub fn matches(&self, value: &Value) -> bool {
+        match self {
+            Matcher::Single(leaf) => leaf.matches(value),
+            Matcher::Exists { exists } => {
+                let is_missing = value.is_null() || value == &Value::Null;
+                if *exists {
+                    !is_missing
+                } else {
+                    is_missing
+                }
+            },
+            Matcher::And { and } => and.iter().all(|m| m.matches(value)),
+            Matcher::Or { or } => or.iter().any(|m| m.matches(value)),
+            Matcher::Not { not } => !not.matches(value),
+        }
+    }
+}
+
+pub trait MatchLeaf {
+    fn matches(&self, value: &Value) -> bool;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StringMatch {
@@ -46,16 +86,18 @@ pub enum StringMatch {
     },
 }
 
-impl StringMatch {
-    fn matches(&self, input: &str) -> bool {
-        match self {
-            StringMatch::Exact(s) => s == input,
-            StringMatch::Regex { regex } => regex.is_match(input),
-        }
+impl MatchLeaf for StringMatch {
+    fn matches(&self, value: &Value) -> bool {
+        value
+            .as_str()
+            .map(|s| match self {
+                StringMatch::Exact(exact) => exact == s,
+                StringMatch::Regex { regex } => regex.is_match(s),
+            })
+            .unwrap_or(false)
     }
 }
 
-/// Number matching strategies.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberMatch {
@@ -64,7 +106,7 @@ pub enum NumberMatch {
     Lt { lt: serde_json::Number },
 }
 
-impl NumberMatch {
+impl MatchLeaf for NumberMatch {
     fn matches(&self, value: &Value) -> bool {
         let val = if let Some(n) = value.as_i64() {
             serde_json::Number::from(n)
@@ -107,7 +149,6 @@ impl NumberMatch {
     }
 }
 
-/// IP matching strategies.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum IpMatch {
@@ -115,57 +156,38 @@ pub enum IpMatch {
     Network(IpNetwork),
 }
 
-impl IpMatch {
-    fn matches(&self, ip: &IpAddr) -> bool {
+impl MatchLeaf for IpMatch {
+    fn matches(&self, value: &Value) -> bool {
+        value
+            .as_str()
+            .and_then(|s| s.parse::<IpAddr>().ok())
+            .map(|ip| match self {
+                IpMatch::Exact(addr) => addr == &ip,
+                IpMatch::Network(net) => net.contains(ip),
+            })
+            .unwrap_or(false)
+    }
+}
+
+impl MatchLeaf for ValueMatcher {
+    fn matches(&self, value: &Value) -> bool {
         match self {
-            IpMatch::Exact(addr) => addr == ip,
-            IpMatch::Network(net) => net.contains(*ip),
+            ValueMatcher::String(sm) => sm.matches(value),
+            ValueMatcher::Number(nm) => nm.matches(value),
+            ValueMatcher::Ip(ipm) => ipm.matches(value),
         }
     }
 }
 
-/// Value matcher: supports string, number, ip, and logical operators.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ValueMatch {
-    Ip(IpMatch),
-    String(StringMatch),
-    Number(NumberMatch),
-    Exists(bool),
-    Not { not: Box<ValueMatch> },
-    And { and: Vec<ValueMatch> },
-    Or { or: Vec<ValueMatch> },
-}
-
-impl ValueMatch {
-    pub fn matches(&self, value: &Value) -> bool {
-        match self {
-            ValueMatch::String(sm) => value.as_str().map(|s| sm.matches(s)).unwrap_or(false),
-            ValueMatch::Number(nm) => nm.matches(value),
-            ValueMatch::Ip(ipm) => value
-                .as_str()
-                .and_then(|s| s.parse::<IpAddr>().ok())
-                .map(|ip| ipm.matches(&ip))
-                .unwrap_or(false),
-            ValueMatch::Exists(true) => !value.is_null(),
-            ValueMatch::Exists(false) => value.is_null(),
-            ValueMatch::Not { not } => !not.matches(value),
-            ValueMatch::And { and } => and.iter().all(|m| m.matches(value)),
-            ValueMatch::Or { or } => or.iter().any(|m| m.matches(value)),
-        }
-    }
-}
-
-/// Single claim matcher.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClaimMatch {
     pub pointer: Option<String>,
     pub path: Option<String>,
-    pub any: Option<ValueMatch>,
-    pub all: Option<ValueMatch>,
+    pub any: Option<Matcher<ValueMatcher>>,
+    pub all: Option<Matcher<ValueMatcher>>,
     #[serde(rename = "match")]
-    pub match_: Option<ValueMatch>,
+    pub match_: Option<Matcher<ValueMatcher>>,
 }
 
 impl ClaimMatch {
@@ -182,10 +204,10 @@ impl ClaimMatch {
         if let Some(path) = &self.path {
             let values = claims.query(path).unwrap();
             if let Some(matcher) = &self.any {
-                return values.iter().any(|s| matcher.matches(s));
+                return values.iter().any(|v| matcher.matches(v));
             }
             if let Some(matcher) = &self.all {
-                return values.iter().all(|s| matcher.matches(s));
+                return values.iter().all(|v| matcher.matches(v));
             }
             return false;
         }
@@ -194,7 +216,6 @@ impl ClaimMatch {
     }
 }
 
-/// Claims matcher that combines multiple ClaimMatch.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", untagged)]
 pub enum ClaimsMatch {
@@ -217,6 +238,29 @@ impl ClaimsMatch {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct SubjectMatch {
+    pub username: Option<Matcher<StringMatch>>,
+    pub network: Option<Matcher<IpMatch>>,
+    pub claims: Option<ClaimsMatch>,
+}
+
+impl SubjectMatch {
+    pub fn matches(&self, ctx: &SubjectContext) -> bool {
+        self.username
+            .as_ref()
+            .map_or(true, |m| m.matches(&Value::String(ctx.username.clone())))
+            && self
+                .network
+                .as_ref()
+                .map_or(true, |m| m.matches(&Value::String(ctx.ip.to_string())))
+            && self
+                .claims
+                .as_ref()
+                .map_or(true, |m| m.matches(&ctx.claims))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SubjectContext {
     pub username: String,
@@ -229,32 +273,9 @@ pub struct ResourceContext {
     pub repository: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-pub struct SubjectMatch {
-    pub network: Option<ValueMatch>,
-    pub username: Option<ValueMatch>,
-    pub claims: Option<ClaimsMatch>,
-}
-
-impl SubjectMatch {
-    fn matches(&self, ctx: &SubjectContext) -> bool {
-        self.username
-            .as_ref()
-            .is_none_or(|m| m.matches(&Value::String(ctx.username.clone())))
-            && self
-                .network
-                .as_ref()
-                .is_none_or(|m| m.matches(&Value::String(ctx.ip.to_string())))
-            && self
-                .claims
-                .as_ref()
-                .is_none_or(|matcher| matcher.matches(&ctx.claims))
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ResourceMatch {
-    pub repository: Option<ValueMatch>,
+    pub repository: Option<Matcher<StringMatch>>,
 }
 
 impl ResourceMatch {
@@ -400,14 +421,28 @@ mod tests {
 
     #[test]
     fn test_value_match_exists_true() {
-        let matcher = ValueMatch::Exists(true);
-        assert!(matcher.matches(&json!("anything")));
+        let yaml = indoc! {r#"
+            and:
+              - pointer: /foo
+                match:
+                  exists: true
+        "#};
+        let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"foo": "bar", "baz": "quux"});
+        assert!(matcher.matches(&claims));
     }
 
     #[test]
     fn test_value_match_exists_false() {
-        let matcher = ValueMatch::Exists(false);
-        assert!(!matcher.matches(&json!("anything")));
+        let yaml = indoc! {r#"
+            and:
+              - pointer: /bar
+                match:
+                  exists: false
+        "#};
+        let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"foo": "bar", "baz": "quux"});
+        assert!(matcher.matches(&claims));
     }
 
     #[test]
