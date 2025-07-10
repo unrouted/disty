@@ -56,12 +56,8 @@ pub enum Matcher<T> {
 impl<T: MatchLeaf> Matcher<T> {
     pub fn matches(&self, opt_value: Option<&Value>) -> bool {
         match self {
-            Matcher::Single(leaf) => {
-                opt_value.map(|v| leaf.matches(v)).unwrap_or(false)
-            }
-            Matcher::Exists { exists } => {
-                opt_value.is_some() == *exists
-            }
+            Matcher::Single(leaf) => opt_value.map(|v| leaf.matches(v)).unwrap_or(false),
+            Matcher::Exists { exists } => opt_value.is_some() == *exists,
             Matcher::And { and } => and.iter().all(|m| m.matches(opt_value)),
             Matcher::Or { or } => or.iter().any(|m| m.matches(opt_value)),
             Matcher::Not { not } => !not.matches(opt_value),
@@ -255,17 +251,14 @@ pub struct SubjectMatch {
 
 impl SubjectMatch {
     pub fn matches(&self, ctx: &SubjectContext) -> bool {
-        self.username
+        self.username.as_ref().map_or(true, |m| {
+            m.matches(Some(&Value::String(ctx.username.clone())))
+        }) && self.network.as_ref().map_or(true, |m| {
+            m.matches(Some(&Value::String(ctx.ip.to_string())))
+        }) && self
+            .claims
             .as_ref()
-            .map_or(true, |m| m.matches(Some(&Value::String(ctx.username.clone()))))
-            && self
-                .network
-                .as_ref()
-                .map_or(true, |m| m.matches(Some(&Value::String(ctx.ip.to_string()))))
-            && self
-                .claims
-                .as_ref()
-                .map_or(true, |m| m.matches(&ctx.claims))
+            .map_or(true, |m| m.matches(&ctx.claims))
     }
 }
 
@@ -509,7 +502,7 @@ mod tests {
         assert!(matcher.matches(&ctx));
     }
 
-        #[test]
+    #[test]
     fn test_subject_match_network_and_not() {
         let yaml = indoc! {r#"
             network:
