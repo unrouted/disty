@@ -243,6 +243,7 @@ impl ClaimsMatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SubjectMatch {
     pub username: Option<Matcher<StringMatch>>,
     pub network: Option<Matcher<IpMatch>>,
@@ -328,6 +329,36 @@ mod tests {
     use super::*;
     use indoc::indoc;
     use serde_json::json;
+
+    #[test]
+    fn test_validate_network() {
+        // can't use integer/float ops on a network field
+        let yaml = indoc! {r#"
+            network: {gt: 4}
+        "#};
+        let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
+        assert!(matcher.is_err());
+    }
+
+    #[test]
+    fn test_validate_network_2() {
+        // invalid keys should be rejected
+        let yaml = indoc! {r#"
+            netork: 192.168.1.1
+        "#};
+        let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
+        assert!(matcher.is_err());
+    }
+
+    #[test]
+    fn test_validate_username() {
+        // can't use integer/float ops on a string field
+        let yaml = indoc! {r#"
+            username: {gt: 4}
+        "#};
+        let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
+        assert!(matcher.is_err());
+    }
 
     #[test]
     fn test_pointer_exact_match() {
@@ -444,6 +475,65 @@ mod tests {
         let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar", "baz": "quux"});
         assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_path_exists_true() {
+        let yaml = indoc! {r#"
+            path: "$.items[*].name"
+            any:
+              exists: true
+        "#};
+        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_path_exists_false() {
+        let yaml = indoc! {r#"
+            path: "$.item[*].name"
+            any:
+              exists: false
+        "#};
+        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_path_exists_true_all() {
+        let yaml = indoc! {r#"
+            path: "$.items[*].name"
+            all:
+              exists: true
+        "#};
+        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_path_exists_false_all() {
+        let yaml = indoc! {r#"
+            path: "$.item[*].name"
+            all:
+              exists: false
+        "#};
+        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        assert!(matcher.matches(&claims));
+    }
+
+    #[test]
+    fn test_all_validates() {
+        let yaml = indoc! {r#"
+            path: "$.item[*].name"
+            alll:
+              exists: false
+        "#};
+        let matcher: Result<ClaimMatch, _> = serde_yaml::from_str(yaml);
+        assert!(matcher.is_err());
     }
 
     #[test]
