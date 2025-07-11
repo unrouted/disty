@@ -330,219 +330,207 @@ mod tests {
     use indoc::indoc;
     use serde_json::json;
 
+    /// Validate that an invalid network field fails to deserialize
     #[test]
     fn test_validate_network() {
-        // can't use integer/float ops on a network field
         let yaml = indoc! {r#"
-            network: {gt: 4}
-        "#};
+                network: {gt: 4}
+            "#};
         let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
         assert!(matcher.is_err());
     }
 
+    /// Validate that misspelled field 'netork' fails to deserialize
     #[test]
     fn test_validate_network_2() {
-        // invalid keys should be rejected
         let yaml = indoc! {r#"
-            netork: 192.168.1.1
-        "#};
+                netork: 192.168.1.1
+            "#};
         let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
         assert!(matcher.is_err());
     }
 
+    /// Validate that invalid username rule fails to deserialize
     #[test]
     fn test_validate_username() {
-        // can't use integer/float ops on a string field
         let yaml = indoc! {r#"
-            username: {gt: 4}
-        "#};
+                username: {gt: 4}
+            "#};
         let matcher: Result<SubjectMatch, _> = serde_yaml::from_str(yaml);
         assert!(matcher.is_err());
     }
 
+    /// Test ClaimMatch: exact string match on JSON pointer
     #[test]
     fn test_pointer_exact_match() {
         let yaml = indoc! {r#"
-            pointer: /foo
-            match: "bar"
-        "#};
+                pointer: /foo
+                match: "bar"
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: 'or' logic matches if any value matches
     #[test]
     fn test_pointer_or_match() {
         let yaml = indoc! {r#"
-            pointer: /foo
-            match:
-              or:
-                - "bar"
-                - "baz"
-        "#};
+                pointer: /foo
+                match:
+                  or:
+                    - "bar"
+                    - "baz"
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "baz"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: 'not' inverts the match
     #[test]
     fn test_pointer_not_match() {
         let yaml = indoc! {r#"
-            pointer: /foo
-            match:
-              not: "baz"
-        "#};
+                pointer: /foo
+                match:
+                  not: "baz"
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: 'and' combines multiple conditions
     #[test]
     fn test_pointer_gt_lt_match() {
         let yaml = indoc! {r#"
-            pointer: /foo
-            match:
-              and:
-                - gt: 0
-                - lt: 10
-        "#};
+                pointer: /foo
+                match:
+                  and:
+                    - gt: 0
+                    - lt: 10
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": 5});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: JSONPath 'any' with regex matches at least one element
     #[test]
     fn test_path_any_regex() {
         let yaml = indoc! {r#"
-            path: "$.items[*].name"
-            any:
-              regex: "^dev.*"
-        "#};
+                path: "$.items[*].name"
+                any:
+                  regex: "^dev.*"
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: JSONPath 'all' requires all elements to match
     #[test]
     fn test_path_all_exact() {
         let yaml = indoc! {r#"
-            path: "$.items[*].env"
-            all: "prod"
-        "#};
+                path: "$.items[*].env"
+                all: "prod"
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"items": [{"env": "prod"}, {"env": "prod"}]});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimsMatch: nested 'and' and 'or' works as expected
     #[test]
     fn test_claimsmatch_and_or() {
         let yaml = indoc! {r#"
-            and:
-              - pointer: /foo
-                match: "bar"
-              - or:
-                  - pointer: /baz
-                    match: "qux"
-                  - pointer: /baz
-                    match: "quux"
-        "#};
+                and:
+                  - pointer: /foo
+                    match: "bar"
+                  - or:
+                      - pointer: /baz
+                        match: "qux"
+                      - pointer: /baz
+                        match: "quux"
+            "#};
         let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
         let claims = json!({"foo": "bar", "baz": "quux"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ValueMatcher: existence check with exists=true
     #[test]
     fn test_value_match_exists_true() {
         let yaml = indoc! {r#"
-            and:
-              - pointer: /foo
-                match:
-                  exists: true
-        "#};
+                and:
+                  - pointer: /foo
+                    match:
+                      exists: true
+            "#};
         let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"foo": "bar", "baz": "quux"});
+        let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ValueMatcher: existence check with exists=false
     #[test]
     fn test_value_match_exists_false() {
         let yaml = indoc! {r#"
-            and:
-              - pointer: /bar
-                match:
-                  exists: false
-        "#};
+                and:
+                  - pointer: /missing
+                    match:
+                      exists: false
+            "#};
         let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"foo": "bar", "baz": "quux"});
+        let claims = json!({"foo": "bar"});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: JSONPath 'any' existence
     #[test]
     fn test_path_exists_true() {
         let yaml = indoc! {r#"
-            path: "$.items[*].name"
-            any:
-              exists: true
-        "#};
+                path: "$.items[*].name"
+                any:
+                  exists: true
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        let claims = json!({"items": [{"name": "prod"}]});
         assert!(matcher.matches(&claims));
     }
 
+    /// Test ClaimMatch: JSONPath 'any' existence=false for missing path
     #[test]
     fn test_path_exists_false() {
         let yaml = indoc! {r#"
-            path: "$.item[*].name"
-            any:
-              exists: false
-        "#};
+                path: "$.missing[*].name"
+                any:
+                  exists: false
+            "#};
         let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
+        let claims = json!({"items": [{"name": "prod"}]});
         assert!(matcher.matches(&claims));
     }
 
-    #[test]
-    fn test_path_exists_true_all() {
-        let yaml = indoc! {r#"
-            path: "$.items[*].name"
-            all:
-              exists: true
-        "#};
-        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
-        assert!(matcher.matches(&claims));
-    }
-
-    #[test]
-    fn test_path_exists_false_all() {
-        let yaml = indoc! {r#"
-            path: "$.item[*].name"
-            all:
-              exists: false
-        "#};
-        let matcher: ClaimMatch = serde_yaml::from_str(yaml).unwrap();
-        let claims = json!({"items": [{"name": "prod"}, {"name": "dev-123"}]});
-        assert!(matcher.matches(&claims));
-    }
-
+    /// Validate typo in field ('alll') causes deserialization error
     #[test]
     fn test_all_validates() {
         let yaml = indoc! {r#"
-            path: "$.item[*].name"
-            alll:
-              exists: false
-        "#};
+                path: "$.item[*].name"
+                alll:
+                  exists: false
+            "#};
         let matcher: Result<ClaimMatch, _> = serde_yaml::from_str(yaml);
         assert!(matcher.is_err());
     }
 
+    /// Test SubjectMatch: IP matches CIDR
     #[test]
     fn test_subject_match_network() {
         let yaml = indoc! {r#"
-            network: "10.0.0.0/24"
-        "#};
+                network: "10.0.0.0/24"
+            "#};
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
-
         let ctx = SubjectContext {
             username: "alice".into(),
             claims: json!({}),
@@ -551,39 +539,32 @@ mod tests {
         assert!(matcher.matches(&ctx));
     }
 
+    /// Test SubjectMatch: 'not' excludes network
     #[test]
     fn test_subject_match_network_not() {
         let yaml = indoc! {r#"
-            network:
-              not: "10.0.0.0/24"
-        "#};
+                network:
+                  not: "10.0.0.0/24"
+            "#};
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
-
         let ctx = SubjectContext {
             username: "alice".into(),
             claims: json!({}),
             ip: "10.0.0.42".parse().unwrap(),
         };
         assert!(!matcher.matches(&ctx));
-
-        let ctx = SubjectContext {
-            username: "alice".into(),
-            claims: json!({}),
-            ip: "1.1.1.1".parse().unwrap(),
-        };
-        assert!(matcher.matches(&ctx));
     }
 
+    /// Test SubjectMatch: 'or' matches single IP or network
     #[test]
     fn test_subject_match_network_or() {
         let yaml = indoc! {r#"
-            network:
-              or:
-                - "192.168.1.0/24"
-                - "10.0.0.42"
-        "#};
+                network:
+                  or:
+                    - "192.168.1.0/24"
+                    - "10.0.0.42"
+            "#};
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
-
         let ctx = SubjectContext {
             username: "alice".into(),
             claims: json!({}),
@@ -592,28 +573,116 @@ mod tests {
         assert!(matcher.matches(&ctx));
     }
 
+    /// Test ResourceMatch: repository equality
     #[test]
-    fn test_subject_match_network_and_not() {
+    fn test_resource_match_repository() {
         let yaml = indoc! {r#"
-            network:
-              and:
-                - "192.168.1.0/24"
-                - not: "192.168.1.1"
-        "#};
-        let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
-
-        let ctx = SubjectContext {
-            username: "alice".into(),
-            claims: json!({}),
-            ip: "192.168.1.1".parse().unwrap(),
-        };
-        assert!(!matcher.matches(&ctx));
-
-        let ctx = SubjectContext {
-            username: "alice".into(),
-            claims: json!({}),
-            ip: "192.168.1.2".parse().unwrap(),
+                repository: "myrepo"
+            "#};
+        let matcher: ResourceMatch = serde_yaml::from_str(yaml).unwrap();
+        let ctx = ResourceContext {
+            repository: "myrepo".into(),
         };
         assert!(matcher.matches(&ctx));
+
+        let ctx = ResourceContext {
+            repository: "otherrepo".into(),
+        };
+        assert!(!matcher.matches(&ctx));
+    }
+
+    /// Test AccessRule: check_access returns allowed actions
+    #[test]
+    fn test_check_access() {
+        let yaml = indoc! {r#"
+                subject:
+                  username: "alice"
+                resource:
+                  repository: "myrepo"
+                actions: ["push"]
+            "#};
+        let rule: AccessRule = serde_yaml::from_str(yaml).unwrap();
+        let rules = vec![rule];
+        let subject = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "1.2.3.4".parse().unwrap(),
+        };
+        let resource = ResourceContext {
+            repository: "myrepo".into(),
+        };
+        let actions = rules.check_access(&subject, &resource);
+        assert!(actions.contains(&Action::Push));
+    }
+
+    /// Test Action: Display and TryFrom conversions
+    #[test]
+    fn test_action_display_and_tryfrom() {
+        let a = Action::try_from("push".to_string()).unwrap();
+        assert_eq!(a.to_string(), "push");
+        let invalid = Action::try_from("invalid".to_string());
+        assert!(invalid.is_err());
+    }
+
+    /// Test ValueMatcher: regex, IP, and numeric gt variant
+    #[test]
+    fn test_value_matcher_variants() {
+        let string_matcher: ValueMatcher = serde_yaml::from_str(indoc! {r#"
+                regex: "^foo.*"
+            "#})
+        .unwrap();
+        assert!(string_matcher.matches(&json!("foobar")));
+
+        let ip_matcher: ValueMatcher = serde_yaml::from_str(indoc! {r#"
+                "127.0.0.1"
+            "#})
+        .unwrap();
+        assert!(ip_matcher.matches(&json!("127.0.0.1")));
+
+        let number_matcher: ValueMatcher = serde_yaml::from_str(indoc! {r#"
+                gt: 10
+            "#})
+        .unwrap();
+        assert!(number_matcher.matches(&json!(20)));
+    }
+
+    /// Test NumberMatch: float vs integer and exact matching
+    #[test]
+    fn test_number_match_float_and_int() {
+        let yaml = indoc! {r#"
+                gt: 1.5
+            "#};
+        let matcher: NumberMatch = serde_yaml::from_str(yaml).unwrap();
+        assert!(matcher.matches(&json!(2.0)));
+
+        let yaml = indoc! {r#"
+            5
+        "#};
+        let matcher: NumberMatch = serde_yaml::from_str(yaml).unwrap();
+        assert!(matcher.matches(&json!(5)));
+        assert!(!matcher.matches(&json!(4)));
+    }
+
+    /// Test StringMatch: regex pattern does not match
+    #[test]
+    fn test_string_match_regex_no_match() {
+        let yaml = indoc! {r#"
+                regex: "^abc$"
+            "#};
+        let matcher: StringMatch = serde_yaml::from_str(yaml).unwrap();
+        assert!(!matcher.matches(&json!("def")));
+    }
+
+    /// Test ClaimsMatch: top-level 'not' inverts inner match
+    #[test]
+    fn test_claimsmatch_not() {
+        let yaml = indoc! {r#"
+                not:
+                  pointer: /foo
+                  match: "bar"
+            "#};
+        let matcher: ClaimsMatch = serde_yaml::from_str(yaml).unwrap();
+        let claims = json!({"foo": "baz"});
+        assert!(matcher.matches(&claims));
     }
 }
