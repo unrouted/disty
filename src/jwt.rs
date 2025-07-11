@@ -153,7 +153,7 @@ impl JWKSPublicKey {
                 let cert =
                     Certificate::from_pem(ca.as_bytes()).context("Invalid CA certificate")?;
                 client.add_root_certificate(cert)
-              }
+            }
         };
 
         client.build().context("Failed to build HTTP client")

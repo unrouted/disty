@@ -29,7 +29,7 @@ impl TryFrom<String> for Action {
         match value.as_str() {
             "push" => Ok(Action::Push),
             "pull" => Ok(Action::Pull),
-            _ => Err(format!("Invalid variant: {}", value)),
+            _ => Err(format!("Invalid variant: {value}")),
         }
     }
 }
