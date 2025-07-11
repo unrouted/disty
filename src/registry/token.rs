@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     net::SocketAddr,
     sync::Arc,
 };
@@ -44,7 +44,7 @@ pub async fn authenticate(
     config: &Configuration,
     req_username: &str,
     req_password: &str,
-) -> Result<Option<(String, HashMap<String, Value>)>> {
+) -> Result<Option<(String, Value)>> {
     let Some(authentication) = config.authentication.as_ref() else {
         return Ok(None);
     };
@@ -58,7 +58,7 @@ pub async fn authenticate(
 
                 if pwhash::unix::verify(req_password, password) {
                     let subject = format!("internal:basic:{username}");
-                    return Ok(Some((subject, HashMap::new())));
+                    return Ok(Some((subject, Value::Null)));
                 }
             }
             crate::config::User::Token { username, issuer } => {
@@ -66,21 +66,16 @@ pub async fn authenticate(
                     continue;
                 }
 
-                return Ok(
-                    match issuer
-                        .verify::<HashMap<String, Value>>(config, req_password)
-                        .await?
-                    {
-                        Some(claims) => {
-                            let subject = format!(
-                                "internal:token:{username}:subject:{}",
-                                claims.subject.unwrap_or("".to_string())
-                            );
-                            Some((subject, claims.custom))
-                        }
-                        None => None,
-                    },
-                );
+                return Ok(match issuer.verify::<Value>(config, req_password).await? {
+                    Some(claims) => {
+                        let subject = format!(
+                            "internal:token:{username}:subject:{}",
+                            claims.subject.unwrap_or("".to_string())
+                        );
+                        Some((subject, claims.custom))
+                    }
+                    None => None,
+                });
             }
         }
     }
@@ -181,7 +176,7 @@ mod test {
     use crate::{
         config::{
             User,
-            acl::{AccessRule, StringMatch, SubjectMatch},
+            acl::{AccessRule, SubjectMatch},
         },
         jwt::JWKSPublicKey,
         tests::{FixtureBuilder, RegistryFixture},
@@ -194,7 +189,7 @@ mod test {
     use jwt_simple::prelude::*;
     use serde_json::Value;
     use serde_json::json;
-    use std::net::SocketAddr;
+    use std::{collections::HashMap, net::SocketAddr};
     use test_log::test;
 
     use super::*;
@@ -337,7 +332,7 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        username: Some(StringMatch::Exact("username".into())),
+                        username: Some(serde_json::from_value(json!("username")).unwrap()),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
@@ -411,7 +406,7 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        username: Some(StringMatch::Exact("bob".into())),
+                        username: Some(serde_json::from_value(json!("bob")).unwrap()),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
@@ -583,14 +578,10 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        claims: Some(
-                            [(
-                                "project_path".to_string(),
-                                StringMatch::Exact("my-group/my-project".into()),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
+                        claims: Some(serde_json::from_value(json!({
+                            "pointer": "/project_path",
+                            "match": "my-group/my-project",
+                        }))?),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
@@ -688,14 +679,10 @@ mod test {
                 })
                 .acl(AccessRule {
                     subject: Some(SubjectMatch {
-                        claims: Some(
-                            [(
-                                "project_path".to_string(),
-                                StringMatch::Exact("my-group/bobs-project".into()),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
+                        claims: Some(serde_json::from_value(json!({
+                            "pointer": "/project_path",
+                            "match": "my-group/bobs-project",
+                        }))?),
                         ..Default::default()
                     }),
                     actions: [Action::Pull].into_iter().collect(),
