@@ -12,7 +12,6 @@ chrono = "0.4.41"
 clap = "4.5.40"
 data-encoding = "2.9.0"
 figment = { version = "0.10.19", features = ["env", "yaml"] }
-figment_file_provider_adapter = "0.1.1"
 futures = "0.3.31"
 futures-util = "0.3.31"
 headers = "0.4.1"
@@ -33,10 +32,8 @@ prometheus-client = "0.23.1"
 pwhash = "1.0.0"
 rand = "0.9.1"
 regex = "1.11.1"
-reqwest = { version = "0.12.20", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 ring = "0.17.14"
-rustls = "0.23.28"
-rustls-pemfile = "2.2.0"
 schema = "0.1.0"
 sec1 = { version = "0.7.3", features = ["pem", "pkcs8"] }
 serde = { version = "1.0.219", features = ["derive"] }
@@ -58,13 +55,13 @@ x509-parser = "0.17.0"
 [dev-dependencies]
 tempfile = "3.20.0"
 once_cell = "1.21.3"
-test-log = { version = "0.2.17", features = ["trace"] }
+test-log = { version = "0.2.18", features = ["trace"] }
 http-body-util = "0.1.3"
 serde_json = "1.0.140"
 assert-json-diff = "2.0.2"
 figment = { version = "0.10.19", features = ["env", "test", "yaml"] }
 wiremock = "0.6.4"
 tokio = { version="*", features=["test-util"] }
-rcgen = "0.14.1"
+rcgen = {version="0.14.1", default-features=false, features=["aws_lc_rs", "crypto", "pem"] }
 serde_yaml = "0.9.34"
 indoc = "2.0.6"
