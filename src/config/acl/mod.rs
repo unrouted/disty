@@ -546,6 +546,33 @@ mod tests {
         assert!(actions.contains(&Action::Push));
     }
 
+    /// check or works for repository (i.e. this rule applis to repo 1, 2 and 3)
+    #[test]
+    fn test_check_access_repository_or() {
+        let yaml = indoc! {r#"
+                subject:
+                  username: "alice"
+                resource:
+                  repository:
+                    or:
+                    - "myrepo"
+                    - "myrepo2"
+                actions: ["push"]
+            "#};
+        let rule: AccessRule = serde_yaml::from_str(yaml).unwrap();
+        let rules = vec![rule];
+        let subject = SubjectContext {
+            username: "alice".into(),
+            claims: json!({}),
+            ip: "1.2.3.4".parse().unwrap(),
+        };
+        let resource = ResourceContext {
+            repository: "myrepo".into(),
+        };
+        let actions = rules.check_access(&subject, &resource);
+        assert!(actions.contains(&Action::Push));
+    }
+
     /// Test Action: Display and TryFrom conversions
     #[test]
     fn test_action_display_and_tryfrom() {
