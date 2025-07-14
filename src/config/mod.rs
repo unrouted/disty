@@ -239,15 +239,15 @@ impl Configuration {
         let config_path = config_dir.join("config.yaml");
 
         let fig = match config_path.exists() {
-            true => fig.merge(RecursiveFileProvider::new(Yaml::file(config_path))),
+            true => fig.admerge(RecursiveFileProvider::new(Yaml::file(config_path))),
             false => fig,
         };
 
         let fig = configs.into_iter().fold(fig, |fig, config_path| {
-            fig.merge(RecursiveFileProvider::new(Yaml::file(config_path)))
+            fig.admerge(RecursiveFileProvider::new(Yaml::file(config_path)))
         });
 
-        fig.merge(RecursiveFileProvider::new(Env::prefixed("DISTY_")))
+        fig.admerge(RecursiveFileProvider::new(Env::prefixed("DISTY_")))
     }
 
     pub fn config(figment: Figment) -> Result<Configuration> {
@@ -410,6 +410,91 @@ mod test {
     fn defaults() {
         let defaults = Configuration::default();
         assert_eq!(defaults.raft.secret, None);
+    }
+
+
+    /// Should be able to stack config files and have acls merged
+    #[test]
+    fn stacking() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "token.key",
+                include_str!("../../fixtures/etc/disty/token.key"),
+            )?;
+
+            jail.create_file(
+                "config.yaml",
+                r#"
+                {
+                  "authentication": {
+                    "key_pair_file": "token.key",
+                    "users": [],
+                    "acls": []
+                  }
+                }
+                "#,
+            )?;
+
+            jail.create_file(
+                "auth1.yaml",
+                r#"
+                {
+                  "authentication": {
+                    "acls": [
+                        {
+                            "subject": {
+                                "username": "bob"
+                            },
+                            "actions": ["push", "pull"]
+                        }
+                    ]
+                  }
+                }
+                "#,
+            )?;
+
+            jail.create_file(
+                "auth2.yaml",
+                r#"
+                {
+                  "authentication": {
+                    "acls": [
+                        {
+                            "subject": {
+                                "username": "admin"
+                            },
+                            "actions": ["push", "pull"]
+                        }
+                    ]
+                  }
+                }
+                "#,
+            )?;
+
+            jail.create_file(
+                "auth3.yaml",
+                r#"
+                {
+                  "authentication": {
+                    "acls": []
+                  }
+                }
+                "#,
+            )?;
+
+            let config: Configuration = Configuration::figment(vec![
+                jail.directory().join("config.yaml"),
+                jail.directory().join("auth1.yaml"),
+                jail.directory().join("auth2.yaml"),
+                jail.directory().join("auth3.yaml"),
+            ])
+                .extract()
+                .expect("Configuration should be parseable");
+
+            assert_eq!(config.authentication.unwrap().acls.len(), 2);
+
+            Ok(())
+        });
     }
 
     #[test]
