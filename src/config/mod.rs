@@ -412,7 +412,6 @@ mod test {
         assert_eq!(defaults.raft.secret, None);
     }
 
-
     /// Should be able to stack config files and have acls merged
     #[test]
     fn stacking() {
@@ -488,8 +487,8 @@ mod test {
                 jail.directory().join("auth2.yaml"),
                 jail.directory().join("auth3.yaml"),
             ])
-                .extract()
-                .expect("Configuration should be parseable");
+            .extract()
+            .expect("Configuration should be parseable");
 
             assert_eq!(config.authentication.unwrap().acls.len(), 2);
 
