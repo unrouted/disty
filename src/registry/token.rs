@@ -106,6 +106,7 @@ pub(crate) async fn token(
 
             let subject = SubjectContext {
                 username: authorization.username().to_string(),
+                subject: token_subject.clone(),
                 claims: claims.clone(),
                 ip: addr.ip(),
             };
