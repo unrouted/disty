@@ -44,7 +44,7 @@ pub async fn authenticate(
     config: &Configuration,
     req_username: &str,
     req_password: &str,
-) -> Result<Option<(String, Value)>> {
+) -> Result<Option<(String, Option<String>, Value)>> {
     let Some(authentication) = config.authentication.as_ref() else {
         return Ok(None);
     };
@@ -58,7 +58,7 @@ pub async fn authenticate(
 
                 if pwhash::unix::verify(req_password, password) {
                     let subject = format!("internal:basic:{username}");
-                    return Ok(Some((subject, Value::Null)));
+                    return Ok(Some((subject, None, Value::Null)));
                 }
             }
             crate::config::User::Token { username, issuer } => {
@@ -70,9 +70,9 @@ pub async fn authenticate(
                     Some(claims) => {
                         let subject = format!(
                             "internal:token:{username}:subject:{}",
-                            claims.subject.unwrap_or("".to_string())
+                            claims.subject.clone().unwrap_or("".to_string())
                         );
-                        Some((subject, claims.custom))
+                        Some((subject, claims.subject, claims.custom))
                     }
                     None => None,
                 });
@@ -94,7 +94,7 @@ pub(crate) async fn token(
 
     let token = match authorization {
         Some(authorization) => {
-            let Some((token_subject, claims)) = authenticate(
+            let Some((token_subject, subject, claims)) = authenticate(
                 &registry.config,
                 authorization.username(),
                 authorization.password(),
@@ -106,7 +106,7 @@ pub(crate) async fn token(
 
             let subject = SubjectContext {
                 username: authorization.username().to_string(),
-                subject: token_subject.clone(),
+                subject: subject,
                 claims: claims.clone(),
                 ip: addr.ip(),
             };

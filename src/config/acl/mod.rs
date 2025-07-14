@@ -184,6 +184,9 @@ pub struct SubjectMatch {
 
 impl SubjectMatch {
     pub fn matches(&self, ctx: &SubjectContext) -> bool {
+        let sub_value: Option<Value> = ctx.subject.as_ref().map(|s| Value::String(s.clone()));
+        let sub: Option<&Value> = sub_value.as_ref();
+
         self.username
             .as_ref()
             .is_none_or(|m| m.matches(Some(&Value::String(ctx.username.clone()))))
@@ -191,10 +194,7 @@ impl SubjectMatch {
                 .network
                 .as_ref()
                 .is_none_or(|m| m.matches(Some(&Value::String(ctx.ip.to_string()))))
-            && self
-                .subject
-                .as_ref()
-                .is_none_or(|m| m.matches(Some(&Value::String(ctx.subject.to_string()))))
+            && self.subject.as_ref().is_none_or(|m| m.matches(sub))
             && self.claims.as_ref().is_none_or(|m| m.matches(&ctx.claims))
     }
 }
@@ -202,7 +202,7 @@ impl SubjectMatch {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SubjectContext {
     pub username: String,
-    pub subject: String,
+    pub subject: Option<String>,
     pub claims: Value,
     pub ip: IpAddr,
 }
@@ -470,7 +470,7 @@ mod tests {
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
         let ctx = SubjectContext {
             username: "alice".into(),
-            subject: "internal:basic:alice".into(),
+            subject: None,
             claims: json!({}),
             ip: "10.0.0.42".parse().unwrap(),
         };
@@ -487,7 +487,7 @@ mod tests {
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
         let ctx = SubjectContext {
             username: "alice".into(),
-            subject: "internal:basic:alice".into(),
+            subject: None,
             claims: json!({}),
             ip: "10.0.0.42".parse().unwrap(),
         };
@@ -506,7 +506,7 @@ mod tests {
         let matcher: SubjectMatch = serde_yaml::from_str(yaml).unwrap();
         let ctx = SubjectContext {
             username: "alice".into(),
-            subject: "internal:basic:alice".into(),
+            subject: None,
             claims: json!({}),
             ip: "10.0.0.42".parse().unwrap(),
         };
@@ -545,7 +545,7 @@ mod tests {
         let rules = vec![rule];
         let subject = SubjectContext {
             username: "alice".into(),
-            subject: "internal:basic:alice".into(),
+            subject: None,
             claims: json!({}),
             ip: "1.2.3.4".parse().unwrap(),
         };
@@ -573,7 +573,7 @@ mod tests {
         let rules = vec![rule];
         let subject = SubjectContext {
             username: "alice".into(),
-            subject: "internal:basic:alice".into(),
+            subject: None,
             claims: json!({}),
             ip: "1.2.3.4".parse().unwrap(),
         };
