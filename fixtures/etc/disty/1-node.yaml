@@ -26,3 +26,8 @@ authentication:
         username: bob
       actions: ["push", "pull"]
       comment: "Admin has full access to everything."
+
+cleanup:
+  - type: tag
+    repository: { starts: cache }
+    older_than: 30

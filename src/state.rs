@@ -149,19 +149,21 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
+        let timestamp = crate::time::now();
+
         self.client
             .txn(vec![
                 (
-                    "INSERT INTO repositories(name) VALUES($1) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
-                    params!(repository),
+                    "INSERT INTO repositories(name, created_at) VALUES($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
+                    params!(repository, timestamp),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, location, created_by, state) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END RETURNING id;",
-                    params!(digest.to_string(), size, location, created_by, cluster_size_mask),
+                    "INSERT INTO blobs (digest, size, location, created_by, state, created_at, update_at) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END, $6, $6) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END, location = excluded.updated_at RETURNING id;",
+                    params!(digest.to_string(), size, location, created_by, cluster_size_mask, timestamp),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) VALUES($1, $2);",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) VALUES($1, $2, $3, $3);",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id"), timestamp),
                 )
             ])
             .await?;
@@ -178,16 +180,18 @@ impl RegistryState {
     }
 
     pub async fn mount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
+        let timestamp = crate::time::now();
+
         self.client
             .txn(vec![
                 (
-                    "INSERT OR IGNORE INTO repositories(name) VALUES($1) RETURNING id;",
-                    params!(repository),
+                    "INSERT INTO repositories(name, created_at) VALUES($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
+                    params!(repository, timestamp),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) SELECT id, $1 FROM blobs WHERE digest = $2;",
-                    params!(StmtIndex(0).column("id"), digest.to_string()),
-                )
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) SELECT id, $1, $3, $3 FROM blobs WHERE digest = $2;",
+                    params!(StmtIndex(0).column("id"), digest.to_string(), timestamp),
+                ),
             ])
             .await?;
 
@@ -308,13 +312,15 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
+        let timestamp = crate::time::now();
+
         let mut sql = vec![
             (
-                "INSERT INTO repositories(name) VALUES ($1) ON CONFLICT DO UPDATE SET id=id RETURNING id",
-                params!(repository),
+                "INSERT INTO repositories(name, created_at) VALUES ($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id",
+                params!(repository, timestamp),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8, $9) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END, updated_at = excluded.updated_at RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
@@ -323,16 +329,26 @@ impl RegistryState {
                     cluster_size_mask,
                     &context.sub,
                     &info.artifact_type,
-                    serde_json::to_string(&info.annotations)?
+                    serde_json::to_string(&info.annotations)?,
+                    timestamp
                 ),
             ),
             (
-                "INSERT INTO manifests_repositories (repository_id, manifest_id) VALUES ($1, $2) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
-                params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                "INSERT INTO manifests_repositories (repository_id, manifest_id, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
+                params!(
+                    StmtIndex(0).column("id"),
+                    StmtIndex(1).column("id"),
+                    timestamp
+                ),
             ),
             (
-                "INSERT INTO tags (name, repository_id, manifest_repository_id) VALUES ($1, $2, $3) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id;",
-                params!(tag, StmtIndex(0).column("id"), StmtIndex(2).column("id")),
+                "INSERT INTO tags (name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $4) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id, updated_at = excluded.updated_at;",
+                params!(
+                    tag,
+                    StmtIndex(0).column("id"),
+                    StmtIndex(2).column("id"),
+                    timestamp
+                ),
             ),
         ];
 
@@ -354,17 +370,18 @@ impl RegistryState {
                 // So we need phase 2, and allow transition from phase 2 to phase 0 when its really uploaded.
 
                 sql.push((
-                    "INSERT INTO manifests (digest, size, media_type, created_by, location, state) VALUES ($1, $2, $3, $4, 0, 2) ON CONFLICT(digest) DO UPDATE SET id=id RETURNING manifests.id;",
+                    "INSERT INTO manifests (digest, size, media_type, created_by, location, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 0, 2, $5, $5) ON CONFLICT(digest) DO UPDATE SET id=id, updated_at=excluded.updated_at RETURNING manifests.id;",
                     params!(
                         desc.digest.to_string(),
                         desc.size.unwrap_or(0) as u32,
                         &desc.media_type,
-                        &context.sub
+                        &context.sub,
+                        timestamp
                     ),
                 ));
                 sql.push((
-                    "INSERT INTO manifests_repositories (repository_id, manifest_id) VALUES ($1, $2) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(4).column("id")),
+                    "INSERT INTO manifests_repositories (repository_id, manifest_id, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(4).column("id"), timestamp),
                 ));
             }
         }
@@ -828,7 +845,7 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, time::Duration};
 
     use test_log::test;
 
@@ -1081,26 +1098,47 @@ mod tests {
 
         registry.untag_old_tags().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(1).column("id"), StmtIndex(2).column("id")),
-                ),
-            ]
-        ).await?;
+        let blob = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        let info = ManifestInfo {
+            media_type: Some("application/octet-stream".into()),
+            artifact_type: None,
+            annotations: HashMap::new(),
+            size: 55,
+            manifests: vec![],
+            blobs: vec![Descriptor {
+                digest: blob,
+                media_type: "application/octet-stream".into(),
+                size: None,
+                platform: None,
+            }],
+            subject: None,
+        };
+
+        let req = RequestContext {
+            access: vec![],
+            sub: "bob".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+            method: "put".into(),
+            request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
+        };
+
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_manifest("foo", "latest", &digest, "foo", &info, &req)
+            .await?;
+
+        tokio::time::advance(Duration::from_secs(60 * 60 * 24 * 50)).await;
 
         assert!(registry.get_tag("foo", "latest").await?.is_some());
 
@@ -1742,6 +1780,105 @@ mod tests {
             .unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    /// What happens if manifest A is tagged as A and B, and then manifest C is tagged as A. Then GC runs.
+    #[test(tokio::test)]
+    async fn test_manifest_tag_tag_tag() -> Result<()> {
+        let registry = StateFixture::new().await?;
+
+        let blob = "sha256:b9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_blob("library/nginx", &blob, 1, "bob")
+            .await?;
+
+        let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        assert_eq!(None, registry.get_manifest(&digest).await?);
+
+        let info = ManifestInfo {
+            media_type: Some("application/octet-stream".into()),
+            artifact_type: None,
+            annotations: HashMap::new(),
+            size: 55,
+            manifests: vec![],
+            blobs: vec![Descriptor {
+                digest: blob,
+                media_type: "application/octet-stream".into(),
+                size: None,
+                platform: None,
+            }],
+            subject: None,
+        };
+
+        let req = RequestContext {
+            access: vec![],
+            sub: "bob".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+            method: "put".into(),
+            request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
+        };
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "deployed",
+                &digest,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        let digest2 = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest2,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        registry.garbage_collection().await?;
+
+        let manifest = registry
+            .get_tag("library/nginx", "deployed")
+            .await?
+            .unwrap();
+
+        assert_eq!(manifest.digest, digest);
+        assert!(manifest.repositories.contains("library/nginx"));
 
         registry.teardown().await?;
 

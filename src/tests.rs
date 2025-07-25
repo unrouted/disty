@@ -159,6 +159,8 @@ impl StateFixture {
     }
 
     pub async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
+        crate::time::fake_time::install_fake_clock();
+
         let port_range = acquire_port();
         let raft_port = port_range.raft_port();
         let api_port = port_range.api_port();
@@ -230,6 +232,8 @@ impl StateFixture {
 
         registries[0].client.wait_until_healthy_db().await;
         registries[0].client.migrate::<Migrations>().await?;
+
+        tokio::time::pause();
 
         Ok(StateFixture {
             _ports: port_range,
