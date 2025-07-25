@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     net::{IpAddr, Ipv4Addr},
     ops::Deref,
     sync::Mutex,
@@ -6,6 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use axum::{Router, body::Body, extract::ConnectInfo, http::Request, response::Response};
+use chrono::Utc;
 use figment::value::magic::RelativePathBuf;
 use jwt_simple::prelude::ES256KeyPair;
 use once_cell::sync::Lazy;
@@ -21,7 +23,8 @@ use crate::{
         ApiConfig, AuthenticationConfig, Configuration, DistyNode, KeyPair, RaftConfig, User,
         acl::AccessRule, lifecycle::DeletionRule,
     },
-    context::Access,
+    context::{Access, RequestContext},
+    extractor::{Descriptor, ManifestInfo},
     issuer::issue_token,
     webhook::WebhookService,
 };
@@ -159,8 +162,6 @@ impl StateFixture {
     }
 
     pub async fn with_builder(builder: FixtureBuilder) -> Result<Self> {
-        crate::time::fake_time::install_fake_clock();
-
         let port_range = acquire_port();
         let raft_port = port_range.raft_port();
         let api_port = port_range.api_port();
@@ -227,13 +228,12 @@ impl StateFixture {
                 client,
                 webhooks: WebhookService::start(&mut tasks, &[], &mut registry),
                 registry,
+                clock: Clock::mocked(Utc::now()),
             }));
         }
 
         registries[0].client.wait_until_healthy_db().await;
         registries[0].client.migrate::<Migrations>().await?;
-
-        tokio::time::pause();
 
         Ok(StateFixture {
             _ports: port_range,
@@ -241,6 +241,49 @@ impl StateFixture {
             registries,
             tasks,
         })
+    }
+
+    pub(crate) async fn manifest(&self) -> Result<()> {
+        let blob = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        let info = ManifestInfo {
+            media_type: Some("application/octet-stream".into()),
+            artifact_type: None,
+            annotations: HashMap::new(),
+            size: 55,
+            manifests: vec![],
+            blobs: vec![Descriptor {
+                digest: blob,
+                media_type: "application/octet-stream".into(),
+                size: None,
+                platform: None,
+            }],
+            subject: None,
+        };
+
+        let req = RequestContext {
+            access: vec![],
+            sub: "bob".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+            method: "put".into(),
+            request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
+        };
+
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
+            .unwrap();
+
+        self.insert_manifest("foo", "latest", &digest, "foo", &info, &req)
+            .await?;
+
+        Ok(())
     }
 
     pub(crate) async fn teardown(mut self) -> Result<()> {

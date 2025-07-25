@@ -13,8 +13,9 @@ use tower::Layer;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use crate::{error::format_error, metrics::start_metrics};
+use crate::{clock::Clock, error::format_error, metrics::start_metrics};
 
+mod clock;
 mod config;
 mod context;
 mod digest;
@@ -29,7 +30,6 @@ mod registry;
 mod state;
 #[cfg(test)]
 mod tests;
-mod time;
 mod webhook;
 
 #[derive(Embed)]
@@ -96,6 +96,7 @@ async fn main() -> Result<()> {
         client,
         webhooks,
         registry,
+        clock: Clock::new(),
     });
 
     crate::mirror::start_mirror(&mut tasks, state.clone())?;

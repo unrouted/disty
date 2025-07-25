@@ -4,6 +4,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+#[cfg(test)]
+use chrono::Duration;
+use chrono::{DateTime, Utc};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
@@ -12,6 +15,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::{
+    clock::Clock,
     config::{Configuration, lifecycle::DeletionRule},
     context::RequestContext,
     digest::Digest,
@@ -64,9 +68,19 @@ pub struct RegistryState {
     pub client: Client,
     pub webhooks: WebhookService,
     pub registry: Registry,
+    pub clock: Clock,
 }
 
 impl RegistryState {
+    fn now(&self) -> DateTime<Utc> {
+        self.clock.now()
+    }
+
+    #[cfg(test)]
+    fn advance(&self, duration: Duration) {
+        self.clock.advance(duration)
+    }
+
     pub fn upload_path(&self, upload_id: &str) -> PathBuf {
         self.config
             .storage
@@ -149,7 +163,7 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
-        let timestamp = crate::time::now();
+        let timestamp = self.now();
 
         self.client
             .txn(vec![
@@ -180,7 +194,7 @@ impl RegistryState {
     }
 
     pub async fn mount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
-        let timestamp = crate::time::now();
+        let timestamp = self.now();
 
         self.client
             .txn(vec![
@@ -312,7 +326,7 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
-        let timestamp = crate::time::now();
+        let timestamp = self.now();
 
         let mut sql = vec![
             (
@@ -320,7 +334,7 @@ impl RegistryState {
                 params!(repository, timestamp),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8, $9) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END, updated_at = excluded.updated_at RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8, $9, $9) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END, updated_at = excluded.updated_at RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
@@ -845,8 +859,9 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, time::Duration};
+    use std::collections::HashMap;
 
+    use chrono::Duration;
     use test_log::test;
 
     use crate::{
@@ -1098,47 +1113,9 @@ mod tests {
 
         registry.untag_old_tags().await?;
 
-        let blob = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
-            .parse()
-            .unwrap();
+        registry.manifest().await?;
 
-        let info = ManifestInfo {
-            media_type: Some("application/octet-stream".into()),
-            artifact_type: None,
-            annotations: HashMap::new(),
-            size: 55,
-            manifests: vec![],
-            blobs: vec![Descriptor {
-                digest: blob,
-                media_type: "application/octet-stream".into(),
-                size: None,
-                platform: None,
-            }],
-            subject: None,
-        };
-
-        let req = RequestContext {
-            access: vec![],
-            sub: "bob".to_string(),
-            admin: true,
-            validated_token: true,
-            service: None,
-            realm: None,
-            user_agent: Some("Foo".into()),
-            method: "put".into(),
-            request_id: "abcdef".into(),
-            peer: "127.0.0.1:80".parse().unwrap(),
-        };
-
-        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-            .parse()
-            .unwrap();
-
-        registry
-            .insert_manifest("foo", "latest", &digest, "foo", &info, &req)
-            .await?;
-
-        tokio::time::advance(Duration::from_secs(60 * 60 * 24 * 50)).await;
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
 
         assert!(registry.get_tag("foo", "latest").await?.is_some());
 
@@ -1160,26 +1137,9 @@ mod tests {
 
         registry.delete_unreferenced_manifest_repositories().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(2).column("id")),
-                ),
-            ]
-        ).await?;
+        registry.manifest().await?;
+
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
 
         registry.delete_unreferenced_manifest_repositories().await?;
 
@@ -1209,18 +1169,8 @@ mod tests {
 
         registry.unstore_unreferenced_manifests().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
 
         registry.unstore_unreferenced_manifests().await?;
 
