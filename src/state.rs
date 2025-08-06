@@ -465,17 +465,6 @@ impl RegistryState {
     pub async fn unmount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
         self.client
             .execute(
-                "DELETE FROM manifests_repositories WHERE manifest_id = (SELECT id FROM manifests WHERE digest = $1) AND repository_id = (SELECT id FROM repositories WHERE name = $2);",
-                params!(digest.to_string(), repository),
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
-        self.client
-            .execute(
                 "DELETE FROM manifests_repositories
                     WHERE manifest_id = (SELECT id FROM manifests WHERE digest = $1)
                     AND repository_id = (SELECT id FROM repositories WHERE name = $2);

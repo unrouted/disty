@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct Clock {
@@ -11,7 +11,7 @@ enum Inner {
     #[cfg(test)]
     Mocked {
         start: DateTime<Utc>,
-        offset: std::sync::Arc<std::sync::Mutex<Duration>>, // interior mutability
+        offset: std::sync::Arc<std::sync::Mutex<chrono::Duration>>, // interior mutability
     },
 }
 
@@ -38,23 +38,23 @@ impl Clock {
         Self {
             inner: Inner::Mocked {
                 start,
-                offset: std::sync::Arc::new(std::sync::Mutex::new(Duration::zero())),
+                offset: std::sync::Arc::new(std::sync::Mutex::new(chrono::Duration::zero())),
             },
         }
     }
 
     /// Advances the mocked clock. No-op in real-time mode.
     #[cfg(test)]
-    pub fn advance(&self, duration: Duration) {
+    pub fn advance(&self, duration: chrono::Duration) {
         if let Inner::Mocked { offset, .. } = &self.inner {
             let mut guard = offset.lock().unwrap();
-            *guard = *guard + duration;
+            *guard += duration;
         }
     }
 
     /// Returns the current offset. Mostly for test assertions.
     #[cfg(test)]
-    pub fn offset(&self) -> Option<Duration> {
+    pub fn offset(&self) -> Option<chrono::Duration> {
         match &self.inner {
             Inner::Realtime => None,
             Inner::Mocked { offset, .. } => Some(*offset.lock().unwrap()),
