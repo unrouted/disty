@@ -623,6 +623,8 @@ impl RegistryState {
         // If not referenced by a tag or another manifest in the same repository,
         // unlink from that repository. You have 15mins to do the update.
 
+        let timestamp = self.now() - chrono::Duration::minutes(15);
+
         // In the case of subjects, a signaure doesnt keep a subject alive. But a
         // subject keeps the signaure alive.
         self.client
@@ -638,11 +640,11 @@ impl RegistryState {
                         AND r.manifest_id IS NULL
                         AND ms.manifest_id IS NULL
                         AND (m.state = 1 OR m.state = 2)
-                        AND mr.created_at < datetime('now', '-15 minutes')
+                        AND mr.created_at < $1
                     )
                     DELETE FROM manifests_repositories
                     WHERE id IN (SELECT id FROM orphaned);",
-                vec![],
+                params!(timestamp),
             )
             .await
             .context(

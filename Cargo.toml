@@ -15,15 +15,15 @@ figment = { version = "0.10.19", features = ["env", "yaml"] }
 futures = "0.3.31"
 futures-util = "0.3.31"
 headers = "0.4.1"
-hiqlite = { version = "0.8.0", default-features = false, features = ["auto-heal", "sqlite", "listen_notify_local"] }
-hiqlite-macros = "0.8.0"
+hiqlite = { version = "0.9.1", default-features = false, features = ["auto-heal", "sqlite", "listen_notify_local"] }
+hiqlite-macros = "0.9.0"
 hostname = "0.4.1"
 http = "1.3.1"
 httpdate = "1.0.3"
 ip_network = { version = "0.4.1", features = ["serde"] }
 json = "0.12.4"
 jsonpath-rust = "1.0.4"
-jsonschema = "0.30.0"
+jsonschema = "0.32.1"
 jwt-simple = { version = "0.12.12", default-features = false, features = ["pure-rust"] }
 p256 = { version = "0.13.2", features = ["pem", "pkcs8"] }
 percent-encoding = "2.3.1"
