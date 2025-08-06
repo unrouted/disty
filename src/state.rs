@@ -172,7 +172,7 @@ impl RegistryState {
                     params!(repository, timestamp),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, location, created_by, state, created_at, update_at) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END, $6, $6) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END, location = excluded.updated_at RETURNING id;",
+                    "INSERT INTO blobs (digest, size, location, created_by, state, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END, $6, $6) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END, updated_at = excluded.updated_at RETURNING id;",
                     params!(digest.to_string(), size, location, created_by, cluster_size_mask, timestamp),
                 ),
                 (
@@ -203,8 +203,8 @@ impl RegistryState {
                     params!(repository, timestamp),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) SELECT id, $1, $3, $3 FROM blobs WHERE digest = $2;",
-                    params!(StmtIndex(0).column("id"), digest.to_string(), timestamp),
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) SELECT id, $1, $2, $2 FROM blobs WHERE digest = $3;",
+                    params!(StmtIndex(0).column("id"), timestamp, digest.to_string()),
                 ),
             ])
             .await?;
@@ -456,6 +456,17 @@ impl RegistryState {
             .execute(
                 "UPDATE manifests SET location = (location | $1), state = CASE WHEN (location | $1) = $2 THEN 1 ELSE state END WHERE digest = $3;",
                 params!(location, cluster_size_mask, digest.to_string()),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn unmount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
+        self.client
+            .execute(
+                "DELETE FROM manifests_repositories WHERE manifest_id = (SELECT id FROM manifests WHERE digest = $1) AND repository_id = (SELECT id FROM repositories WHERE name = $2);",
+                params!(digest.to_string(), repository),
             )
             .await?;
 
@@ -1132,6 +1143,11 @@ mod tests {
     async fn delete_unreferenced_manifest_repositories_tag_ref() -> Result<()> {
         /*
         Manifest is referenced by a tag so shouldn't be deleted
+
+        We create a default test manifest - so it has a tag pointing at it.
+
+        Even after 50 days (longer than gc window for unreferenced manifests)
+        this should not be deleted.
         */
         let registry = StateFixture::new().await?;
 
@@ -1169,20 +1185,24 @@ mod tests {
 
         registry.unstore_unreferenced_manifests().await?;
 
-        registry.manifest().await?;
-        registry.delete_tag("foo", "latest").await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        let manifest = registry
-            .get_manifest(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
 
+        // Create default test manifest
+        // Delete any tags referencing it
+        // Unmount it (so its not visible in any repository)
+        // Fast forward time a bit to make sure GC will consider it
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
+        registry.advance(Duration::seconds(60 * 60));
+
+        // Check to see if any manifests can be deleted from disk
+        registry.unstore_unreferenced_manifests().await?;
+
+        // Manifest should still be in db but not stored on any node
+        let manifest = registry.get_manifest(&digest).await?.unwrap();
         assert_eq!(manifest.location, 0);
 
         registry.teardown().await?;
@@ -1196,33 +1216,31 @@ mod tests {
         Manifest isn't referenced by a tag so should be deleted - but its state is 0 so leave it alone
         */
         let registry = StateFixture::new().await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        let manifest = registry
-            .get_manifest(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
 
+        // Create default test manifest
+        // Delete any tags referencing it
+        // Unmount it (so its not visible in any repository)
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
+
+        // Set the manifest back to pending - we have to poke the backend directly to
+        // get into this state but we want to be certain that we don't gc a manifest
+        // that is still getting replicated between node members.
+        registry
+            .client
+            .execute("UPDATE manifests SET state=0", vec![])
+            .await?;
+
+        // Fast forward time a bit to make sure GC will consider it
+        registry.advance(Duration::seconds(60 * 60));
+
+        // After gc, manifest should still be in db but not stored on any node
+        registry.unstore_unreferenced_manifests().await?;
+        let manifest = registry.get_manifest(&digest).await?.unwrap();
         assert_eq!(manifest.location, 1);
 
         registry.teardown().await?;
