@@ -244,7 +244,7 @@ impl StateFixture {
     }
 
     pub(crate) async fn manifest(&self) -> Result<()> {
-        let blob = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+        let blob = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
             .parse()
             .unwrap();
 
@@ -282,6 +282,16 @@ impl StateFixture {
 
         self.insert_manifest("foo", "latest", &digest, "foo", &info, &req)
             .await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn blob(&self) -> Result<()> {
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
+            .unwrap();
+
+        self.insert_blob("foo", &digest, 0, "bob").await?;
 
         Ok(())
     }
