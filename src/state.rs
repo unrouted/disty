@@ -4,6 +4,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+#[cfg(test)]
+use chrono::Duration;
+use chrono::{DateTime, Utc};
 use hiqlite::{Client, StmtIndex};
 use hiqlite_macros::params;
 use prometheus_client::registry::Registry;
@@ -12,6 +15,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::{
+    clock::Clock,
     config::{Configuration, lifecycle::DeletionRule},
     context::RequestContext,
     digest::Digest,
@@ -64,9 +68,19 @@ pub struct RegistryState {
     pub client: Client,
     pub webhooks: WebhookService,
     pub registry: Registry,
+    pub clock: Clock,
 }
 
 impl RegistryState {
+    fn now(&self) -> DateTime<Utc> {
+        self.clock.now()
+    }
+
+    #[cfg(test)]
+    fn advance(&self, duration: Duration) {
+        self.clock.advance(duration)
+    }
+
     pub fn upload_path(&self, upload_id: &str) -> PathBuf {
         self.config
             .storage
@@ -149,19 +163,21 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
+        let timestamp = self.now();
+
         self.client
             .txn(vec![
                 (
-                    "INSERT INTO repositories(name) VALUES($1) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
-                    params!(repository),
+                    "INSERT INTO repositories(name, created_at) VALUES($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
+                    params!(repository, timestamp),
                 ),
                 (
-                    "INSERT INTO blobs (digest, size, location, created_by, state) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END RETURNING id;",
-                    params!(digest.to_string(), size, location, created_by, cluster_size_mask),
+                    "INSERT INTO blobs (digest, size, location, created_by, state, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $3 = $5 THEN 1 ELSE 0 END, $6, $6) ON CONFLICT(digest) DO UPDATE SET location = blobs.location | excluded.location, state = CASE WHEN (blobs.location | excluded.location) = $5 THEN 1 ELSE blobs.state END, updated_at = excluded.updated_at RETURNING id;",
+                    params!(digest.to_string(), size, location, created_by, cluster_size_mask, timestamp),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) VALUES($1, $2);",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) VALUES($1, $2, $3, $3);",
+                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id"), timestamp),
                 )
             ])
             .await?;
@@ -178,16 +194,18 @@ impl RegistryState {
     }
 
     pub async fn mount_blob(&self, digest: &Digest, repository: &str) -> Result<()> {
+        let timestamp = self.now();
+
         self.client
             .txn(vec![
                 (
-                    "INSERT OR IGNORE INTO repositories(name) VALUES($1) RETURNING id;",
-                    params!(repository),
+                    "INSERT INTO repositories(name, created_at) VALUES($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id;",
+                    params!(repository, timestamp),
                 ),
                 (
-                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id) SELECT id, $1 FROM blobs WHERE digest = $2;",
-                    params!(StmtIndex(0).column("id"), digest.to_string()),
-                )
+                    "INSERT OR IGNORE INTO blobs_repositories(blob_id, repository_id, created_at, updated_at) SELECT id, $1, $2, $2 FROM blobs WHERE digest = $3;",
+                    params!(StmtIndex(0).column("id"), timestamp, digest.to_string()),
+                ),
             ])
             .await?;
 
@@ -308,13 +326,15 @@ impl RegistryState {
         let location = 1 << (self.node_id - 1);
         let cluster_size_mask = (1 << self.config.nodes.len()) - 1;
 
+        let timestamp = self.now();
+
         let mut sql = vec![
             (
-                "INSERT INTO repositories(name) VALUES ($1) ON CONFLICT DO UPDATE SET id=id RETURNING id",
-                params!(repository),
+                "INSERT INTO repositories(name, created_at) VALUES ($1, $2) ON CONFLICT DO UPDATE SET id=id RETURNING id",
+                params!(repository, timestamp),
             ),
             (
-                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END RETURNING manifests.id;",
+                "INSERT INTO manifests (digest, size, media_type, location, state, created_by, artifact_type, annotations, created_at, updated_at) VALUES ($1, $2, $3, $4, CASE WHEN $4 = $5 THEN 1 ELSE 0 END, $6, $7, $8, $9, $9) ON CONFLICT(digest) DO UPDATE SET location = manifests.location | excluded.location, state = CASE WHEN (manifests.location | excluded.location) = $6 THEN 1 ELSE manifests.state END, updated_at = excluded.updated_at RETURNING manifests.id;",
                 params!(
                     digest.to_string(),
                     info.size,
@@ -323,16 +343,26 @@ impl RegistryState {
                     cluster_size_mask,
                     &context.sub,
                     &info.artifact_type,
-                    serde_json::to_string(&info.annotations)?
+                    serde_json::to_string(&info.annotations)?,
+                    timestamp
                 ),
             ),
             (
-                "INSERT INTO manifests_repositories (repository_id, manifest_id) VALUES ($1, $2) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
-                params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
+                "INSERT INTO manifests_repositories (repository_id, manifest_id, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
+                params!(
+                    StmtIndex(0).column("id"),
+                    StmtIndex(1).column("id"),
+                    timestamp
+                ),
             ),
             (
-                "INSERT INTO tags (name, repository_id, manifest_repository_id) VALUES ($1, $2, $3) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id;",
-                params!(tag, StmtIndex(0).column("id"), StmtIndex(2).column("id")),
+                "INSERT INTO tags (name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $4) ON CONFLICT(name, repository_id) DO UPDATE SET manifest_repository_id = excluded.manifest_repository_id, updated_at = excluded.updated_at;",
+                params!(
+                    tag,
+                    StmtIndex(0).column("id"),
+                    StmtIndex(2).column("id"),
+                    timestamp
+                ),
             ),
         ];
 
@@ -354,17 +384,18 @@ impl RegistryState {
                 // So we need phase 2, and allow transition from phase 2 to phase 0 when its really uploaded.
 
                 sql.push((
-                    "INSERT INTO manifests (digest, size, media_type, created_by, location, state) VALUES ($1, $2, $3, $4, 0, 2) ON CONFLICT(digest) DO UPDATE SET id=id RETURNING manifests.id;",
+                    "INSERT INTO manifests (digest, size, media_type, created_by, location, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 0, 2, $5, $5) ON CONFLICT(digest) DO UPDATE SET id=id, updated_at=excluded.updated_at RETURNING manifests.id;",
                     params!(
                         desc.digest.to_string(),
                         desc.size.unwrap_or(0) as u32,
                         &desc.media_type,
-                        &context.sub
+                        &context.sub,
+                        timestamp
                     ),
                 ));
                 sql.push((
-                    "INSERT INTO manifests_repositories (repository_id, manifest_id) VALUES ($1, $2) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(4).column("id")),
+                    "INSERT INTO manifests_repositories (repository_id, manifest_id, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
+                    params!(StmtIndex(0).column("id"), StmtIndex(4).column("id"), timestamp),
                 ));
             }
         }
@@ -431,7 +462,7 @@ impl RegistryState {
         Ok(())
     }
 
-    pub async fn delete_manifest(&self, repository: &str, digest: &Digest) -> Result<()> {
+    pub async fn unmount_manifest(&self, digest: &Digest, repository: &str) -> Result<()> {
         self.client
             .execute(
                 "DELETE FROM manifests_repositories
@@ -559,6 +590,8 @@ impl RegistryState {
                 older_than,
             } = rule;
 
+            let timestamp = self.now() - chrono::Duration::days(*older_than as i64);
+
             total_deleted += self
                 .client
                 .execute(
@@ -568,12 +601,12 @@ impl RegistryState {
                                 FROM tags t
                                 JOIN manifests_repositories mr ON t.manifest_repository_id = mr.id
                                 JOIN repositories r ON mr.repository_id = r.id
-                                WHERE t.updated_at < datetime('now', '-' || $1 || ' days')
+                                WHERE t.updated_at < $1
                                 AND t.name GLOB $2
                                 AND r.name GLOB $3
                             );",
                     params!(
-                        *older_than,
+                        timestamp,
                         tag.clone().map_or("*".to_string(), |m| m.to_sqlite_glob()),
                         repository
                             .clone()
@@ -590,6 +623,8 @@ impl RegistryState {
         // If not referenced by a tag or another manifest in the same repository,
         // unlink from that repository. You have 15mins to do the update.
 
+        let timestamp = self.now() - chrono::Duration::minutes(15);
+
         // In the case of subjects, a signaure doesnt keep a subject alive. But a
         // subject keeps the signaure alive.
         self.client
@@ -605,11 +640,11 @@ impl RegistryState {
                         AND r.manifest_id IS NULL
                         AND ms.manifest_id IS NULL
                         AND (m.state = 1 OR m.state = 2)
-                        AND mr.created_at < datetime('now', '-15 minutes')
+                        AND mr.created_at < $1
                     )
                     DELETE FROM manifests_repositories
                     WHERE id IN (SELECT id FROM orphaned);",
-                vec![],
+                params!(timestamp),
             )
             .await
             .context(
@@ -684,6 +719,8 @@ impl RegistryState {
     }
 
     pub async fn delete_unreferenced_blob_repositories(&self) -> Result<usize> {
+        let timestamp = self.now() - chrono::Duration::minutes(30);
+
         self.client
             .execute(
                 "WITH orphaned AS (
@@ -694,13 +731,13 @@ impl RegistryState {
                         LEFT JOIN manifests m ON ml.manifest_id = m.id
                         WHERE m.id IS NULL
                         AND b.state = 1
-                        AND br.created_at < datetime('now', '-30 minutes')
+                        AND br.created_at < $1
                     )
                     DELETE FROM blobs_repositories
                     WHERE (blob_id, repository_id) IN (
                         SELECT blob_id, repository_id FROM orphaned
                     );",
-                vec![],
+                params!(timestamp),
             )
             .await
             .context("Unable to remove blobs from repositories where they are no longer referenced")
@@ -830,6 +867,7 @@ impl RegistryState {
 mod tests {
     use std::collections::HashMap;
 
+    use chrono::Duration;
     use test_log::test;
 
     use crate::{
@@ -1005,10 +1043,16 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn test_garbage_collect() -> Result<()> {
-        let registry = StateFixture::new().await?;
+    async fn old_tags_empty() -> Result<()> {
+        let registry =
+            StateFixture::with_builder(FixtureBuilder::new().cleanup(DeletionRule::Tag {
+                repository: Some(crate::config::lifecycle::StringMatch::Exact("foo".into())),
+                tag: None,
+                older_than: 5,
+            }))
+            .await?;
 
-        registry.garbage_collection().await?;
+        registry.untag_old_tags().await?;
 
         registry.teardown().await?;
 
@@ -1030,28 +1074,8 @@ mod tests {
             }))
             .await?;
 
-        registry.untag_old_tags().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(2).column("id")),
-                ),
-            ]
-        ).await?;
+        registry.manifest().await?;
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
 
         assert!(registry.get_tag("foo", "latest").await?.is_some());
 
@@ -1081,26 +1105,9 @@ mod tests {
 
         registry.untag_old_tags().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(1).column("id"), StmtIndex(2).column("id")),
-                ),
-            ]
-        ).await?;
+        registry.manifest().await?;
+
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
 
         assert!(registry.get_tag("foo", "latest").await?.is_some());
 
@@ -1117,31 +1124,19 @@ mod tests {
     async fn delete_unreferenced_manifest_repositories_tag_ref() -> Result<()> {
         /*
         Manifest is referenced by a tag so shouldn't be deleted
+
+        We create a default test manifest - so it has a tag pointing at it.
+
+        Even after 50 days (longer than gc window for unreferenced manifests)
+        this should not be deleted.
         */
         let registry = StateFixture::new().await?;
 
         registry.delete_unreferenced_manifest_repositories().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifests_repositories(repository_id, manifest_id) VALUES ($1, $2) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(1).column("id")),
-                ),
-                (
-                    "INSERT INTO tags(name, repository_id, manifest_repository_id, created_at, updated_at) VALUES ('latest', $1, $2, datetime('now', '-50 days'), datetime('now', '-50 days')) RETURNING id;",
-                    params!(StmtIndex(0).column("id"), StmtIndex(2).column("id")),
-                ),
-            ]
-        ).await?;
+        registry.manifest().await?;
+
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
 
         registry.delete_unreferenced_manifest_repositories().await?;
 
@@ -1171,30 +1166,24 @@ mod tests {
 
         registry.unstore_unreferenced_manifests().await?;
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        let manifest = registry
-            .get_manifest(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
 
+        // Create default test manifest
+        // Delete any tags referencing it
+        // Unmount it (so its not visible in any repository)
+        // Fast forward time a bit to make sure GC will consider it
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
+        registry.advance(Duration::seconds(60 * 60));
+
+        // Check to see if any manifests can be deleted from disk
+        registry.unstore_unreferenced_manifests().await?;
+
+        // Manifest should still be in db but not stored on any node
+        let manifest = registry.get_manifest(&digest).await?.unwrap();
         assert_eq!(manifest.location, 0);
 
         registry.teardown().await?;
@@ -1208,37 +1197,43 @@ mod tests {
         Manifest isn't referenced by a tag so should be deleted - but its state is 0 so leave it alone
         */
         let registry = StateFixture::new().await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
-
-        registry.unstore_unreferenced_manifests().await?;
-
-        let manifest = registry
-            .get_manifest(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
 
+        // Create default test manifest
+        // Delete any tags referencing it
+        // Unmount it (so its not visible in any repository)
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
+
+        // Set the manifest back to pending - we have to poke the backend directly to
+        // get into this state but we want to be certain that we don't gc a manifest
+        // that is still getting replicated between node members.
+        registry
+            .client
+            .execute("UPDATE manifests SET state=0", vec![])
+            .await?;
+
+        // Fast forward time a bit to make sure GC will consider it
+        registry.advance(Duration::seconds(60 * 60));
+
+        // After gc, manifest should still be in db but not stored on any node
+        registry.unstore_unreferenced_manifests().await?;
+        let manifest = registry.get_manifest(&digest).await?.unwrap();
         assert_eq!(manifest.location, 1);
 
         registry.teardown().await?;
 
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn delete_unstored_manifests_empty() -> Result<()> {
+        let registry = StateFixture::new().await?;
+        registry.delete_unreferenced_manifests().await?;
+        registry.teardown().await?;
         Ok(())
     }
 
@@ -1249,33 +1244,19 @@ mod tests {
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unreferenced_manifests().await?;
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
+            .unwrap();
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
+        // Create a manifest, make sure its not mounted anywhere, delete it from disk
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
+        registry.unstore_unreferenced_manifests().await?;
 
         registry.delete_unreferenced_manifests().await?;
 
-        assert!(
-            registry
-                .get_manifest(
-                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                        .parse()
-                        .unwrap()
-                )
-                .await?
-                .is_none()
-        );
+        assert!(registry.get_manifest(&digest).await?.is_none());
 
         registry.teardown().await?;
 
@@ -1289,38 +1270,29 @@ mod tests {
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unreferenced_manifests().await?;
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
+            .unwrap();
 
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-            ]
-        ).await?;
+        // Create a manifest, make sure its not mounted anywhere, delete it from disk
+        registry.manifest().await?;
+        registry.delete_tag("foo", "latest").await?;
+        registry.unmount_manifest(&digest, "foo").await?;
 
         registry.delete_unreferenced_manifests().await?;
 
-        assert_eq!(
-            registry
-                .get_manifest(
-                    &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                        .parse()
-                        .unwrap()
-                )
-                .await?
-                .unwrap()
-                .location,
-            1
-        );
+        assert!(registry.get_manifest(&digest).await?.is_some());
 
         registry.teardown().await?;
 
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn delete_unreferenced_blob_repositories_empty() -> Result<()> {
+        let registry = StateFixture::new().await?;
+        registry.delete_unreferenced_blob_repositories().await?;
+        registry.teardown().await?;
         Ok(())
     }
 
@@ -1331,45 +1303,21 @@ mod tests {
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
-                ),
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+
+        // Fast forward time a bit to make sure GC will consider it
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
         assert_eq!(registry.delete_unreferenced_blob_repositories().await?, 1);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories.len(), 0);
 
         registry.teardown().await?;
@@ -1384,45 +1332,28 @@ mod tests {
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
-                ),
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+
+        // Make this blob pending (i.e. still replicating) - need to use SQL
+        // to induce this state on a single node cluster
+        registry
+            .client
+            .execute("UPDATE blobs SET state=0;", vec![])
+            .await?;
+
+        // Fast forward time a bit to make sure GC will consider it
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
         assert_eq!(registry.delete_unreferenced_blob_repositories().await?, 0);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
         registry.teardown().await?;
@@ -1437,54 +1368,34 @@ mod tests {
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unreferenced_manifests().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
-                ),
-                (
-                    "INSERT INTO manifests(digest, size, media_type, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 'foo', 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    params!(),
-                ),
-                (
-                    "INSERT INTO manifest_layers(manifest_id, blob_id) VALUES($1, $2);",
-                    params!(StmtIndex(3).column("id"), StmtIndex(1).column("id")),
-                )
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+        registry.manifest().await?;
+
+        // Fast forward time a bit to make sure GC will consider it
+        registry.advance(Duration::seconds(60 * 60 * 24 * 50));
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
 
-        registry.delete_unreferenced_blob_repositories().await?;
+        assert_eq!(registry.delete_unreferenced_blob_repositories().await?, 0);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn unstore_unreachable_blobs_empty() -> Result<()> {
+        let registry = StateFixture::new().await?;
+
+        registry.unstore_unreachable_blobs().await?;
 
         registry.teardown().await?;
 
@@ -1494,46 +1405,24 @@ mod tests {
     #[test(tokio::test)]
     async fn unstore_unreachable_blobs() -> Result<()> {
         /*
-        Blob is deleted because its not in a repo.
+        Blob is unstored because its not in a repo.
         */
         let registry = StateFixture::new().await?;
 
-        registry.unstore_unreachable_blobs().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                )
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+        registry.unmount_blob(&digest, "foo").await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
 
         assert_eq!(registry.unstore_unreachable_blobs().await?, 1);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 0);
 
@@ -1545,46 +1434,31 @@ mod tests {
     #[test(tokio::test)]
     async fn unstore_unreachable_blobs_pending() -> Result<()> {
         /*
-        Blob is not deleted because its in pending state
+        Blob is not unstored because its in pending state (still replicating)
         */
         let registry = StateFixture::new().await?;
 
-        registry.unstore_unreachable_blobs().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 0) RETURNING id;",
-                    vec![],
-                )
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+        registry.unmount_blob(&digest, "foo").await?;
+
+        // Set blob back to pending so it looks like it is getting replicated still
+        // Test env is single node so only way to get into this state is raw sql
+        registry
+            .client
+            .execute("UPDATE blobs SET state=0", vec![])
+            .await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
 
         assert_eq!(registry.unstore_unreachable_blobs().await?, 0);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
 
@@ -1594,52 +1468,25 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn dont_unstore_unreachable_blobs() -> Result<()> {
+    async fn dont_unstore_reachable_blobs() -> Result<()> {
         /*
         Blob is left alone because its still in a repo
         */
         let registry = StateFixture::new().await?;
 
-        registry.unstore_unreachable_blobs().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs_repositories(blob_id, repository_id, created_at) VALUES($1, $2, datetime('now', '-50 days'));",
-                    params!(StmtIndex(1).column("id"), StmtIndex(0).column("id")),
-                ),
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
         assert_eq!(blob.location, 1);
 
         assert_eq!(registry.unstore_unreachable_blobs().await?, 0);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, ["foo".to_string()].into_iter().collect());
         assert_eq!(blob.location, 1);
 
@@ -1649,47 +1496,31 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn delete_unstored_blobs() -> Result<()> {
+    async fn delete_unstored_blobs_delete_blob_empty() -> Result<()> {
+        let registry = StateFixture::new().await?;
+        registry.delete_unstored_blobs().await?;
+        registry.teardown().await?;
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn delete_unstored_blobs_delete_blob() -> Result<()> {
         /*
-        Blob is deleted because its not in a repo.
+        Blob is deleted because its not in a repo and it is not on disk.
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unstored_blobs().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 0, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                )
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
-        assert_eq!(blob.repositories, [].into_iter().collect());
+
+        registry.blob().await?;
+        registry.unmount_blob(&digest, "foo").await?;
+        registry.unstore_unreachable_blobs().await?;
 
         assert_eq!(registry.delete_unstored_blobs().await?, 1);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?;
-
+        let blob = registry.get_blob(&digest).await?;
         assert!(blob.is_none());
 
         registry.teardown().await?;
@@ -1698,50 +1529,138 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    async fn dont_delete_unstored_blobs() -> Result<()> {
+    async fn dont_delete_stored_blobs() -> Result<()> {
         /*
-        Blob is deleted because its not in a repo.
+        Blob is not deleted because  from the db because it is still on disk.
         */
         let registry = StateFixture::new().await?;
 
-        registry.delete_unstored_blobs().await?;
-
-        registry.client.txn(
-            [
-                (
-                    "INSERT INTO repositories(name) VALUES ('foo') RETURNING id;",
-                    vec![],
-                ),
-                (
-                    "INSERT INTO blobs(digest, size, location, created_by, created_at, state) VALUES ('sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5', 0, 1, 'george', datetime('now', '-50 days'), 1) RETURNING id;",
-                    vec![],
-                )
-            ]
-        ).await?;
-
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
+        let digest = "sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
+            .parse()
             .unwrap();
+
+        registry.blob().await?;
+        registry.unmount_blob(&digest, "foo").await?;
+
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
 
         assert_eq!(registry.delete_unstored_blobs().await?, 0);
 
-        let blob = registry
-            .get_blob(
-                &"sha256:24c422e681f1c1bd08286c7aaf5d23a5f088dcdb0b219806b3a9e579244f00c5"
-                    .parse()
-                    .unwrap(),
-            )
-            .await?
-            .unwrap();
+        let blob = registry.get_blob(&digest).await?.unwrap();
         assert_eq!(blob.repositories, [].into_iter().collect());
         assert_eq!(blob.location, 1);
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    /// What happens if manifest A is tagged as A and B, and then manifest C is tagged as A. Then GC runs.
+    #[test(tokio::test)]
+    async fn test_manifest_tag_tag_tag() -> Result<()> {
+        let registry = StateFixture::new().await?;
+
+        let blob = "sha256:b9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_blob("library/nginx", &blob, 1, "bob")
+            .await?;
+
+        let digest = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        assert_eq!(None, registry.get_manifest(&digest).await?);
+
+        let info = ManifestInfo {
+            media_type: Some("application/octet-stream".into()),
+            artifact_type: None,
+            annotations: HashMap::new(),
+            size: 55,
+            manifests: vec![],
+            blobs: vec![Descriptor {
+                digest: blob,
+                media_type: "application/octet-stream".into(),
+                size: None,
+                platform: None,
+            }],
+            subject: None,
+        };
+
+        let req = RequestContext {
+            access: vec![],
+            sub: "bob".to_string(),
+            admin: true,
+            validated_token: true,
+            service: None,
+            realm: None,
+            user_agent: Some("Foo".into()),
+            method: "put".into(),
+            request_id: "abcdef".into(),
+            peer: "127.0.0.1:80".parse().unwrap(),
+        };
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "deployed",
+                &digest,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        let digest2 = "sha256:a9471d8321cedbb75e823ed68a507cd5b203cdb29c56732def856ebcdc5125ea"
+            .parse()
+            .unwrap();
+
+        registry
+            .insert_manifest(
+                "library/nginx",
+                "latest",
+                &digest2,
+                "some/content-type",
+                &info,
+                &req,
+            )
+            .await?;
+
+        registry.garbage_collection().await?;
+
+        let manifest = registry
+            .get_tag("library/nginx", "deployed")
+            .await?
+            .unwrap();
+
+        assert_eq!(manifest.digest, digest);
+        assert!(manifest.repositories.contains("library/nginx"));
+
+        registry.teardown().await?;
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_garbage_collect() -> Result<()> {
+        let registry = StateFixture::new().await?;
+
+        registry.garbage_collection().await?;
 
         registry.teardown().await?;
 

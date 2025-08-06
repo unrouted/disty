@@ -37,7 +37,7 @@ pub(crate) async fn delete(
                 return Err(RegistryError::ManifestNotFound {});
             }
 
-            registry.delete_manifest(&repository, &digest).await?;
+            registry.unmount_manifest(&digest, &repository).await?;
 
             return Ok(Response::builder()
                 .status(StatusCode::ACCEPTED)
