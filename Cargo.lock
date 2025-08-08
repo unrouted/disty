@@ -968,9 +968,9 @@ dependencies = [
 
 [[package]]
 name = "cryptr"
-version = "0.7.0"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9841e0d681d07fc1f285260eb5723255e0229783b0bac9336df426a5d5849c7b"
+checksum = "d6410ed8a2edd3c2dfc540c69ffe1276b45c9f9cef047f87fdbc56fcdb2d3f3f"
 dependencies = [
  "argon2",
  "async-stream",
@@ -1727,9 +1727,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hiqlite"
-version = "0.9.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2e923b79143c2e444d375b80014a62bfa14cb575e20f88f6bbea60b9f2dfc8"
+checksum = "7004301270b7022930c2857cd1827e7cc43a9125f8e71f00f11ccb5e2ac0a1ab"
 dependencies = [
  "axum",
  "axum-server",
@@ -1776,9 +1776,9 @@ dependencies = [
 
 [[package]]
 name = "hiqlite-macros"
-version = "0.9.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ae637aa0945612951dcac70a68e516261b952864ee79c9e40dc6f4bfd25d2c7"
+checksum = "54e30654c1bd9962fcf4e01538b1835d2aff66ce774b515b000bc1d6baec1e93"
 dependencies = [
  "hiqlite",
  "rust-embed",
@@ -1786,9 +1786,9 @@ dependencies = [
 
 [[package]]
 name = "hiqlite-wal"
-version = "0.9.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f422d13c223c4804f76c7f4a051a3f0a5db3d12fc87bd2de5de0c661530e08ac"
+checksum = "5ef565a1f79862fb139007e75bd2bae92229c8be4826e00f0492015c57f331fa"
 dependencies = [
  "bincode",
  "byteorder",
