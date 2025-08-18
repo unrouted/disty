@@ -32,7 +32,7 @@ prometheus-client = "0.23.1"
 pwhash = "1.0.0"
 rand = "0.9.2"
 regex = "1.11.1"
-reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "trust-dns"] }
 ring = "0.17.14"
 schema = "0.1.0"
 sec1 = { version = "0.7.3", features = ["pem", "pkcs8"] }
