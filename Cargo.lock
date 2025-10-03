@@ -974,9 +974,9 @@ dependencies = [
 
 [[package]]
 name = "cryptr"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9841e0d681d07fc1f285260eb5723255e0229783b0bac9336df426a5d5849c7b"
+checksum = "08ee59a0c85e4637256cc920a0be1f1fab90aaed501b6f05823b0d678d6f97ee"
 dependencies = [
  "argon2",
  "async-stream",
@@ -1734,9 +1734,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hiqlite"
-version = "0.9.1"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2e923b79143c2e444d375b80014a62bfa14cb575e20f88f6bbea60b9f2dfc8"
+checksum = "861e455d61cc94bbf0bdf3de97b496b629f07dfe61a362557389054b9c1d2fba"
 dependencies = [
  "axum",
  "axum-server",
@@ -1783,9 +1783,9 @@ dependencies = [
 
 [[package]]
 name = "hiqlite-macros"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ae637aa0945612951dcac70a68e516261b952864ee79c9e40dc6f4bfd25d2c7"
+checksum = "d31de0a365a611afbd9425bbc515a630a0580f8e6d2034797462b124b5c162c9"
 dependencies = [
  "hiqlite",
  "rust-embed",
@@ -1793,9 +1793,9 @@ dependencies = [
 
 [[package]]
 name = "hiqlite-wal"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f422d13c223c4804f76c7f4a051a3f0a5db3d12fc87bd2de5de0c661530e08ac"
+checksum = "ce89af15962ad72d764de20e433fa31ac6b7d81469def26d10c6ce51a036d468"
 dependencies = [
  "bincode",
  "byteorder",
@@ -2243,9 +2243,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.32.1"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24690c68dfcdde5980d676b0f1820981841016b1f29eecb4c42ad48ab4118681"
+checksum = "d46662859bc5f60a145b75f4632fbadc84e829e45df6c5de74cfc8e05acb96b5"
 dependencies = [
  "ahash 0.8.12",
  "base64 0.22.1",
@@ -2351,9 +2351,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.34.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91632f3b4fb6bd1d72aa3d78f41ffecfcf2b1a6648d8c241dbe7dbfaf4875e15"
+checksum = "133c182a6a2c87864fe97778797e46c7e999672690dc9fa3ee8e241aa4a9c13f"
 dependencies = [
  "cc",
  "pkg-config",
@@ -2438,9 +2438,9 @@ dependencies = [
 
 [[package]]
 name = "md5"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+checksum = "ae960838283323069879657ca3de837e9f7bbb4c7bf6ea7f1b290d5e9476d2e0"
 
 [[package]]
 name = "memchr"
@@ -2991,7 +2991,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
- "toml_edit 0.23.6",
+ "toml_edit",
 ]
 
 [[package]]
@@ -3018,9 +3018,9 @@ dependencies = [
 
 [[package]]
 name = "prometheus-client"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf41c1a7c32ed72abe5082fb19505b969095c12da9f5732a4bc9878757fd087c"
+checksum = "e4500adecd7af8e0e9f4dbce15cfee07ce913fbf6ad605cc468b83f2d531ee94"
 dependencies = [
  "dtoa",
  "itoa",
@@ -3030,9 +3030,9 @@ dependencies = [
 
 [[package]]
 name = "prometheus-client-derive-encode"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "440f724eba9f6996b75d63681b0a92b06947f1457076d503a4d2e2c8f56442b8"
+checksum = "9adf1691c04c0a5ff46ff8f262b58beb07b0dbb61f96f9f54f6cbd82106ed87f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3076,9 +3076,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.37.5"
+version = "0.38.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+checksum = "42a232e7487fc2ef313d96dde7948e7a3c05101870d8985e4fd8d26aedd27b89"
 dependencies = [
  "memchr",
  "serde",
@@ -3274,9 +3274,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.32.1"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a3d769362109497b240e66462606bc28af68116436c8669bac17069533b908e"
+checksum = "9e9c261f7ce75418b3beadfb3f0eb1299fe8eb9640deba45ffa2cb783098697d"
 dependencies = [
  "ahash 0.8.12",
  "fluent-uri",
@@ -3444,9 +3444,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.36.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de23c3319433716cf134eed225fe9986bc24f63bed9be9f20c329029e672dc7"
+checksum = "165ca6e57b20e1351573e3729b958bc62f0e48025386970b6e4d29e7a7e71f3f"
 dependencies = [
  "bitflags",
  "chrono",
@@ -3603,13 +3603,12 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
 name = "s3-simple"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a63cf8fde84db96f61460b5755c5c43c09286be0a6c108a4f225df4d699738f"
+checksum = "13035e27e89dd12a179200e78c495b03ff569f87cb7510280085ef86dde6af78"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "chrono",
  "dotenvy",
  "flume",
  "futures-util",
@@ -3622,7 +3621,7 @@ dependencies = [
  "reqwest",
  "serde",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "time",
  "tokio",
  "tracing",
@@ -3773,9 +3772,9 @@ dependencies = [
 
 [[package]]
 name = "serde_rusqlite"
-version = "0.39.3"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f7daf08fa3f89e68c02ab5f1a56a74f1c1be50f910bdd214453abd728d06d7f"
+checksum = "32d9325839c0a5dc4820323190bff9bba33f57362cb5591fa30db66cb56874b2"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3783,11 +3782,11 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "0.6.9"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
+checksum = "5417783452c2be558477e104686f7de5dae53dba813c28435e0e70f82d9b04ee"
 dependencies = [
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -4216,9 +4215,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-retry2"
-version = "0.5.8"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a0a122635e32bd827df297f311ca5e0292636bbd82f67ff84a4bedeab06dbeb"
+checksum = "7de2537bbad4f8b2d4237cdab9e7c4948a1f74744e45f54144eeccd05d3ad955"
 dependencies = [
  "pin-project",
  "rand 0.9.2",
@@ -4261,23 +4260,17 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.8.23"
+version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
+checksum = "00e5e5d9bf2475ac9d4f0d9edab68cc573dc2fd644b0dba36b0c30a92dd9eaa0"
 dependencies = [
- "serde",
+ "indexmap",
+ "serde_core",
  "serde_spanned",
- "toml_datetime 0.6.11",
- "toml_edit 0.22.27",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.6.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
-dependencies = [
- "serde",
+ "toml_datetime",
+ "toml_parser",
+ "toml_writer",
+ "winnow 0.7.13",
 ]
 
 [[package]]
@@ -4291,26 +4284,12 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
-dependencies = [
- "indexmap",
- "serde",
- "serde_spanned",
- "toml_datetime 0.6.11",
- "toml_write",
- "winnow 0.7.13",
-]
-
-[[package]]
-name = "toml_edit"
 version = "0.23.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3effe7c0e86fdff4f69cdd2ccc1b96f933e24811c5441d44904e8683e27184b"
 dependencies = [
  "indexmap",
- "toml_datetime 0.7.2",
+ "toml_datetime",
  "toml_parser",
  "winnow 0.7.13",
 ]
@@ -4325,10 +4304,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml_write"
-version = "0.1.2"
+name = "toml_writer"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+checksum = "d163a63c116ce562a22cda521fcc4d79152e7aba014456fb5eb442f6d6a10109"
 
 [[package]]
 name = "tower"
@@ -5105,9 +5084,9 @@ dependencies = [
 
 [[package]]
 name = "x509-parser"
-version = "0.17.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4569f339c0c402346d4a75a9e39cf8dad310e287eef1ff56d4c68e5067f53460"
+checksum = "eb3e137310115a65136898d2079f003ce33331a6c4b0d51f1531d1be082b6425"
 dependencies = [
  "asn1-rs",
  "data-encoding",
