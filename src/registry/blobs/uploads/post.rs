@@ -75,25 +75,25 @@ pub(crate) async fn post(
             return Err(RegistryError::AccessDenied {});
         }
 
-        if let Some(blob) = registry.get_blob(&mount).await? {
-            if blob.repositories.contains(from) {
-                registry.mount_blob(&mount, &repository).await?;
+        if let Some(blob) = registry.get_blob(&mount).await?
+            && blob.repositories.contains(from)
+        {
+            registry.mount_blob(&mount, &repository).await?;
 
-                /*
-                201 Created
-                Location: <blob location>
-                Content-Range: <start of range>-<end of range, inclusive>
-                Content-Length: 0
-                Docker-Content-Digest: <digest>
-                */
-                return Ok(Response::builder()
-                    .status(StatusCode::CREATED)
-                    .header("Location", format!("/v2/{}/blobs/{}", repository, mount))
-                    .header("Range", "0-0")
-                    .header("Content-Length", "0")
-                    .header("Docker-Content-Digest", mount.to_string())
-                    .body(Body::empty())?);
-            }
+            /*
+            201 Created
+            Location: <blob location>
+            Content-Range: <start of range>-<end of range, inclusive>
+            Content-Length: 0
+            Docker-Content-Digest: <digest>
+            */
+            return Ok(Response::builder()
+                .status(StatusCode::CREATED)
+                .header("Location", format!("/v2/{}/blobs/{}", repository, mount))
+                .header("Range", "0-0")
+                .header("Content-Length", "0")
+                .header("Docker-Content-Digest", mount.to_string())
+                .body(Body::empty())?);
         }
     }
     let upload_id = Uuid::new_v4().as_hyphenated().to_string();

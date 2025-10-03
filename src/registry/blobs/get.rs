@@ -64,31 +64,30 @@ pub(crate) async fn get(
 
     let mut blob_file = tokio::fs::File::open(blob_path).await?;
 
-    if let Some(TypedHeader(range)) = range {
-        if let Some((Bound::Included(start), Bound::Included(end))) =
+    if let Some(TypedHeader(range)) = range
+        && let Some((Bound::Included(start), Bound::Included(end))) =
             range.satisfiable_ranges(blob.size).next()
-        {
-            if start > end || end >= blob.size {
-                return Ok(Response::builder()
-                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                    .body(Body::empty())?);
-            }
-
-            blob_file.seek(SeekFrom::Start(start)).await?;
-
-            let stream = ReaderStream::new(blob_file.take(end - start + 1));
-
+    {
+        if start > end || end >= blob.size {
             return Ok(Response::builder()
-                .status(StatusCode::PARTIAL_CONTENT)
-                .header("Docker-Content-Digest", digest.to_string())
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .header(header::CONTENT_LENGTH, (end - start + 1).to_string())
-                .header(
-                    header::CONTENT_RANGE,
-                    format!("bytes {}-{}/{}", start, end, blob.size),
-                )
-                .body(Body::from_stream(stream))?);
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .body(Body::empty())?);
         }
+
+        blob_file.seek(SeekFrom::Start(start)).await?;
+
+        let stream = ReaderStream::new(blob_file.take(end - start + 1));
+
+        return Ok(Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header("Docker-Content-Digest", digest.to_string())
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(header::CONTENT_LENGTH, (end - start + 1).to_string())
+            .header(
+                header::CONTENT_RANGE,
+                format!("bytes {}-{}/{}", start, end, blob.size),
+            )
+            .body(Body::from_stream(stream))?);
     }
 
     Ok(Response::builder()

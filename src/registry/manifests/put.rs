@@ -73,11 +73,11 @@ pub(crate) async fn put(
     };
 
     let content_type = content_type.to_string();
-    if let Some(media_type) = &extracted.media_type {
-        if &content_type != media_type {
-            tracing::error!("Content-Type doesn't match mediaType");
-            return Err(RegistryError::ManifestInvalid {});
-        }
+    if let Some(media_type) = &extracted.media_type
+        && &content_type != media_type
+    {
+        tracing::error!("Content-Type doesn't match mediaType");
+        return Err(RegistryError::ManifestInvalid {});
     }
 
     let dest = registry.get_manifest_path(&digest);

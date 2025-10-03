@@ -366,24 +366,25 @@ impl RegistryState {
             ),
         ];
 
-        if let Some(desc) = &info.subject {
-            if self.get_manifest(&desc.digest).await?.is_none() {
-                // The spec allows out of order pushes which is unfortunate
-                // https://github.com/opencontainers/distribution-spec/issues/459
-                // This has implications for the DAG and garbage collection
+        if let Some(desc) = &info.subject
+            && self.get_manifest(&desc.digest).await?.is_none()
+        {
+            // The spec allows out of order pushes which is unfortunate
+            // https://github.com/opencontainers/distribution-spec/issues/459
+            // This has implications for the DAG and garbage collection
 
-                // The argument is that otherwise manifests might be pulled before e.g. signatures are uploaded
-                // Instead of fixing that with transactional uploads or just pushing by digest and then updating
-                // the tag, we must support "ghost" records in the database which don't exist, and which we must
-                // not try to mirror because they don't exist yet.
+            // The argument is that otherwise manifests might be pulled before e.g. signatures are uploaded
+            // Instead of fixing that with transactional uploads or just pushing by digest and then updating
+            // the tag, we must support "ghost" records in the database which don't exist, and which we must
+            // not try to mirror because they don't exist yet.
 
-                // This ghost manifest is not referenced by a manifest index or a tag, so would get garbage collected.
+            // This ghost manifest is not referenced by a manifest index or a tag, so would get garbage collected.
 
-                // If in phase 0, it would get mirrored. But there is nothing to mirror.
+            // If in phase 0, it would get mirrored. But there is nothing to mirror.
 
-                // So we need phase 2, and allow transition from phase 2 to phase 0 when its really uploaded.
+            // So we need phase 2, and allow transition from phase 2 to phase 0 when its really uploaded.
 
-                sql.push((
+            sql.push((
                     "INSERT INTO manifests (digest, size, media_type, created_by, location, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 0, 2, $5, $5) ON CONFLICT(digest) DO UPDATE SET id=id, updated_at=excluded.updated_at RETURNING manifests.id;",
                     params!(
                         desc.digest.to_string(),
@@ -393,11 +394,10 @@ impl RegistryState {
                         timestamp
                     ),
                 ));
-                sql.push((
+            sql.push((
                     "INSERT INTO manifests_repositories (repository_id, manifest_id, created_at, updated_at) VALUES ($1, $2, $3, $3) ON CONFLICT(manifest_id, repository_id) DO UPDATE SET id=id RETURNING id;",
                     params!(StmtIndex(0).column("id"), StmtIndex(4).column("id"), timestamp),
                 ));
-            }
         }
 
         sql.extend(info.blobs.iter().map(|descriptor| {

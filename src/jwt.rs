@@ -304,28 +304,27 @@ impl JWKSPublicKey {
 }
 
 fn parse_cache_headers(headers: &reqwest::header::HeaderMap) -> Option<Instant> {
-    if let Some(cache_control) = headers.get(CACHE_CONTROL) {
-        if let Ok(value) = cache_control.to_str() {
-            for directive in value.split(',') {
-                let directive = directive.trim();
-                if let Some(stripped) = directive.strip_prefix("max-age=") {
-                    if let Ok(seconds) = stripped.parse::<u64>() {
-                        return Some(Instant::now() + Duration::from_secs(seconds));
-                    }
-                }
+    if let Some(cache_control) = headers.get(CACHE_CONTROL)
+        && let Ok(value) = cache_control.to_str()
+    {
+        for directive in value.split(',') {
+            let directive = directive.trim();
+            if let Some(stripped) = directive.strip_prefix("max-age=")
+                && let Ok(seconds) = stripped.parse::<u64>()
+            {
+                return Some(Instant::now() + Duration::from_secs(seconds));
             }
         }
     }
 
-    if let Some(expires) = headers.get(EXPIRES) {
-        if let Ok(expires_str) = expires.to_str() {
-            if let Ok(expire_time) = httpdate::parse_http_date(expires_str) {
-                let dur = expire_time
-                    .duration_since(std::time::SystemTime::now())
-                    .ok()?;
-                return Some(Instant::now() + dur);
-            }
-        }
+    if let Some(expires) = headers.get(EXPIRES)
+        && let Ok(expires_str) = expires.to_str()
+        && let Ok(expire_time) = httpdate::parse_http_date(expires_str)
+    {
+        let dur = expire_time
+            .duration_since(std::time::SystemTime::now())
+            .ok()?;
+        return Some(Instant::now() + dur);
     }
 
     None

@@ -57,21 +57,20 @@ fn transform_dict(base_path: &PathBuf, dict: Dict) -> Result<Dict, Error> {
     for (k, v) in dict {
         let new_v = transform_value(base_path, v)?;
 
-        if k.ends_with("_file") {
-            if let Value::String(_, path_str) = &new_v {
-                let path = Path::new(path_str);
-                let final_path = if path.is_absolute() {
-                    path.to_path_buf()
-                } else {
-                    base_path.join(path)
-                };
-                let contents = std::fs::read_to_string(path).map_err(|e| {
-                    Error::from(format!("Failed to read '{:?}': {}", final_path, e))
-                })?;
-                let new_key = k.trim_end_matches("_file").to_string();
-                // Use Tag::Default or copy the original tag
-                new_dict.insert(new_key, Value::String(Tag::Default, contents));
-            }
+        if k.ends_with("_file")
+            && let Value::String(_, path_str) = &new_v
+        {
+            let path = Path::new(path_str);
+            let final_path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                base_path.join(path)
+            };
+            let contents = std::fs::read_to_string(path)
+                .map_err(|e| Error::from(format!("Failed to read '{:?}': {}", final_path, e)))?;
+            let new_key = k.trim_end_matches("_file").to_string();
+            // Use Tag::Default or copy the original tag
+            new_dict.insert(new_key, Value::String(Tag::Default, contents));
         }
 
         new_dict.insert(k, new_v);

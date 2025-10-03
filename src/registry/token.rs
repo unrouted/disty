@@ -113,31 +113,31 @@ pub(crate) async fn token(
 
             let mut access_map: BTreeMap<String, HashSet<Action>> = BTreeMap::new();
 
-            if let Some(authentication) = registry.config.authentication.as_ref() {
-                if let Some(scope) = scope {
-                    for scope in &scope {
-                        for scope in scope.split(" ") {
-                            let parts: Vec<&str> = scope.split(':').collect();
-                            if parts.len() == 3 && parts[0] == "repository" {
-                                let repo = parts[1];
-                                let actions: Vec<_> = parts[2]
-                                    .split(",")
-                                    .map(|split| Action::try_from(split.to_string()).unwrap())
-                                    .collect();
+            if let Some(authentication) = registry.config.authentication.as_ref()
+                && let Some(scope) = scope
+            {
+                for scope in &scope {
+                    for scope in scope.split(" ") {
+                        let parts: Vec<&str> = scope.split(':').collect();
+                        if parts.len() == 3 && parts[0] == "repository" {
+                            let repo = parts[1];
+                            let actions: Vec<_> = parts[2]
+                                .split(",")
+                                .map(|split| Action::try_from(split.to_string()).unwrap())
+                                .collect();
 
-                                let allowed_actions = authentication.acls.check_access(
-                                    &subject,
-                                    &ResourceContext {
-                                        repository: repo.to_string(),
-                                    },
-                                );
-                                for action in actions {
-                                    if allowed_actions.contains(&action) {
-                                        access_map
-                                            .entry(repo.to_string())
-                                            .or_default()
-                                            .insert(action);
-                                    }
+                            let allowed_actions = authentication.acls.check_access(
+                                &subject,
+                                &ResourceContext {
+                                    repository: repo.to_string(),
+                                },
+                            );
+                            for action in actions {
+                                if allowed_actions.contains(&action) {
+                                    access_map
+                                        .entry(repo.to_string())
+                                        .or_default()
+                                        .insert(action);
                                 }
                             }
                         }

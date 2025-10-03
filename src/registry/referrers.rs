@@ -88,24 +88,24 @@ pub(crate) async fn get(
 
     let mut manifests = vec![];
 
-    if let Some(manifest) = registry.get_manifest(&digest).await? {
-        if manifest.repositories.contains(&repository) {
-            for manifest in registry.get_referrer(&digest).await? {
-                if manifest.repositories.contains(&repository) {
-                    if let Some(artifact_type) = &artifact_type {
-                        if manifest.artifact_type.as_ref() != Some(artifact_type) {
-                            continue;
-                        }
-                    }
-
-                    manifests.push(ManifestIndexItem {
-                        media_type: manifest.media_type,
-                        size: manifest.size,
-                        digest: manifest.digest,
-                        artifact_type: manifest.artifact_type,
-                        annotations: manifest.annotations,
-                    })
+    if let Some(manifest) = registry.get_manifest(&digest).await?
+        && manifest.repositories.contains(&repository)
+    {
+        for manifest in registry.get_referrer(&digest).await? {
+            if manifest.repositories.contains(&repository) {
+                if let Some(artifact_type) = &artifact_type
+                    && manifest.artifact_type.as_ref() != Some(artifact_type)
+                {
+                    continue;
                 }
+
+                manifests.push(ManifestIndexItem {
+                    media_type: manifest.media_type,
+                    size: manifest.size,
+                    digest: manifest.digest,
+                    artifact_type: manifest.artifact_type,
+                    annotations: manifest.annotations,
+                })
             }
         }
     };
