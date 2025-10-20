@@ -9,7 +9,7 @@ axum = "0.8.6"
 axum-extra = { version = "0.10.3", features = ["typed-header", "file-stream", "query"] }
 base64 = "0.22.1"
 chrono = "0.4.42"
-clap = "4.5.48"
+clap = "4.5.49"
 data-encoding = "2.9.0"
 figment = { version = "0.10.19", features = ["env", "yaml"] }
 futures = "0.3.31"
