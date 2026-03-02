@@ -42,7 +42,7 @@ serde_regex = "1.1.0"
 strum = "0.27.2"
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["fs", "rt-multi-thread", "signal"] }
-tokio-retry2 = { version = "0.6.2", features = ["jitter"] }
+tokio-retry2 = { version = "0.9.1", features = ["jitter"] }
 tokio-stream = "0.1.18"
 tokio-util = "0.7.18"
 tower = "0.5.3"
